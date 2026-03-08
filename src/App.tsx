@@ -308,7 +308,7 @@ export default function App() {
     if (!files || files.length === 0) return;
 
     const newFiles: ProcessingFile[] = Array.from(files).map(file => ({
-      id: Math.random().toString(36).substring(7),
+      id: crypto.randomUUID(),
       fileName: file.name,
       status: 'pending',
       progress: 0
@@ -415,11 +415,20 @@ export default function App() {
     // Save to Supabase
     if (supabase) {
       try {
-        await supabase.from('drill_extractions').insert([result]);
+        const { error: supabaseError } = await supabase.from('drill_extractions').insert([result]);
+        if (supabaseError) {
+          console.error("Supabase error:", supabaseError);
+          alert("Lỗi khi lưu vào Supabase: " + supabaseError.message);
+          return; // Don't proceed to history if save failed
+        }
       } catch (e) {
         console.error("Failed to save to Supabase", e);
-        alert("Lỗi khi lưu vào Supabase: " + (e as any).message);
+        alert("Lỗi kết nối Supabase: " + (e as any).message);
+        return;
       }
+    } else {
+      console.warn("Supabase client not initialized. Check your environment variables.");
+      alert("Cảnh báo: Supabase chưa được cấu hình. Dữ liệu chỉ lưu tạm thời trên trình duyệt.");
     }
 
     setHistory(prev => [result, ...prev]);
