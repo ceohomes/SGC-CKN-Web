@@ -230,7 +230,7 @@ export default function App() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // Load history, API key, and logo from localStorage on mount
+  // Load history, API key, and logo from localStorage and Supabase on mount
   useEffect(() => {
     const loadData = async () => {
       // Load from localStorage first for offline feel
@@ -243,17 +243,47 @@ export default function App() {
         }
       }
 
+      const savedApiKey = localStorage.getItem('gemini_api_key');
+      if (savedApiKey) {
+        setUserApiKey(savedApiKey);
+      }
+
+      const savedLogo = localStorage.getItem('pile_drill_custom_logo');
+      if (savedLogo) {
+        setCustomLogo(savedLogo);
+      }
+
       // Sync with Supabase if available
       if (supabase) {
         try {
-          const { data, error } = await supabase
+          // 1. Sync History
+          const { data: historyData, error: historyError } = await supabase
             .from('drill_extractions')
             .select('*')
             .order('timestamp', { ascending: false });
           
-          if (!error && data) {
-            setHistory(data);
-            localStorage.setItem('pile_drill_history', JSON.stringify(data));
+          if (!historyError && historyData) {
+            setHistory(historyData);
+            localStorage.setItem('pile_drill_history', JSON.stringify(historyData));
+          }
+
+          // 2. Sync Settings (API Key & Logo)
+          const { data: settingsData, error: settingsError } = await supabase
+            .from('app_settings')
+            .select('*');
+
+          if (!settingsError && settingsData) {
+            const apiKeySetting = settingsData.find(s => s.id === 'gemini_api_key');
+            const logoSetting = settingsData.find(s => s.id === 'app_logo');
+
+            if (apiKeySetting && apiKeySetting.value) {
+              setUserApiKey(apiKeySetting.value);
+              localStorage.setItem('gemini_api_key', apiKeySetting.value);
+            }
+            if (logoSetting && logoSetting.value) {
+              setCustomLogo(logoSetting.value);
+              localStorage.setItem('pile_drill_custom_logo', logoSetting.value);
+            }
           }
         } catch (e) {
           console.error("Supabase sync failed", e);
@@ -263,15 +293,33 @@ export default function App() {
 
     loadData();
 
-    const savedApiKey = localStorage.getItem('gemini_api_key');
-    if (savedApiKey) {
-      setUserApiKey(savedApiKey);
+    // 3. Realtime Subscription for Settings
+    let settingsSubscription: any = null;
+    if (supabase) {
+      settingsSubscription = supabase
+        .channel('public:app_settings')
+        .on('postgres_changes', { event: '*', table: 'app_settings', schema: 'public' }, (payload) => {
+          const { id, value } = payload.new as any;
+          if (id === 'gemini_api_key') {
+            setUserApiKey(value);
+            localStorage.setItem('gemini_api_key', value);
+          } else if (id === 'app_logo') {
+            setCustomLogo(value || null);
+            if (value) {
+              localStorage.setItem('pile_drill_custom_logo', value);
+            } else {
+              localStorage.removeItem('pile_drill_custom_logo');
+            }
+          }
+        })
+        .subscribe();
     }
 
-    const savedLogo = localStorage.getItem('pile_drill_custom_logo');
-    if (savedLogo) {
-      setCustomLogo(savedLogo);
-    }
+    return () => {
+      if (settingsSubscription) {
+        supabase?.removeChannel(settingsSubscription);
+      }
+    };
   }, []);
 
   // Save history to localStorage whenever it changes
@@ -279,9 +327,21 @@ export default function App() {
     localStorage.setItem('pile_drill_history', JSON.stringify(history));
   }, [history]);
 
-  const saveApiKey = (key: string) => {
+  const saveApiKey = async (key: string) => {
     setUserApiKey(key);
     localStorage.setItem('gemini_api_key', key);
+    
+    // Save to Supabase
+    if (supabase) {
+      try {
+        await supabase
+          .from('app_settings')
+          .upsert({ id: 'gemini_api_key', value: key, updated_at: new Date().toISOString() });
+      } catch (e) {
+        console.error("Failed to save API key to Supabase", e);
+      }
+    }
+    
     setIsSettingsOpen(false);
   };
 
@@ -290,17 +350,39 @@ export default function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       setCustomLogo(base64);
       localStorage.setItem('pile_drill_custom_logo', base64);
+      
+      // Save to Supabase
+      if (supabase) {
+        try {
+          await supabase
+            .from('app_settings')
+            .upsert({ id: 'app_logo', value: base64, updated_at: new Date().toISOString() });
+        } catch (e) {
+          console.error("Failed to save logo to Supabase", e);
+        }
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const resetLogo = () => {
+  const resetLogo = async () => {
     setCustomLogo(null);
     localStorage.removeItem('pile_drill_custom_logo');
+    
+    // Clear in Supabase
+    if (supabase) {
+      try {
+        await supabase
+          .from('app_settings')
+          .upsert({ id: 'app_logo', value: '', updated_at: new Date().toISOString() });
+      } catch (e) {
+        console.error("Failed to reset logo in Supabase", e);
+      }
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
