@@ -415,11 +415,14 @@ export default function App() {
     // Save to Supabase
     if (supabase) {
       try {
-        const { error: supabaseError } = await supabase.from('drill_extractions').insert([result]);
+        // Prepare data for Supabase (remove client-side temporary ID to let DB generate UUID)
+        const { id, ...dataToSave } = result;
+        const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
+        
         if (supabaseError) {
           console.error("Supabase error:", supabaseError);
           alert("Lỗi khi lưu vào Supabase: " + supabaseError.message);
-          return; // Don't proceed to history if save failed
+          return;
         }
       } catch (e) {
         console.error("Failed to save to Supabase", e);
@@ -427,8 +430,8 @@ export default function App() {
         return;
       }
     } else {
-      console.warn("Supabase client not initialized. Check your environment variables.");
-      alert("Cảnh báo: Supabase chưa được cấu hình. Dữ liệu chỉ lưu tạm thời trên trình duyệt.");
+      console.warn("Supabase client not initialized.");
+      alert("Lỗi: Không thể kết nối với Supabase. Vui lòng kiểm tra lại mã nguồn.");
     }
 
     setHistory(prev => [result, ...prev]);
