@@ -23,7 +23,8 @@ import {
   RotateCcw,
   ImageIcon,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Cloud
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
@@ -69,6 +70,7 @@ interface ExtractionResult {
   layers: DrillLayer[];
   summary: string;
   fileName?: string;
+  fileUrl?: string;
 }
 
 interface ProcessingFile {
@@ -226,6 +228,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [userApiKey, setUserApiKey] = useState<string>('');
   const [customLogo, setCustomLogo] = useState<string | null>(null);
+  const [isOneDriveConnected, setIsOneDriveConnected] = useState<boolean>(false);
+  const [isConnectingOneDrive, setIsConnectingOneDrive] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -293,6 +297,25 @@ export default function App() {
 
     loadData();
 
+    const checkOneDriveStatus = async () => {
+      try {
+        const res = await fetch('/api/auth/onedrive/status');
+        const data = await res.json();
+        setIsOneDriveConnected(data.connected);
+      } catch (e) {
+        console.error("Failed to check OneDrive status", e);
+      }
+    };
+    checkOneDriveStatus();
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'ONEDRIVE_AUTH_SUCCESS') {
+        setIsOneDriveConnected(true);
+        setIsConnectingOneDrive(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
     // 3. Realtime Subscription for Settings
     let settingsSubscription: any = null;
     if (supabase) {
@@ -316,6 +339,7 @@ export default function App() {
     }
 
     return () => {
+      window.removeEventListener('message', handleMessage);
       if (settingsSubscription) {
         supabase?.removeChannel(settingsSubscription);
       }
@@ -382,6 +406,18 @@ export default function App() {
       } catch (e) {
         console.error("Failed to reset logo in Supabase", e);
       }
+    }
+  };
+
+  const connectOneDrive = async () => {
+    setIsConnectingOneDrive(true);
+    try {
+      const res = await fetch('/api/auth/onedrive/url');
+      const { url } = await res.json();
+      window.open(url, 'onedrive_auth', 'width=600,height=700');
+    } catch (e) {
+      console.error("Failed to get OneDrive auth URL", e);
+      setIsConnectingOneDrive(false);
     }
   };
 
@@ -466,6 +502,24 @@ export default function App() {
           timestamp: Date.now(),
           fileName: file.name
         };
+
+        // Upload to OneDrive if connected
+        if (isOneDriveConnected) {
+          try {
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
+            const uploadRes = await fetch('/api/onedrive/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileName: file.name, base64Data: base64 })
+            });
+            const uploadData = await uploadRes.json();
+            if (uploadData.fileUrl) {
+              result.fileUrl = uploadData.fileUrl;
+            }
+          } catch (e) {
+            console.error("OneDrive upload failed", e);
+          }
+        }
 
         setPendingResults(prev => [result, ...prev]);
         setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
@@ -565,8 +619,7 @@ export default function App() {
                 )}
               </div>
               <div>
-                <span className="font-black text-blue-900 uppercase tracking-tight block text-xl">PileDrill</span>
-                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Intelligence</span>
+                <span className="font-black text-blue-900 uppercase tracking-tight block text-xl">SGC - CKN</span>
               </div>
             </div>
             <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -641,8 +694,10 @@ export default function App() {
             )}
           </div>
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-white uppercase leading-none">PileDrill Intelligence</h1>
-            <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-2">Hệ thống Phân tích Địa chất Cọc khoan nhồi</p>
+            <h1 className="text-3xl font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-2">
+              HỆ THỐNG THỐNG KÊ VÀ<br />PHÂN TÍCH THI CÔNG CỌC KHOAN NHỒI
+            </p>
           </div>
           <div className="ml-4 p-2 bg-blue-700/50 rounded-lg text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity">
             <Menu size={20} />
@@ -673,54 +728,6 @@ export default function App() {
       <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
           <div className="max-w-6xl mx-auto space-y-12">
-            {/* Drag & Drop / Upload Area */}
-            <div 
-              className={cn(
-                "relative group cursor-pointer transition-all duration-500",
-                "bg-white border-4 border-dashed rounded-[48px] p-16 text-center",
-                "hover:border-blue-400 hover:bg-blue-50/30",
-                processingFiles.length > 0 ? "border-blue-200" : "border-slate-200"
-              )}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500', 'bg-blue-50'); }}
-              onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50'); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50');
-                if (e.dataTransfer.files) {
-                  const event = { target: { files: e.dataTransfer.files } } as any;
-                  handleFileUpload(event);
-                }
-              }}
-            >
-              <div className="flex flex-col items-center gap-6">
-                <div className="relative">
-                  <div className="w-24 h-24 bg-blue-50 rounded-[32px] flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
-                    <Upload className="text-blue-600 w-10 h-10" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
-                    <Activity className="text-white w-5 h-5" />
-                  </div>
-                </div>
-                <div>
-                  <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight uppercase">Tải lên biên bản hiện trường</h2>
-                  <p className="text-slate-500 font-medium text-lg">
-                    Kéo thả nhiều ảnh hoặc PDF biên bản vào đây hoặc <span className="text-blue-600 font-black underline decoration-2 underline-offset-4">chọn từ máy tính</span>
-                  </p>
-                </div>
-                <div className="flex gap-4 mt-2">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                    <CheckCircle2 size={14} className="text-emerald-500" />
-                    Hỗ trợ JPG/PNG/PDF
-                  </div>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                    <CheckCircle2 size={14} className="text-emerald-500" />
-                    Tối đa 20MB/file
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Processing Queue */}
             {processingFiles.length > 0 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -838,7 +845,7 @@ export default function App() {
 
             {/* Pending Review Section */}
             {pendingResults.length > 0 && !currentResult && (
-              <div className="space-y-6 pt-6 border-t border-slate-200">
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-black text-orange-600 uppercase tracking-tight flex items-center gap-3">
                     <AlertCircle className="w-6 h-6" />
@@ -876,13 +883,13 @@ export default function App() {
               </div>
             )}
 
-            {/* Recent History on Sheet 1 */}
+            {/* Main Data Table on Sheet 1 */}
             {history.length > 0 && !currentResult && (
-              <div className="space-y-6 pt-6 border-t border-slate-200">
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
-                    <History className="text-slate-400 w-6 h-6" />
-                    Dữ liệu vừa trích xuất
+                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
+                    <div className="w-2 h-8 bg-blue-700 rounded-full" />
+                    DỮ LIỆU THI CÔNG
                   </h3>
                   <button 
                     onClick={() => setActiveSheet('summary')}
@@ -891,31 +898,62 @@ export default function App() {
                     Xem tất cả
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {history.slice(0, 4).map((item) => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => setCurrentResult(item)}
-                      className="bg-white rounded-3xl p-6 shadow-md border border-slate-100 cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all group"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:text-blue-600 transition-colors">
-                          <Database size={20} />
-                        </div>
-                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">
-                          {new Date(item.timestamp).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <h4 className="font-black text-slate-800 uppercase tracking-tight text-sm mb-1 truncate">{item.pileId}</h4>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">{item.project}</p>
-                      <div className="mt-4 flex items-center justify-between">
-                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-                          {item.layers.length} Lớp
-                        </span>
-                        <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-600 transform group-hover:translate-x-1 transition-all" />
-                      </div>
-                    </div>
-                  ))}
+                
+                <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Dự án</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Hạng mục</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Tên bộ phận</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Số hiệu cọc</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Đường kính</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày bắt đầu thi công</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Xem File</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500 text-right">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {history.slice(0, 10).map((item) => (
+                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
+                            <td className="px-6 py-4 text-xs font-bold text-slate-800">{item.project}</td>
+                            <td className="px-6 py-4 text-xs text-slate-600">{item.item}</td>
+                            <td className="px-6 py-4 text-xs text-slate-600">{item.componentName}</td>
+                            <td className="px-6 py-4 text-xs font-black text-blue-700">{item.pileId}</td>
+                            <td className="px-6 py-4 text-xs text-slate-600">{item.diameter}</td>
+                            <td className="px-6 py-4 text-xs text-slate-500">{item.constructionStart}</td>
+                            <td className="px-6 py-4 text-xs text-slate-500">{item.constructionEnd}</td>
+                            <td className="px-6 py-4">
+                              {item.fileUrl ? (
+                                <a 
+                                  href={item.fileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest"
+                                >
+                                  <ExternalLink size={14} />
+                                  Xem File
+                                </a>
+                              ) : (
+                                <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">Chưa có file</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button 
+                                onClick={() => setCurrentResult(item)}
+                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                title="Xem chi tiết"
+                              >
+                                <ChevronRight size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -978,6 +1016,40 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Kết nối OneDrive</label>
+                  <div className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("p-2 rounded-lg", isOneDriveConnected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-400")}>
+                        <Cloud size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800 uppercase tracking-tight">
+                          {isOneDriveConnected ? "Đã kết nối OneDrive" : "Chưa kết nối OneDrive"}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                          {isOneDriveConnected ? "Tự động lưu file vào OneDrive" : "Kết nối để lưu file tự động"}
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={connectOneDrive}
+                      disabled={isConnectingOneDrive}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                        isOneDriveConnected 
+                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
+                          : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100"
+                      )}
+                    >
+                      {isConnectingOneDrive ? "Đang kết nối..." : isOneDriveConnected ? "Đã kết nối" : "Kết nối ngay"}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 italic mt-2 px-1">
+                    * File sẽ được lưu vào thư mục /SGC-CKN/ trên OneDrive của bạn.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
                   <div className="relative">
                     <input 
@@ -1007,7 +1079,7 @@ export default function App() {
 
       <footer className="bg-slate-100 border-t border-slate-200 px-8 py-8 text-center mt-auto">
         <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
-          PileDrill Intelligence System • Construction Data Solutions
+          SGC - CKN System • Construction Data Solutions
         </p>
       </footer>
     </div>
@@ -1192,35 +1264,26 @@ function SummaryView({ history, onSelectResult }: { history: ExtractionResult[],
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Thời gian quét</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Dự án</th>
+                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Hạng mục</th>
+                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Tên bộ phận</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Số hiệu cọc</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Đường kính</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Tốc độ TB</th>
+                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày bắt đầu thi công</th>
+                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {history.map((item) => (
                     <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                      <td className="px-8 py-6 text-sm font-medium text-slate-500">
-                        {new Date(item.timestamp).toLocaleString('vi-VN')}
-                      </td>
-                      <td className="px-8 py-6 text-sm font-bold text-slate-800">
-                        <div className="flex flex-col">
-                          <span>{item.project}</span>
-                          {item.fileName && (
-                            <span className="text-[10px] text-slate-400 font-medium truncate max-w-[200px]">{item.fileName}</span>
-                          )}
-                        </div>
-                      </td>
+                      <td className="px-8 py-6 text-sm font-bold text-slate-800">{item.project}</td>
+                      <td className="px-8 py-6 text-sm text-slate-600">{item.item}</td>
+                      <td className="px-8 py-6 text-sm text-slate-600">{item.componentName}</td>
                       <td className="px-8 py-6 text-sm font-black text-blue-700">{item.pileId}</td>
                       <td className="px-8 py-6 text-sm font-bold text-slate-600">{item.diameter}</td>
-                      <td className="px-8 py-6">
-                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-                          {(item.layers.reduce((acc, l) => acc + l.speedMph, 0) / item.layers.length).toFixed(2)} m/h
-                        </span>
-                      </td>
+                      <td className="px-8 py-6 text-sm text-slate-500">{item.constructionStart}</td>
+                      <td className="px-8 py-6 text-sm text-slate-500">{item.constructionEnd}</td>
                       <td className="px-8 py-6 text-right">
                         <button 
                           onClick={() => onSelectResult(item)}

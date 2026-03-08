@@ -1,5 +1,5 @@
 {
-  "name": "Geology Drill Data Analyst",
-  "description": "Trích xuất và phân tích dữ liệu địa chất từ biên bản khoan cọc khoan nhồi sử dụng AI.",
+  "name": "SGC - CKN",
+  "description": "Hệ thống thống kê và phân tích thi công cọc khoan nhồi.",
   "requestFramePermissions": []
 }
