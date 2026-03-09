@@ -100,6 +100,78 @@ app.post("/api/github/upload", async (req, res) => {
   }
 });
 
+// GitHub Delete API
+app.post("/api/github/delete", async (req, res) => {
+  const token = process.env.GITHUB_TOKEN;
+  const username = process.env.GITHUB_USERNAME;
+  const repo = process.env.GITHUB_REPO || "construction-reports";
+
+  if (!token || !username) {
+    return res.status(401).json({ error: "GitHub not configured" });
+  }
+
+  const { fileUrl } = req.body;
+  if (!fileUrl) {
+    return res.status(400).json({ error: "Missing file URL" });
+  }
+
+  try {
+    let path = "";
+    const decodedUrl = decodeURIComponent(fileUrl);
+    
+    if (decodedUrl.includes('raw.githubusercontent.com')) {
+      const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
+      if (match) path = match[1];
+    } else if (decodedUrl.includes('github.com')) {
+      const match = decodedUrl.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/blob\/[^\/]+\/(.+)/);
+      if (match) path = match[1];
+    }
+
+    if (!path) {
+      throw new Error("Could not determine file path from URL");
+    }
+
+    // 1. Get the SHA of the file
+    const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!getRes.ok) {
+      throw new Error(`Failed to get file info from GitHub: ${getRes.statusText}`);
+    }
+
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
+
+    // 2. Delete the file
+    const deleteRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `Delete construction report: ${path}`,
+        sha: sha
+      })
+    });
+
+    if (!deleteRes.ok) {
+      const errorData = await deleteRes.json();
+      throw new Error(errorData.message || "GitHub delete failed");
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("GitHub delete error:", error);
+    res.status(500).json({ error: error.message || "Delete failed" });
+  }
+});
+
 // Proxy GitHub files
 app.get("/api/proxy/github", async (req, res) => {
   const token = process.env.GITHUB_TOKEN;

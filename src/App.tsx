@@ -679,6 +679,8 @@ export default function App() {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa dữ liệu này?")) return;
 
+    const itemToDelete = history.find(item => item.id === id);
+
     if (supabase) {
       try {
         const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
@@ -687,6 +689,19 @@ export default function App() {
         console.error("Failed to delete from Supabase", e);
         alert("Lỗi khi xóa dữ liệu");
         return;
+      }
+    }
+
+    // Delete from GitHub if fileUrl exists
+    if (itemToDelete?.fileUrl && isGithubConnected) {
+      try {
+        await fetch('/api/github/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileUrl: itemToDelete.fileUrl })
+        });
+      } catch (e) {
+        console.error("Failed to delete from GitHub", e);
       }
     }
 
