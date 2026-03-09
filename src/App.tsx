@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Construction,
   ChevronRight,
+  ChevronLeft,
   ArrowDownToLine,
   Activity,
   Calendar,
@@ -36,6 +37,12 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabase';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -430,8 +437,15 @@ export default function App() {
   };
 
   const connectGithub = async () => {
-    // For GitHub with Token, we just tell them to set it in env
-    alert("Vui lòng thiết lập GITHUB_TOKEN và GITHUB_USERNAME trong cấu hình môi trường.");
+    alert(`HƯỚNG DẪN KẾT NỐI GITHUB:
+1. Truy cập GitHub Settings > Developer Settings > Personal Access Tokens.
+2. Tạo Token mới (Classic hoặc Fine-grained) với quyền 'repo'.
+3. Mở bảng 'Secrets' trong AI Studio Build.
+4. Thêm các biến sau:
+   - GITHUB_TOKEN: (Token của bạn)
+   - GITHUB_USERNAME: (Tên người dùng GitHub)
+   - GITHUB_REPO: (Tên repository, mặc định: construction-reports)
+5. Khởi động lại Server nếu cần.`);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1541,6 +1555,8 @@ function EditSplitView({
   const [isPdf, setIsPdf] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [pageNumber, setPageNumber] = useState<number>(1);
 
   useEffect(() => {
     async function loadFile() {
@@ -1556,6 +1572,7 @@ function EditSplitView({
       
       setIsPdf(isPdfFile);
       setLoadError(null);
+      setIsLoading(true);
 
       // If it's a GitHub URL, use our proxy directly as the source
       if (url.includes('githubusercontent.com') || url.includes('github.com')) {
@@ -1578,12 +1595,13 @@ function EditSplitView({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isPdf) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDragging || isPdf) return;
     setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   };
 
@@ -1621,23 +1639,28 @@ function EditSplitView({
     setData(prev => ({ ...prev, layers: newLayers }));
   };
 
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+    setPageNumber(1);
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900 z-[200] flex flex-col animate-in fade-in duration-300">
+    <div className="fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300">
       {/* Header */}
-      <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
+      <div className="h-16 bg-slate-50 border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 p-2 rounded-lg text-white">
             <Edit2 size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-white uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{data.project}</p>
+            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{data.project}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-600 transition-colors"
+            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
           >
             Hủy bỏ
           </button>
@@ -1654,93 +1677,93 @@ function EditSplitView({
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Data Form */}
-        <div className="w-1/2 border-r border-slate-700 bg-slate-900 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+        <div className="w-1/2 border-r border-slate-200 bg-white overflow-y-auto p-8 space-y-8 custom-scrollbar">
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dự án</label>
               <input 
                 value={data.project} 
                 onChange={(e) => updateField('project', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hạng mục</label>
               <input 
                 value={data.item} 
                 onChange={(e) => updateField('item', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tên bộ phận</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên bộ phận</label>
               <input 
                 value={data.componentName} 
                 onChange={(e) => updateField('componentName', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Số hiệu cọc</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số hiệu cọc</label>
               <input 
                 value={data.pileId} 
                 onChange={(e) => updateField('pileId', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đường kính</label>
               <input 
                 value={data.diameter} 
                 onChange={(e) => updateField('diameter', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Bắt đầu thi công</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Kết thúc thi công</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+            <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
               <Layers size={14} />
               Chi tiết các lớp địa chất
             </h4>
-            <div className="overflow-x-auto border border-slate-700 rounded-2xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
               <table className="w-full text-left border-collapse min-w-[1200px]">
                 <thead>
-                  <tr className="bg-slate-800 border-b border-slate-700">
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Lớp thiết kế</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Từ (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Đến (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Cao độ từ</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Cao độ đến</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Thời gian (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Chiều dài (m)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Tốc độ (m/h)</th>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Lớp thiết kế</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Từ (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Đến (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Cao độ từ</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Cao độ đến</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Thời gian (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Chiều dài (m)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Tốc độ (m/h)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-slate-100">
                   {data.layers.map((layer, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-2 py-2">
                         <input 
                           value={layer.layerDesign} 
                           onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-white font-medium focus:ring-0"
+                          className="w-full bg-transparent border-none text-xs text-slate-900 font-medium focus:ring-0"
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -1748,7 +1771,7 @@ function EditSplitView({
                           type="time"
                           value={layer.timeFrom} 
                           onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-blue-400 font-black focus:ring-0"
+                          className="w-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-0"
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -1756,7 +1779,7 @@ function EditSplitView({
                           type="time"
                           value={layer.timeTo} 
                           onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-blue-400 font-black focus:ring-0"
+                          className="w-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-0"
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -1765,7 +1788,7 @@ function EditSplitView({
                           step="0.1"
                           value={layer.elevationFrom} 
                           onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-white font-bold focus:ring-0 text-center"
+                          className="w-full bg-transparent border-none text-xs text-slate-900 font-bold focus:ring-0 text-center"
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -1774,7 +1797,7 @@ function EditSplitView({
                           step="0.1"
                           value={layer.elevationTo} 
                           onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-white font-bold focus:ring-0 text-center"
+                          className="w-full bg-transparent border-none text-xs text-slate-900 font-bold focus:ring-0 text-center"
                         />
                       </td>
                       <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
@@ -1783,7 +1806,7 @@ function EditSplitView({
                       <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
                         {layer.lengthMeters.toFixed(2)}
                       </td>
-                      <td className="px-4 py-2 text-xs font-black text-emerald-500 text-center">
+                      <td className="px-4 py-2 text-xs font-black text-emerald-600 text-center">
                         {layer.speedMph.toFixed(2)}
                       </td>
                     </tr>
@@ -1794,18 +1817,18 @@ function EditSplitView({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tóm tắt phân tích</label>
             <textarea 
               value={data.summary} 
               onChange={(e) => updateField('summary', e.target.value)}
               rows={4}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 font-medium focus:border-blue-500 outline-none transition-all resize-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all resize-none"
             />
           </div>
         </div>
 
         {/* Right: File Viewer */}
-        <div className="w-1/2 bg-slate-950 relative overflow-hidden group flex flex-col">
+        <div className="w-1/2 bg-white relative overflow-hidden group flex flex-col">
           {/* Toolbar for Viewer */}
           {displayUrl && (
             <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1814,20 +1837,43 @@ function EditSplitView({
                   href={displayUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-slate-800/90 backdrop-blur-md rounded-xl text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all border border-slate-700 shadow-2xl flex items-center gap-2"
+                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-slate-900 text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-slate-200 shadow-2xl flex items-center gap-2"
                 >
                   <ExternalLink size={14} />
                   Mở tab mới
                 </a>
                 <a 
                   href={displayUrl} 
-                  download={data.fileName || "document"}
-                  className="px-4 py-2 bg-slate-800/90 backdrop-blur-md rounded-xl text-white text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all border border-slate-700 shadow-2xl flex items-center gap-2"
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-slate-900 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all border border-slate-200 shadow-2xl flex items-center gap-2"
                 >
                   <ArrowDownToLine size={14} />
                   Tải xuống
                 </a>
               </div>
+              
+              {isPdf && numPages > 0 && (
+                <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-200 shadow-2xl">
+                  <button 
+                    onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+                    disabled={pageNumber <= 1}
+                    className="text-slate-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest min-w-[60px] text-center">
+                    {pageNumber} / {numPages}
+                  </span>
+                  <button 
+                    onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
+                    disabled={pageNumber >= numPages}
+                    className="text-slate-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1837,7 +1883,7 @@ function EditSplitView({
               <p className="text-xs font-black uppercase tracking-widest opacity-60">Đang tải tài liệu...</p>
             </div>
           ) : loadError ? (
-            <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-4 p-8 text-center">
+            <div className="w-full h-full flex flex-col items-center justify-center text-red-500 gap-4 p-8 text-center">
               <AlertCircle size={48} className="opacity-50" />
               <div>
                 <p className="text-sm font-black uppercase tracking-widest">Lỗi tải tài liệu</p>
@@ -1845,36 +1891,44 @@ function EditSplitView({
               </div>
               <button 
                 onClick={() => setDisplayUrl(displayUrl)} 
-                className="mt-4 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                className="mt-4 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
               >
                 Thử lại
               </button>
             </div>
           ) : displayUrl ? (
             isPdf ? (
-              <div className="w-full h-full bg-slate-900 relative">
-                <object 
-                  data={displayUrl} 
-                  type="application/pdf" 
-                  className="w-full h-full"
+              <div className="w-full h-full bg-slate-50 overflow-auto flex justify-center p-8 custom-scrollbar">
+                <div 
+                  className="shadow-2xl bg-white origin-top transition-transform duration-200"
+                  style={{ transform: `scale(${zoom})` }}
                 >
-                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-12 text-center gap-6">
-                    <FileText size={64} className="opacity-20" />
-                    <p className="text-sm font-bold">Trình duyệt của bạn không hỗ trợ xem PDF trực tiếp.</p>
-                    <a 
-                      href={displayUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20"
-                    >
-                      Mở PDF trong tab mới
-                    </a>
-                  </div>
-                </object>
+                  <Document
+                    file={displayUrl}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    onLoadError={(err) => {
+                      console.error("PDF Load Error:", err);
+                      setLoadError("Không thể tải file PDF. Vui lòng thử mở trong tab mới.");
+                    }}
+                    loading={
+                      <div className="flex flex-col items-center justify-center p-20">
+                        <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
+                        <p className="text-sm text-slate-500">Đang tải PDF...</p>
+                      </div>
+                    }
+                  >
+                    <Page 
+                      pageNumber={pageNumber} 
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="max-w-full"
+                    />
+                  </Document>
+                </div>
               </div>
             ) : (
               <div 
-                className="w-full h-full flex items-center justify-center cursor-move"
+                className="w-full h-full flex items-center justify-center cursor-move bg-slate-50"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1894,9 +1948,21 @@ function EditSplitView({
                     style={{ maxHeight: '90vh' }}
                     draggable={false}
                     referrerPolicy="no-referrer"
-                    onError={() => {
-                      console.error("Image load failed");
-                      setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                    onError={(e) => {
+                      console.error("Image load failed", e);
+                      // Try to fetch the error message from proxy if it failed
+                      fetch(displayUrl!)
+                        .then(res => {
+                          if (!res.ok) return res.text();
+                          return null;
+                        })
+                        .then(text => {
+                          if (text) setLoadError(text);
+                          else setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                        })
+                        .catch(() => {
+                          setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                        });
                     }}
                   />
                 </div>
@@ -1910,29 +1976,29 @@ function EditSplitView({
           )}
 
           {/* Zoom Controls */}
-          {!isPdf && displayUrl && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-800/80 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          {displayUrl && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
               <button 
                 onClick={handleZoomOut}
-                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
                 title="Thu nhỏ"
               >
                 <ZoomOutIcon size={20} />
               </button>
-              <div className="w-16 text-center text-[10px] font-black text-white uppercase tracking-widest">
+              <div className="w-16 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">
                 {Math.round(zoom * 100)}%
               </div>
               <button 
                 onClick={handleZoomIn}
-                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
                 title="Phóng to"
               >
                 <ZoomInIcon size={20} />
               </button>
-              <div className="w-px h-6 bg-slate-700 mx-1" />
+              <div className="w-px h-6 bg-slate-200 mx-1" />
               <button 
                 onClick={handleResetZoom}
-                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
                 title="Đặt lại"
               >
                 <RotateCcw size={20} />
@@ -1941,7 +2007,7 @@ function EditSplitView({
           )}
 
           {/* Fullscreen Hint */}
-          <div className="absolute top-6 right-6 p-3 bg-slate-800/40 rounded-xl text-slate-400 pointer-events-none">
+          <div className="absolute top-6 right-6 p-3 bg-slate-100/40 rounded-xl text-slate-400 pointer-events-none">
             <Maximize2 size={16} />
           </div>
         </div>

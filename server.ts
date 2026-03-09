@@ -105,11 +105,6 @@ app.get("/api/proxy/github", async (req, res) => {
   const token = process.env.GITHUB_TOKEN;
   const fileUrl = req.query.url as string;
 
-  if (!token) {
-    console.error("[Proxy Error] GITHUB_TOKEN is missing.");
-    return res.status(401).json({ error: "GITHUB_TOKEN chưa được cấu hình." });
-  }
-
   if (!fileUrl) return res.status(400).json({ error: "Thiếu URL tệp." });
 
   try {
@@ -130,19 +125,28 @@ app.get("/api/proxy/github", async (req, res) => {
       }
     }
 
-    console.log(`[Proxy] Đang tải: ${fetchUrl}`);
+    console.log(`[Proxy] Đ đang tải: ${fetchUrl} ${token ? '(có token)' : '(không có token)'}`);
 
-    // Thử dùng 'token' prefix trước (cho classic token)
-    const response = await fetch(fetchUrl, {
-      headers: {
-        'Authorization': `token ${token.trim()}`,
-        'Accept': 'application/vnd.github.v3.raw'
-      }
-    });
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3.raw'
+    };
+
+    if (token) {
+      headers['Authorization'] = `token ${token.trim()}`;
+    }
+
+    const response = await fetch(fetchUrl, { headers });
 
     if (!response.ok) {
-      console.error(`[Proxy] Lỗi GitHub (${response.status}):`, await response.text());
-      return res.status(response.status).send("Không thể tải tệp từ GitHub.");
+      const errorText = await response.text();
+      console.error(`[Proxy] Lỗi GitHub (${response.status}):`, errorText);
+      
+      if (response.status === 401 || response.status === 404) {
+        if (!token) {
+          return res.status(401).send("[Proxy Error] GITHUB_TOKEN is missing. Please configure it in Settings > Secrets.");
+        }
+      }
+      return res.status(response.status).send(`Không thể tải tệp từ GitHub: ${response.statusText}`);
     }
 
     const contentType = response.headers.get("content-type");
