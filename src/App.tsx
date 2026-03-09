@@ -24,7 +24,13 @@ import {
   ImageIcon,
   Trash2,
   ExternalLink,
-  Cloud
+  Cloud,
+  Github,
+  Edit2,
+  Maximize2,
+  Minimize2,
+  ZoomIn as ZoomInIcon,
+  ZoomOut as ZoomOutIcon
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
@@ -183,7 +189,7 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
   });
 
   const text = response.text;
-  if (!text) throw new Error("No response from AI");
+  if (!text) throw new Error("Không có phản hồi từ AI");
   const rawData = JSON.parse(text);
 
   const processedLayers = rawData.layers.map((layer: any) => {
@@ -228,8 +234,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [userApiKey, setUserApiKey] = useState<string>('');
   const [customLogo, setCustomLogo] = useState<string | null>(null);
-  const [isOneDriveConnected, setIsOneDriveConnected] = useState<boolean>(false);
-  const [isConnectingOneDrive, setIsConnectingOneDrive] = useState<boolean>(false);
+  const [isGithubConnected, setIsGithubConnected] = useState<boolean>(false);
+  const [isConnectingGithub, setIsConnectingGithub] = useState<boolean>(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -297,21 +305,32 @@ export default function App() {
 
     loadData();
 
-    const checkOneDriveStatus = async () => {
+    const checkGithubStatus = async () => {
+      // First check if environment variables are available directly (for static deployments)
+      if (process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME) {
+        setIsGithubConnected(true);
+        return;
+      }
+
       try {
-        const res = await fetch('/api/auth/onedrive/status');
-        const data = await res.json();
-        setIsOneDriveConnected(data.connected);
+        const res = await fetch('/api/auth/github/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsGithubConnected(data.connected);
+        }
       } catch (e) {
-        console.error("Failed to check OneDrive status", e);
+        console.error("Failed to check GitHub status", e);
       }
     };
-    checkOneDriveStatus();
+    checkGithubStatus();
+
+    // Periodic check every 30 seconds
+    const statusInterval = setInterval(checkGithubStatus, 30000);
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'ONEDRIVE_AUTH_SUCCESS') {
-        setIsOneDriveConnected(true);
-        setIsConnectingOneDrive(false);
+      if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
+        setIsGithubConnected(true);
+        setIsConnectingGithub(false);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -340,6 +359,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('message', handleMessage);
+      clearInterval(statusInterval);
       if (settingsSubscription) {
         supabase?.removeChannel(settingsSubscription);
       }
@@ -409,16 +429,9 @@ export default function App() {
     }
   };
 
-  const connectOneDrive = async () => {
-    setIsConnectingOneDrive(true);
-    try {
-      const res = await fetch('/api/auth/onedrive/url');
-      const { url } = await res.json();
-      window.open(url, 'onedrive_auth', 'width=600,height=700');
-    } catch (e) {
-      console.error("Failed to get OneDrive auth URL", e);
-      setIsConnectingOneDrive(false);
-    }
+  const connectGithub = async () => {
+    // For GitHub with Token, we just tell them to set it in env
+    alert("Vui lòng thiết lập GITHUB_TOKEN và GITHUB_USERNAME trong cấu hình môi trường.");
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -503,22 +516,77 @@ export default function App() {
           fileName: file.name
         };
 
-        // Upload to OneDrive if connected
-        if (isOneDriveConnected) {
+        // Upload to GitHub if connected
+        if (isGithubConnected) {
           try {
+            console.log("Attempting GitHub upload for:", file.name);
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
-            const uploadRes = await fetch('/api/onedrive/upload', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ fileName: file.name, base64Data: base64 })
-            });
-            const uploadData = await uploadRes.json();
-            if (uploadData.fileUrl) {
+            
+            let uploadData: any = null;
+            
+            // Try backend first
+            try {
+              const uploadRes = await fetch('/api/github/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileName: file.name, base64Data: base64 })
+              });
+              if (uploadRes.ok) {
+                uploadData = await uploadRes.json();
+              }
+            } catch (backendError) {
+              console.log("Backend upload failed, trying client-side fallback...");
+            }
+
+            // Client-side fallback if backend failed but we have env vars
+            if (!uploadData && process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME) {
+              const token = process.env.GITHUB_TOKEN;
+              const username = process.env.GITHUB_USERNAME;
+              const repo = process.env.GITHUB_REPO || "construction-reports";
+              
+              // Add timestamp to filename to avoid "File already exists" error
+              const timestamp = new Date().getTime();
+              const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+              const path = `SGC-CKN/${timestamp}_${safeFileName}`;
+              const content = base64.split(',')[1];
+
+              console.log(`Client-side upload to: ${username}/${repo}/contents/${path}`);
+
+              const ghRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+                method: 'PUT',
+                headers: {
+                  'Authorization': `Bearer ${token.trim()}`,
+                  'Accept': 'application/vnd.github.v3+json',
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  message: `Upload ${file.name} via SGC-CKN Web`,
+                  content: content,
+                })
+              });
+
+              if (ghRes.ok) {
+                const ghData = await ghRes.json();
+                uploadData = { fileUrl: ghData.content.download_url };
+                console.log("GitHub upload success:", uploadData.fileUrl);
+              } else {
+                const errorData = await ghRes.json();
+                console.error("GitHub API Error:", errorData);
+                alert(`Lỗi GitHub: ${errorData.message || 'Không thể upload file'}. Vui lòng kiểm tra quyền của Token hoặc tên Repo.`);
+              }
+            }
+
+            if (uploadData && uploadData.fileUrl) {
               result.fileUrl = uploadData.fileUrl;
+              console.log("File URL assigned to result:", result.fileUrl);
+            } else {
+              console.warn("GitHub upload failed or no fileUrl returned");
             }
           } catch (e) {
-            console.error("OneDrive upload failed", e);
+            console.error("GitHub upload failed", e);
           }
+        } else {
+          console.log("GitHub not connected, skipping upload.");
         }
 
         setPendingResults(prev => [result, ...prev]);
@@ -548,11 +616,19 @@ export default function App() {
   };
 
   const saveResult = async (result: ExtractionResult) => {
+    console.log("Saving result to Supabase:", result);
+    
+    if (isGithubConnected && !result.fileUrl) {
+      const proceed = window.confirm("Cảnh báo: GitHub đã kết nối nhưng không tìm thấy link file. Bạn có muốn tiếp tục lưu mà không có file không?");
+      if (!proceed) return;
+    }
+
     // Save to Supabase
     if (supabase) {
       try {
         // Prepare data for Supabase (remove client-side temporary ID to let DB generate UUID)
         const { id, ...dataToSave } = result;
+        console.log("Data being sent to Supabase:", dataToSave);
         const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
         
         if (supabaseError) {
@@ -584,6 +660,49 @@ export default function App() {
     if (currentResult?.id === id) {
       setCurrentResult(null);
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa dữ liệu này?")) return;
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
+        if (error) throw error;
+      } catch (e) {
+        console.error("Failed to delete from Supabase", e);
+        alert("Lỗi khi xóa dữ liệu");
+        return;
+      }
+    }
+
+    setHistory(prev => prev.filter(item => item.id !== id));
+    if (currentResult?.id === id) setCurrentResult(null);
+  };
+
+  const handleEdit = (result: ExtractionResult) => {
+    setEditingResult(JSON.parse(JSON.stringify(result)));
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (updatedResult: ExtractionResult) => {
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('drill_extractions')
+          .update(updatedResult)
+          .eq('id', updatedResult.id);
+        if (error) throw error;
+      } catch (e) {
+        console.error("Failed to update Supabase", e);
+        alert("Lỗi khi cập nhật dữ liệu");
+        return;
+      }
+    }
+
+    setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
+    setIsEditModalOpen(false);
+    setEditingResult(null);
   };
 
   return (
@@ -672,7 +791,7 @@ export default function App() {
           </nav>
 
           <div className="pt-8 border-t border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Version 2.0 • Professional Edition</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Phiên bản 2.0 • Bản Chuyên Nghiệp</p>
           </div>
         </div>
       </aside>
@@ -887,10 +1006,23 @@ export default function App() {
             {history.length > 0 && !currentResult && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
-                    <div className="w-2 h-8 bg-blue-700 rounded-full" />
-                    DỮ LIỆU THI CÔNG
-                  </h3>
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
+                      <div className="w-2 h-8 bg-blue-700 rounded-full" />
+                      DỮ LIỆU THI CÔNG
+                    </h3>
+                    {isGithubConnected ? (
+                      <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 animate-pulse-subtle">
+                        <Github size={12} fill="currentColor" />
+                        <span className="text-[9px] font-black uppercase tracking-widest">GitHub Đã Kết Nối</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-400 rounded-full border border-slate-200">
+                        <Github size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-widest">GitHub Chưa Kết Nối</span>
+                      </div>
+                    )}
+                  </div>
                   <button 
                     onClick={() => setActiveSheet('summary')}
                     className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
@@ -905,14 +1037,14 @@ export default function App() {
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Dự án</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Hạng mục</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Hạng</th>
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Tên bộ phận</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Số hiệu cọc</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Đường kính</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày bắt đầu thi công</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Số hiệu</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Thông kính</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày đầu tiên công</th>
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Xem File</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500 text-right">Thao tác</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Xem tập tin</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500 text-right">Thao</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -928,26 +1060,42 @@ export default function App() {
                             <td className="px-6 py-4">
                               {item.fileUrl ? (
                                 <a 
-                                  href={item.fileUrl} 
+                                  href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest"
                                 >
                                   <ExternalLink size={14} />
-                                  Xem File
+                                  Xem tập tin
                                 </a>
                               ) : (
-                                <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">Chưa có file</span>
+                                <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">Chưa có tệp</span>
                               )}
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <button 
-                                onClick={() => setCurrentResult(item)}
-                                className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                                title="Xem chi tiết"
-                              >
-                                <ChevronRight size={16} />
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => handleEdit(item)}
+                                  className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                  title="Chỉnh sửa"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(item.id)}
+                                  className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                  title="Xóa"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => setCurrentResult(item)}
+                                  className="p-2 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-600 hover:text-white transition-all shadow-sm"
+                                  title="Xem chi tiết"
+                                >
+                                  <ChevronRight size={16} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -959,7 +1107,12 @@ export default function App() {
             )}
           </div>
         ) : (
-          <SummaryView history={history} onSelectResult={(res) => { setCurrentResult(res); setActiveSheet('upload'); }} />
+          <SummaryView 
+            history={history} 
+            onSelectResult={(res) => { setCurrentResult(res); setActiveSheet('upload'); }} 
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
         )}
       </main>
 
@@ -974,7 +1127,7 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tight">Cấu hình API Key</h3>
-                  <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-1">Gemini AI Settings</p>
+                  <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-1">Cấu hình Gemini AI</p>
                 </div>
               </div>
               <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-blue-700 rounded-full transition-colors">
@@ -1016,36 +1169,36 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Kết nối OneDrive</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
                   <div className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={cn("p-2 rounded-lg", isOneDriveConnected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-400")}>
-                        <Cloud size={20} />
+                      <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-400")}>
+                        <Github size={20} />
                       </div>
                       <div>
                         <p className="text-xs font-black text-slate-800 uppercase tracking-tight">
-                          {isOneDriveConnected ? "Đã kết nối OneDrive" : "Chưa kết nối OneDrive"}
+                          {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
                         </p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                          {isOneDriveConnected ? "Tự động lưu file vào OneDrive" : "Kết nối để lưu file tự động"}
+                          {isGithubConnected ? "Tự động lưu file vào GitHub" : "Thiết lập Token để lưu file tự động"}
                         </p>
                       </div>
                     </div>
                     <button 
-                      onClick={connectOneDrive}
-                      disabled={isConnectingOneDrive}
+                      onClick={connectGithub}
+                      disabled={isConnectingGithub}
                       className={cn(
                         "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                        isOneDriveConnected 
+                        isGithubConnected 
                           ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
                           : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100"
                       )}
                     >
-                      {isConnectingOneDrive ? "Đang kết nối..." : isOneDriveConnected ? "Đã kết nối" : "Kết nối ngay"}
+                      {isConnectingGithub ? "Đang kết nối..." : isGithubConnected ? "Đã kết nối" : "Hướng dẫn"}
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 italic mt-2 px-1">
-                    * File sẽ được lưu vào thư mục /SGC-CKN/ trên OneDrive của bạn.
+                    * File sẽ được lưu vào repository GitHub của bạn.
                   </p>
                 </div>
 
@@ -1079,9 +1232,18 @@ export default function App() {
 
       <footer className="bg-slate-100 border-t border-slate-200 px-8 py-8 text-center mt-auto">
         <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
-          SGC - CKN System • Construction Data Solutions
+          Hệ thống SGC - CKN • Giải pháp dữ liệu xây dựng
         </p>
       </footer>
+
+      {/* Edit Split View Modal */}
+      {isEditModalOpen && editingResult && (
+        <EditSplitView 
+          result={editingResult} 
+          onClose={() => { setIsEditModalOpen(false); setEditingResult(null); }}
+          onSave={handleSaveEdit}
+        />
+      )}
     </div>
   );
 }
@@ -1233,7 +1395,17 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
   );
 }
 
-function SummaryView({ history, onSelectResult }: { history: ExtractionResult[], onSelectResult: (res: ExtractionResult) => void }) {
+function SummaryView({ 
+  history, 
+  onSelectResult, 
+  onEdit, 
+  onDelete 
+}: { 
+  history: ExtractionResult[], 
+  onSelectResult: (res: ExtractionResult) => void,
+  onEdit: (res: ExtractionResult) => void,
+  onDelete: (id: string) => void
+}) {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
       <div className="flex items-center justify-between">
@@ -1271,6 +1443,7 @@ function SummaryView({ history, onSelectResult }: { history: ExtractionResult[],
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Đường kính</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày bắt đầu thi công</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
+                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Xem tập tin</th>
                     <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 text-right">Thao tác</th>
                   </tr>
                 </thead>
@@ -1284,14 +1457,45 @@ function SummaryView({ history, onSelectResult }: { history: ExtractionResult[],
                       <td className="px-8 py-6 text-sm font-bold text-slate-600">{item.diameter}</td>
                       <td className="px-8 py-6 text-sm text-slate-500">{item.constructionStart}</td>
                       <td className="px-8 py-6 text-sm text-slate-500">{item.constructionEnd}</td>
+                      <td className="px-8 py-6">
+                        {item.fileUrl ? (
+                          <a 
+                            href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold text-xs uppercase tracking-widest"
+                          >
+                            <ExternalLink size={16} />
+                            Xem tập tin
+                          </a>
+                        ) : (
+                          <span className="text-slate-300 text-xs font-bold uppercase tracking-widest italic">Chưa có tệp</span>
+                        )}
+                      </td>
                       <td className="px-8 py-6 text-right">
-                        <button 
-                          onClick={() => onSelectResult(item)}
-                          className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                          title="Xem chi tiết"
-                        >
-                          <ChevronRight size={20} />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => onEdit(item)}
+                            className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                            title="Chỉnh sửa"
+                          >
+                            <Edit2 size={20} />
+                          </button>
+                          <button 
+                            onClick={() => onDelete(item.id)}
+                            className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                            title="Xóa"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                          <button 
+                            onClick={() => onSelectResult(item)}
+                            className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-600 hover:text-white transition-all shadow-sm"
+                            title="Xem chi tiết"
+                          >
+                            <ChevronRight size={20} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1314,6 +1518,407 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
       </div>
       <div className="text-xl font-black text-slate-800 truncate" title={value}>
         {value || "---"}
+      </div>
+    </div>
+  );
+}
+
+function EditSplitView({ 
+  result, 
+  onClose, 
+  onSave 
+}: { 
+  result: ExtractionResult; 
+  onClose: () => void; 
+  onSave: (res: ExtractionResult) => void 
+}) {
+  const [data, setData] = useState<ExtractionResult>(result);
+  const [zoom, setZoom] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [displayUrl, setDisplayUrl] = useState<string | null>(result.fileUrl || null);
+  const [isPdf, setIsPdf] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadFile() {
+      if (!data.fileUrl) {
+        setDisplayUrl(null);
+        setLoadError(null);
+        return;
+      }
+
+      const url = data.fileUrl;
+      const cleanUrl = url.split('?')[0].toLowerCase();
+      const isPdfFile = cleanUrl.endsWith('.pdf') || url.includes('mimeType=application/pdf');
+      
+      setIsPdf(isPdfFile);
+      setLoadError(null);
+
+      // If it's a GitHub URL, use our proxy directly as the source
+      if (url.includes('githubusercontent.com') || url.includes('github.com')) {
+        const proxyUrl = `/api/proxy/github?url=${encodeURIComponent(url)}`;
+        setDisplayUrl(proxyUrl);
+      } else {
+        setDisplayUrl(url);
+      }
+      setIsLoading(false);
+    }
+
+    loadFile();
+  }, [data.fileUrl]);
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 5));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5));
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
+  const updateField = (field: keyof ExtractionResult, value: string) => {
+    setData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateLayer = (idx: number, field: keyof DrillLayer, value: any) => {
+    const newLayers = [...data.layers];
+    newLayers[idx] = { ...newLayers[idx], [field]: value };
+    
+    // Recalculate duration and speed if times or elevations change
+    if (['timeFrom', 'timeTo', 'elevationFrom', 'elevationTo'].includes(field as string)) {
+      const layer = newLayers[idx];
+      const start = new Date(`2000-01-01T${layer.timeFrom}`);
+      const end = new Date(`2000-01-01T${layer.timeTo}`);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        if (diff < 0) diff += 24;
+        layer.durationHours = diff;
+      }
+      
+      const elevStart = parseFloat(layer.elevationFrom.toString());
+      const elevEnd = parseFloat(layer.elevationTo.toString());
+      if (!isNaN(elevStart) && !isNaN(elevEnd)) {
+        layer.lengthMeters = Math.abs(elevEnd - elevStart);
+        if (layer.durationHours > 0) {
+          layer.speedMph = layer.lengthMeters / layer.durationHours;
+        }
+      }
+    }
+    
+    setData(prev => ({ ...prev, layers: newLayers }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900 z-[200] flex flex-col animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="bg-blue-600 p-2 rounded-lg text-white">
+            <Edit2 size={18} />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-white uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{data.project}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-600 transition-colors"
+          >
+            Hủy bỏ
+          </button>
+          <button 
+            onClick={() => onSave(data)}
+            className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2"
+          >
+            <Save size={14} />
+            Lưu thay đổi
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Split */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Data Form */}
+        <div className="w-1/2 border-r border-slate-700 bg-slate-900 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
+              <input 
+                value={data.project} 
+                onChange={(e) => updateField('project', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
+              <input 
+                value={data.item} 
+                onChange={(e) => updateField('item', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tên bộ phận</label>
+              <input 
+                value={data.componentName} 
+                onChange={(e) => updateField('componentName', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Số hiệu cọc</label>
+              <input 
+                value={data.pileId} 
+                onChange={(e) => updateField('pileId', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
+              <input 
+                value={data.diameter} 
+                onChange={(e) => updateField('diameter', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Bắt đầu thi công</label>
+              <input 
+                value={data.constructionStart} 
+                onChange={(e) => updateField('constructionStart', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Kết thúc thi công</label>
+              <input 
+                value={data.constructionEnd} 
+                onChange={(e) => updateField('constructionEnd', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white font-bold focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">
+              <Layers size={14} />
+              Chi tiết các lớp địa chất
+            </h4>
+            <div className="overflow-x-auto border border-slate-700 rounded-2xl">
+              <table className="w-full text-left border-collapse min-w-[1200px]">
+                <thead>
+                  <tr className="bg-slate-800 border-b border-slate-700">
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Lớp thiết kế</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Từ (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Đến (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Cao độ từ</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Cao độ đến</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Thời gian (h)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Chiều dài (m)</th>
+                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-500">Tốc độ (m/h)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {data.layers.map((layer, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="px-2 py-2">
+                        <input 
+                          value={layer.layerDesign} 
+                          onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
+                          className="w-full bg-transparent border-none text-xs text-white font-medium focus:ring-0"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input 
+                          type="time"
+                          value={layer.timeFrom} 
+                          onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
+                          className="w-full bg-transparent border-none text-xs text-blue-400 font-black focus:ring-0"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input 
+                          type="time"
+                          value={layer.timeTo} 
+                          onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
+                          className="w-full bg-transparent border-none text-xs text-blue-400 font-black focus:ring-0"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input 
+                          type="number"
+                          step="0.1"
+                          value={layer.elevationFrom} 
+                          onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
+                          className="w-full bg-transparent border-none text-xs text-white font-bold focus:ring-0 text-center"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <input 
+                          type="number"
+                          step="0.1"
+                          value={layer.elevationTo} 
+                          onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
+                          className="w-full bg-transparent border-none text-xs text-white font-bold focus:ring-0 text-center"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
+                        {layer.durationHours.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
+                        {layer.lengthMeters.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-xs font-black text-emerald-500 text-center">
+                        {layer.speedMph.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <textarea 
+              value={data.summary} 
+              onChange={(e) => updateField('summary', e.target.value)}
+              rows={4}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 font-medium focus:border-blue-500 outline-none transition-all resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Right: File Viewer */}
+        <div className="w-1/2 bg-slate-950 relative overflow-hidden group flex flex-col">
+          {isLoading ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-4">
+              <Loader2 size={48} className="animate-spin text-blue-500" />
+              <p className="text-xs font-black uppercase tracking-widest opacity-60">Đang tải tài liệu...</p>
+            </div>
+          ) : loadError ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-4 p-8 text-center">
+              <AlertCircle size={48} className="opacity-50" />
+              <div>
+                <p className="text-sm font-black uppercase tracking-widest">Lỗi tải tài liệu</p>
+                <p className="text-[10px] opacity-60 mt-1">{loadError}</p>
+              </div>
+              <button 
+                onClick={() => setData({...data})} 
+                className="mt-4 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+              >
+                Thử lại
+              </button>
+            </div>
+          ) : displayUrl ? (
+            isPdf ? (
+              <div className="w-full h-full bg-slate-900 relative">
+                <iframe 
+                  key={displayUrl}
+                  src={displayUrl} 
+                  className="w-full h-full border-none"
+                  title="PDF Preview"
+                />
+                <div className="absolute top-4 right-4 flex gap-2">
+                  <a 
+                    href={displayUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="p-3 bg-slate-800/80 backdrop-blur-md rounded-xl text-white hover:bg-slate-700 transition-all border border-slate-700 shadow-xl"
+                    title="Mở trong tab mới"
+                  >
+                    <ExternalLink size={20} />
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div 
+                className="w-full h-full flex items-center justify-center cursor-move"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                <div 
+                  style={{ 
+                    transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                  }}
+                  className="flex items-center justify-center min-h-full min-w-full"
+                >
+                  <img 
+                    src={displayUrl} 
+                    alt="Tài liệu đã quét" 
+                    className="max-w-none shadow-2xl bg-white"
+                    style={{ maxHeight: '90vh' }}
+                    draggable={false}
+                    referrerPolicy="no-referrer"
+                    onError={() => {
+                      console.error("Image load failed");
+                      setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                    }}
+                  />
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+              <ImageIcon size={64} className="opacity-20" />
+              <p className="text-sm font-black uppercase tracking-widest opacity-40">Không tìm thấy tệp tài liệu</p>
+            </div>
+          )}
+
+          {/* Zoom Controls */}
+          {!isPdf && displayUrl && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-800/80 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <button 
+                onClick={handleZoomOut}
+                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                title="Thu nhỏ"
+              >
+                <ZoomOutIcon size={20} />
+              </button>
+              <div className="w-16 text-center text-[10px] font-black text-white uppercase tracking-widest">
+                {Math.round(zoom * 100)}%
+              </div>
+              <button 
+                onClick={handleZoomIn}
+                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                title="Phóng to"
+              >
+                <ZoomInIcon size={20} />
+              </button>
+              <div className="w-px h-6 bg-slate-700 mx-1" />
+              <button 
+                onClick={handleResetZoom}
+                className="p-3 hover:bg-slate-700 rounded-xl text-white transition-colors"
+                title="Đặt lại"
+              >
+                <RotateCcw size={20} />
+              </button>
+            </div>
+          )}
+
+          {/* Fullscreen Hint */}
+          <div className="absolute top-6 right-6 p-3 bg-slate-800/40 rounded-xl text-slate-400 pointer-events-none">
+            <Maximize2 size={16} />
+          </div>
+        </div>
       </div>
     </div>
   );
