@@ -1806,6 +1806,31 @@ function EditSplitView({
 
         {/* Right: File Viewer */}
         <div className="w-1/2 bg-slate-950 relative overflow-hidden group flex flex-col">
+          {/* Toolbar for Viewer */}
+          {displayUrl && (
+            <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-2">
+                <a 
+                  href={displayUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-slate-800/90 backdrop-blur-md rounded-xl text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all border border-slate-700 shadow-2xl flex items-center gap-2"
+                >
+                  <ExternalLink size={14} />
+                  Mở tab mới
+                </a>
+                <a 
+                  href={displayUrl} 
+                  download={data.fileName || "document"}
+                  className="px-4 py-2 bg-slate-800/90 backdrop-blur-md rounded-xl text-white text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all border border-slate-700 shadow-2xl flex items-center gap-2"
+                >
+                  <ArrowDownToLine size={14} />
+                  Tải xuống
+                </a>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-4">
               <Loader2 size={48} className="animate-spin text-blue-500" />
@@ -1819,7 +1844,7 @@ function EditSplitView({
                 <p className="text-[10px] opacity-60 mt-1">{loadError}</p>
               </div>
               <button 
-                onClick={() => setData({...data})} 
+                onClick={() => setDisplayUrl(displayUrl)} 
                 className="mt-4 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
               >
                 Thử lại
@@ -1828,23 +1853,24 @@ function EditSplitView({
           ) : displayUrl ? (
             isPdf ? (
               <div className="w-full h-full bg-slate-900 relative">
-                <iframe 
-                  key={displayUrl}
-                  src={displayUrl} 
-                  className="w-full h-full border-none"
-                  title="PDF Preview"
-                />
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <a 
-                    href={displayUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="p-3 bg-slate-800/80 backdrop-blur-md rounded-xl text-white hover:bg-slate-700 transition-all border border-slate-700 shadow-xl"
-                    title="Mở trong tab mới"
-                  >
-                    <ExternalLink size={20} />
-                  </a>
-                </div>
+                <object 
+                  data={displayUrl} 
+                  type="application/pdf" 
+                  className="w-full h-full"
+                >
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-12 text-center gap-6">
+                    <FileText size={64} className="opacity-20" />
+                    <p className="text-sm font-bold">Trình duyệt của bạn không hỗ trợ xem PDF trực tiếp.</p>
+                    <a 
+                      href={displayUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-900/20"
+                    >
+                      Mở PDF trong tab mới
+                    </a>
+                  </div>
+                </object>
               </div>
             ) : (
               <div 

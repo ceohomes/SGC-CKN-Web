@@ -106,35 +106,33 @@ app.get("/api/proxy/github", async (req, res) => {
   const fileUrl = req.query.url as string;
 
   if (!token) {
-    console.error("Proxy Error: GITHUB_TOKEN is not configured in environment variables.");
-    return res.status(401).json({ error: "GitHub token not configured. Please add GITHUB_TOKEN to Secrets." });
+    console.error("[Proxy Error] GITHUB_TOKEN is missing.");
+    return res.status(401).json({ error: "GITHUB_TOKEN chưa được cấu hình." });
   }
 
-  if (!fileUrl) {
-    return res.status(400).json({ error: "Missing file URL" });
-  }
+  if (!fileUrl) return res.status(400).json({ error: "Thiếu URL tệp." });
 
   try {
     let fetchUrl = fileUrl;
     
-    // 1. Convert standard github.com URLs to raw URLs
+    // 1. Chuyển đổi github.com sang raw.githubusercontent.com
     if (fileUrl.includes('github.com') && fileUrl.includes('/blob/')) {
       fetchUrl = fileUrl.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
     }
     
-    // 2. Convert raw URL to API URL to support Private Repo Auth
+    // 2. Chuyển đổi raw sang API URL để hỗ trợ Auth cho Private Repo
     if (fetchUrl.includes('raw.githubusercontent.com')) {
       const match = fetchUrl.match(/https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/);
       if (match) {
         const [_, owner, repo, branch, path] = match;
-        // Encode each segment of the path to handle spaces/special characters
-        const encodedPath = path.split('/').map(segment => encodeURIComponent(decodeURIComponent(segment))).join('/');
+        const encodedPath = path.split('/').map(s => encodeURIComponent(decodeURIComponent(s))).join('/');
         fetchUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
       }
     }
 
-    console.log(`[Proxy] Fetching: ${fetchUrl}`);
+    console.log(`[Proxy] Đang tải: ${fetchUrl}`);
 
+    // Thử dùng 'token' prefix trước (cho classic token)
     const response = await fetch(fetchUrl, {
       headers: {
         'Authorization': `token ${token.trim()}`,
@@ -143,33 +141,36 @@ app.get("/api/proxy/github", async (req, res) => {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Proxy] GitHub API error (${response.status}):`, errorText);
-      return res.status(response.status).send(`GitHub Error: ${response.status}`);
+      console.error(`[Proxy] Lỗi GitHub (${response.status}):`, await response.text());
+      return res.status(response.status).send("Không thể tải tệp từ GitHub.");
     }
 
-    // Forward content type and set security headers for iframe
     const contentType = response.headers.get("content-type");
     const lowerUrl = fileUrl.toLowerCase();
     
+    // Thiết lập Content-Type chuẩn để trình duyệt có thể render
     if (lowerUrl.endsWith('.pdf')) {
       res.setHeader("Content-Type", "application/pdf");
     } else if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) {
       res.setHeader("Content-Type", "image/jpeg");
     } else if (lowerUrl.endsWith('.png')) {
       res.setHeader("Content-Type", "image/png");
+    } else if (lowerUrl.endsWith('.webp')) {
+      res.setHeader("Content-Type", "image/webp");
     } else if (contentType) {
       res.setHeader("Content-Type", contentType);
     }
 
+    // Cho phép hiển thị trong iframe và tránh bị ép tải xuống
     res.setHeader("Content-Disposition", "inline");
-    res.setHeader("X-Frame-Options", "ALLOWALL"); // Allow embedding in iframe
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=3600");
 
     const buffer = await response.arrayBuffer();
     res.send(Buffer.from(buffer));
   } catch (error: any) {
-    console.error("[Proxy] Internal Error:", error);
-    res.status(500).send("Internal server error");
+    console.error("[Proxy] Lỗi hệ thống:", error);
+    res.status(500).send("Lỗi máy chủ nội bộ.");
   }
 });
 
