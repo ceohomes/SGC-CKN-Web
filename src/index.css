@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -17,7 +17,45 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 font-sans;
+    @apply bg-sky-50/50 text-slate-900 font-sans antialiased;
+  }
+}
+
+/* Custom Scrollbar */
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-sky-200 rounded-full hover:bg-sky-300 transition-colors;
+  }
+
+  /* Professional Table Styles */
+  .pro-table {
+    @apply w-full border-collapse border border-sky-200;
+  }
+  .pro-table thead tr {
+    @apply bg-sky-100 border-b border-sky-200;
+  }
+  .pro-table th {
+    @apply px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-sky-700 text-left border-r border-sky-200 last:border-r-0;
+  }
+  .pro-table td {
+    @apply px-6 py-4 text-sm text-slate-600 border-b border-sky-200 border-r border-sky-200 last:border-r-0;
+  }
+  
+  /* Modern Card */
+  .modern-card {
+    @apply bg-white border border-sky-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300;
+  }
+  
+  /* Glass Effect */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
   }
 }
 

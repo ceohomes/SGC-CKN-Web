@@ -734,106 +734,95 @@ export default function App() {
       <aside 
         ref={sidebarRef}
         className={cn(
-          "fixed top-0 left-0 h-full w-80 bg-white z-50 shadow-2xl transition-transform duration-500 ease-out transform",
+          "fixed top-0 left-0 h-full w-72 bg-sky-50 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-sky-200",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onMouseLeave={() => setIsSidebarOpen(false)}
       >
         <div className="p-8 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-12">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg border-2 border-slate-100">
+          <div className="flex items-center justify-between mb-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-sky-200">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="bg-orange-500 w-full h-full flex items-center justify-center shadow-inner">
-                    <ArrowDownToLine className="text-white w-8 h-8" />
+                  <div className="bg-blue-600 w-full h-full flex items-center justify-center">
+                    <Construction className="text-white w-5 h-5" />
                   </div>
                 )}
               </div>
               <div>
-                <span className="font-black text-blue-900 uppercase tracking-tight block text-xl">SGC - CKN</span>
+                <span className="font-bold text-blue-900 uppercase tracking-tight block text-lg">SGC - CKN</span>
+                <span className="text-[8px] font-bold text-sky-400 uppercase tracking-[0.2em]">Management System</span>
               </div>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-              <X className="w-5 h-5 text-slate-400" />
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-sky-100 rounded-lg transition-colors text-sky-400">
+              <X className="w-4 h-4" />
             </button>
           </div>
 
-          <nav className="space-y-4 flex-1">
+          <nav className="space-y-1 flex-1">
+            <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-4 px-4">Main Navigation</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
-                "w-full flex items-center gap-4 p-5 rounded-2xl transition-all group",
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'upload' 
-                  ? "bg-blue-700 text-white shadow-lg shadow-blue-200" 
-                  : "hover:bg-blue-50 text-slate-600"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-200" 
+                  : "hover:bg-sky-100 text-slate-600"
               )}
             >
-              <div className={cn(
-                "p-2.5 rounded-xl transition-colors",
-                activeSheet === 'upload' ? "bg-blue-600" : "bg-slate-100 group-hover:bg-blue-100"
-              )}>
-                <Upload className={activeSheet === 'upload' ? "text-white" : "text-blue-600"} size={20} />
-              </div>
-              <div className="text-left">
-                <p className="font-black uppercase text-[11px] tracking-widest">Sheet 1</p>
-                <p className="font-bold text-sm">Upload dữ liệu biên bản</p>
-              </div>
+              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-sky-400 group-hover:text-blue-600"} />
+              <span className="font-medium text-sm">Xử lý biên bản</span>
             </button>
 
             <button 
               onClick={() => { setActiveSheet('summary'); setIsSidebarOpen(false); }}
               className={cn(
-                "w-full flex items-center gap-4 p-5 rounded-2xl transition-all group",
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'summary' 
-                  ? "bg-blue-700 text-white shadow-lg shadow-blue-200" 
-                  : "hover:bg-blue-50 text-slate-600"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-200" 
+                  : "hover:bg-sky-100 text-slate-600"
               )}
             >
-              <div className={cn(
-                "p-2.5 rounded-xl transition-colors",
-                activeSheet === 'summary' ? "bg-blue-600" : "bg-slate-100 group-hover:bg-blue-100"
-              )}>
-                <Database className={activeSheet === 'summary' ? "text-white" : "text-blue-600"} size={20} />
-              </div>
-              <div className="text-left">
-                <p className="font-black uppercase text-[11px] tracking-widest">Sheet 2</p>
-                <p className="font-bold text-sm">Tổng hợp dữ liệu</p>
-              </div>
+              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-sky-400 group-hover:text-blue-600"} />
+              <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
             </button>
           </nav>
 
-          <div className="pt-8 border-t border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Phiên bản 2.0 • Bản Chuyên Nghiệp</p>
+          <div className="pt-6 border-t border-sky-200">
+            <div className="bg-sky-100/50 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-1">Current Version</p>
+              <p className="text-xs font-medium text-blue-900">v2.1.0 Professional</p>
+            </div>
           </div>
         </div>
       </aside>
 
       {/* Header */}
-      <header className="bg-blue-800 border-b border-blue-900 px-8 py-5 flex items-center justify-between sticky top-0 z-30 shadow-lg">
+      <header className="bg-white border-b border-sky-200 px-8 py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm backdrop-blur-md bg-white/90">
         <div 
-          className="flex items-center gap-6 cursor-pointer group"
+          className="flex items-center gap-4 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-24 h-24 rounded-2xl overflow-hidden flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform border-4 border-white/10">
+          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform border border-sky-200">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <div className="bg-orange-500 w-full h-full flex items-center justify-center shadow-inner">
-                <ArrowDownToLine className="text-white w-10 h-10" />
+              <div className="bg-blue-600 w-full h-full flex items-center justify-center">
+                <Construction className="text-white w-5 h-5" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
-            <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-2">
-              HỆ THỐNG THỐNG KÊ VÀ<br />PHÂN TÍCH THI CÔNG CỌC KHOAN NHỒI
+            <h1 className="text-lg font-bold tracking-tight text-blue-900 uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[9px] text-sky-400 font-bold uppercase tracking-[0.15em] mt-1">
+              Construction Management
             </p>
           </div>
-          <div className="ml-4 p-2 bg-blue-700/50 rounded-lg text-blue-200 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Menu size={20} />
+          <div className="ml-2 p-1.5 bg-sky-50 rounded-lg text-sky-400 group-hover:text-blue-600 transition-colors">
+            <Menu size={16} />
           </div>
         </div>
         
@@ -841,22 +830,22 @@ export default function App() {
           {activeSheet === 'upload' && (
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="bg-orange-500 text-white px-8 py-3 rounded-xl text-sm font-black hover:bg-orange-600 transition-all flex items-center gap-3 shadow-[0_4px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none uppercase tracking-widest"
+              className="bg-orange-500 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-all flex items-center gap-2 shadow-lg shadow-orange-100 uppercase tracking-widest"
             >
-              <Upload size={20} />
+              <Upload size={14} />
               Quét biên bản
             </button>
           )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="p-3 bg-blue-700/50 text-blue-200 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-inner"
-            title="Cài đặt API Key"
+            className="p-2.5 bg-white border border-sky-200 text-sky-600 rounded-xl hover:bg-sky-50 transition-all shadow-sm"
           >
-            <Settings size={20} />
+            <Settings size={18} />
           </button>
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
         </div>
       </header>
+
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
       <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
@@ -883,29 +872,29 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {processingFiles.map((file) => (
-                    <div key={file.id} className="bg-white rounded-[32px] p-6 shadow-xl border border-slate-100 relative overflow-hidden group hover:shadow-2xl transition-all">
+                    <div key={file.id} className="modern-card p-6 relative overflow-hidden group">
                       <div className="flex items-start justify-between mb-4">
                         <div className={cn(
-                          "p-3 rounded-2xl",
+                          "p-2.5 rounded-xl",
                           file.status === 'completed' ? "bg-emerald-50 text-emerald-600" : 
-                          file.status === 'error' ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
+                          file.status === 'error' ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-600"
                         )}>
-                          {file.status === 'completed' ? <CheckCircle2 size={24} /> : 
-                           file.status === 'error' ? <AlertCircle size={24} /> : <FileText size={24} />}
+                          {file.status === 'completed' ? <CheckCircle2 size={20} /> : 
+                           file.status === 'error' ? <AlertCircle size={20} /> : <FileText size={20} />}
                         </div>
                         <button 
                           onClick={() => removeProcessingFile(file.id)}
                           className="p-2 text-slate-300 hover:text-red-500 transition-colors"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                       <div className="space-y-3">
-                        <h4 className="font-bold text-slate-800 truncate pr-4 text-sm" title={file.fileName}>{file.fileName}</h4>
-                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                        <h4 className="font-bold text-slate-900 truncate pr-4 text-sm" title={file.fileName}>{file.fileName}</h4>
+                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest">
                           <span className={cn(
                             file.status === 'completed' ? "text-emerald-600" : 
-                            file.status === 'error' ? "text-red-600" : "text-blue-600"
+                            file.status === 'error' ? "text-red-600" : "text-slate-500"
                           )}>
                             {file.status === 'pending' ? 'Đang chờ...' : 
                              file.status === 'processing' ? 'Đang phân tích...' : 
@@ -913,12 +902,12 @@ export default function App() {
                           </span>
                           <span className="text-slate-400">{file.progress}%</span>
                         </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div 
                             className={cn(
                               "h-full transition-all duration-500",
                               file.status === 'completed' ? "bg-emerald-500" : 
-                              file.status === 'error' ? "bg-red-500" : "bg-blue-500"
+                              file.status === 'error' ? "bg-red-500" : "bg-orange-500"
                             )}
                             style={{ width: `${file.progress}%` }}
                           />
@@ -927,7 +916,7 @@ export default function App() {
                       {file.status === 'completed' && file.result && (
                         <button 
                           onClick={() => setCurrentResult(file.result!)}
-                          className="mt-5 w-full py-3 bg-slate-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2 border border-slate-100"
+                          className="mt-5 w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
                         >
                           <ExternalLink size={14} />
                           Kiểm tra & Lưu
@@ -947,23 +936,23 @@ export default function App() {
             {/* Current Selected Result */}
             {currentResult && (
               <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-6">
-                <div className="flex items-center justify-between bg-blue-50 p-6 rounded-[32px] border border-blue-100">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-blue-600 p-3 rounded-2xl text-white">
+                <div className="flex items-center justify-between bg-blue-600 p-8 rounded-3xl text-white shadow-xl">
+                  <div className="flex items-center gap-5">
+                    <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-white/10">
                       <FileText size={24} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-blue-900 uppercase tracking-tight">
+                      <h3 className="text-xl font-bold uppercase tracking-tight">
                         {currentResult.fileName || currentResult.pileId}
                       </h3>
-                      <p className="text-xs text-blue-600 font-bold uppercase tracking-widest mt-1">
+                      <p className="text-xs text-blue-100 font-bold uppercase tracking-widest mt-1">
                         {pendingResults.some(r => r.id === currentResult.id) ? "Đang chờ kiểm duyệt" : "Dữ liệu trích xuất thành công"}
                       </p>
                     </div>
                   </div>
                   <button 
                     onClick={() => setCurrentResult(null)}
-                    className="px-6 py-3 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-100 shadow-sm"
+                    className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10 backdrop-blur-sm"
                   >
                     Đóng kết quả
                   </button>
@@ -980,8 +969,8 @@ export default function App() {
             {pendingResults.length > 0 && !currentResult && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-black text-orange-600 uppercase tracking-tight flex items-center gap-3">
-                    <AlertCircle className="w-6 h-6" />
+                  <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-orange-500" />
                     Đang chờ kiểm duyệt ({pendingResults.length})
                   </h3>
                 </div>
@@ -989,23 +978,23 @@ export default function App() {
                   {pendingResults.map((result) => (
                     <div 
                       key={result.id} 
-                      className="bg-white rounded-3xl p-6 shadow-md border-2 border-orange-100 relative group overflow-hidden"
+                      className="modern-card p-6 relative group overflow-hidden"
                     >
-                      <div className="absolute top-0 right-0 w-16 h-16 bg-orange-50 rounded-bl-[32px] flex items-center justify-center text-orange-500">
-                        <AlertCircle size={20} />
+                      <div className="absolute top-0 right-0 w-12 h-12 bg-orange-50 rounded-bl-2xl flex items-center justify-center text-orange-500">
+                        <AlertCircle size={18} />
                       </div>
-                      <h4 className="font-black text-slate-800 uppercase tracking-tight text-sm mb-1 truncate pr-8">{result.pileId}</h4>
+                      <h4 className="font-bold text-slate-900 uppercase tracking-tight text-sm mb-1 truncate pr-8">{result.pileId}</h4>
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">{result.project}</p>
                       <div className="mt-6 flex gap-2">
                         <button 
                           onClick={() => cancelResult(result.id)}
-                          className="flex-1 py-2 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-all"
+                          className="flex-1 py-2 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-all"
                         >
                           Hủy
                         </button>
                         <button 
                           onClick={() => setCurrentResult(result)}
-                          className="flex-[2] py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                          className="flex-[2] py-2 bg-blue-600 text-white rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                         >
                           Xem & Lưu
                         </button>
@@ -1021,93 +1010,93 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
-                      <div className="w-2 h-8 bg-blue-700 rounded-full" />
-                      DỮ LIỆU THI CÔNG
+                    <h3 className="text-xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
+                      <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+                      Dữ liệu thi công mới nhất
                     </h3>
                     {isGithubConnected ? (
-                      <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 animate-pulse-subtle">
+                      <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
                         <Github size={12} fill="currentColor" />
-                        <span className="text-[9px] font-black uppercase tracking-widest">GitHub Đã Kết Nối</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">GitHub Connected</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 text-slate-400 rounded-full border border-slate-200">
+                      <div className="flex items-center gap-2 px-3 py-1 bg-sky-100 text-sky-400 rounded-full border border-sky-200">
                         <Github size={12} />
-                        <span className="text-[9px] font-black uppercase tracking-widest">GitHub Chưa Kết Nối</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">GitHub Disconnected</span>
                       </div>
                     )}
                   </div>
                   <button 
                     onClick={() => setActiveSheet('summary')}
-                    className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
                   >
                     Xem tất cả
                   </button>
                 </div>
                 
-                <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-xl">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                <div className="modern-card overflow-hidden">
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="pro-table">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Dự án</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Hạng</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Tên bộ phận</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Số hiệu</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Thông kính</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày đầu tiên công</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500">Xem tập tin</th>
-                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-slate-500 text-right">Thao</th>
+                        <tr>
+                          <th>Dự án</th>
+                          <th>Hạng mục</th>
+                          <th>Tên bộ phận</th>
+                          <th>Số hiệu</th>
+                          <th>Đường kính</th>
+                          <th>Bắt đầu</th>
+                          <th>Kết thúc</th>
+                          <th>Tập tin</th>
+                          <th className="text-right">Thao tác</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="">
                         {history.slice(0, 10).map((item) => (
-                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                            <td className="px-6 py-4 text-xs font-bold text-slate-800">{item.project}</td>
-                            <td className="px-6 py-4 text-xs text-slate-600">{item.item}</td>
-                            <td className="px-6 py-4 text-xs text-slate-600">{item.componentName}</td>
-                            <td className="px-6 py-4 text-xs font-black text-blue-700">{item.pileId}</td>
-                            <td className="px-6 py-4 text-xs text-slate-600">{item.diameter}</td>
-                            <td className="px-6 py-4 text-xs text-slate-500">{item.constructionStart}</td>
-                            <td className="px-6 py-4 text-xs text-slate-500">{item.constructionEnd}</td>
-                            <td className="px-6 py-4">
+                          <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
+                            <td className="font-bold text-blue-900">{item.project}</td>
+                            <td className="text-slate-600">{item.item}</td>
+                            <td className="text-slate-600">{item.componentName}</td>
+                            <td className="font-bold text-blue-900">{item.pileId}</td>
+                            <td className="font-medium text-slate-600">{item.diameter}</td>
+                            <td className="text-slate-500">{item.constructionStart}</td>
+                            <td className="text-slate-500">{item.constructionEnd}</td>
+                            <td>
                               {item.fileUrl ? (
                                 <a 
                                   href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
-                                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest"
+                                  className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest transition-colors"
                                 >
-                                  <ExternalLink size={14} />
-                                  Xem tập tin
+                                  <ExternalLink size={12} />
+                                  Xem
                                 </a>
                               ) : (
-                                <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">Chưa có tệp</span>
+                                <span className="text-sky-200 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
                               )}
                             </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
+                            <td className="text-right">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button 
                                   onClick={() => handleEdit(item)}
-                                  className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                  className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
                                   title="Chỉnh sửa"
                                 >
-                                  <Edit2 size={16} />
+                                  <Edit2 size={14} />
                                 </button>
                                 <button 
                                   onClick={() => handleDelete(item.id)}
-                                  className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                  className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-100"
                                   title="Xóa"
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={14} />
                                 </button>
                                 <button 
                                   onClick={() => setCurrentResult(item)}
-                                  className="p-2 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-600 hover:text-white transition-all shadow-sm"
+                                  className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
                                   title="Xem chi tiết"
                                 >
-                                  <ChevronRight size={16} />
+                                  <ChevronRight size={14} />
                                 </button>
                               </div>
                             </td>
@@ -1132,38 +1121,38 @@ export default function App() {
 
       {/* Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden border border-slate-100">
-            <div className="bg-blue-800 p-8 text-white flex items-center justify-between">
+        <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-sky-100">
+            <div className="bg-blue-600 p-8 text-white flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-blue-700 p-3 rounded-2xl">
-                  <Key size={24} />
+                <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-sm border border-white/10">
+                  <Settings size={20} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black uppercase tracking-tight">Cấu hình API Key</h3>
-                  <p className="text-xs text-blue-200 font-bold uppercase tracking-widest mt-1">Cấu hình Gemini AI</p>
+                  <h3 className="text-lg font-bold uppercase tracking-tight leading-none">Cấu hình hệ thống</h3>
+                  <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest mt-1.5">Quản lý API & Giao diện</p>
                 </div>
               </div>
-              <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-blue-700 rounded-full transition-colors">
-                <X size={20} />
+              <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                <X size={18} />
               </button>
             </div>
-            <div className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Logo tùy chỉnh</label>
-                  <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
-                    <div className="w-16 h-16 bg-orange-500 rounded-xl overflow-hidden flex items-center justify-center shadow-inner">
+            <div className="p-8 space-y-8">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Logo tùy chỉnh</label>
+                  <div className="flex items-center gap-4 p-4 bg-sky-50 rounded-2xl border border-sky-100">
+                    <div className="w-14 h-14 bg-white rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-sky-200">
                       {customLogo ? (
                         <img src={customLogo} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
-                        <ArrowDownToLine className="text-white w-8 h-8" />
+                        <Construction className="text-sky-300 w-6 h-6" />
                       )}
                     </div>
                     <div className="flex-1 space-y-2">
                       <button 
                         onClick={() => logoInputRef.current?.click()}
-                        className="w-full py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                        className="w-full py-2 bg-white border border-sky-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-blue-900 hover:bg-sky-50 transition-colors flex items-center justify-center gap-2"
                       >
                         <ImageIcon size={14} />
                         Thay đổi Logo
@@ -1171,7 +1160,7 @@ export default function App() {
                       {customLogo && (
                         <button 
                           onClick={resetLogo}
-                          className="w-full py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+                          className="w-full py-2 bg-white border border-sky-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
                         >
                           <RotateCcw size={14} />
                           Đặt lại mặc định
@@ -1182,19 +1171,19 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
-                  <div className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 flex items-center justify-between">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
+                  <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-blue-100 text-blue-600" : "bg-slate-200 text-slate-400")}>
-                        <Github size={20} />
+                      <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-emerald-100 text-emerald-600" : "bg-sky-200 text-sky-400")}>
+                        <Github size={18} />
                       </div>
                       <div>
-                        <p className="text-xs font-black text-slate-800 uppercase tracking-tight">
-                          {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
+                        <p className="text-xs font-bold text-blue-900 uppercase tracking-tight">
+                          {isGithubConnected ? "GitHub Connected" : "GitHub Disconnected"}
                         </p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                          {isGithubConnected ? "Tự động lưu file vào GitHub" : "Thiết lập Token để lưu file tự động"}
+                        <p className="text-[9px] text-sky-400 font-bold uppercase tracking-widest leading-none mt-1">
+                          {isGithubConnected ? "Auto-sync enabled" : "Setup token to sync"}
                         </p>
                       </div>
                     </div>
@@ -1202,41 +1191,35 @@ export default function App() {
                       onClick={connectGithub}
                       disabled={isConnectingGithub}
                       className={cn(
-                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                        "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
                         isGithubConnected 
                           ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
-                          : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100"
+                          : "bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-100"
                       )}
                     >
-                      {isConnectingGithub ? "Đang kết nối..." : isGithubConnected ? "Đã kết nối" : "Hướng dẫn"}
+                      {isConnectingGithub ? "..." : isGithubConnected ? "Active" : "Connect"}
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-400 italic mt-2 px-1">
-                    * File sẽ được lưu vào repository GitHub của bạn.
-                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
                   <div className="relative">
                     <input 
                       type="password"
                       value={userApiKey}
                       onChange={(e) => setUserApiKey(e.target.value)}
                       placeholder="Nhập API Key của bạn..."
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-slate-900 font-bold focus:border-blue-500 focus:ring-0 transition-all outline-none"
+                      className="w-full bg-sky-50 border border-sky-200 rounded-2xl px-5 py-3.5 text-blue-900 font-medium focus:border-blue-600 focus:ring-0 transition-all outline-none text-sm"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400 italic mt-2 px-1">
-                    * API Key sẽ được lưu an toàn trong trình duyệt của bạn.
-                  </p>
                 </div>
               </div>
               <button 
                 onClick={() => saveApiKey(userApiKey)}
-                className="w-full bg-orange-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-orange-200 hover:bg-orange-600 transition-all active:scale-95"
+                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
               >
-                <Save size={20} />
+                <Save size={18} />
                 Lưu cấu hình
               </button>
             </div>
@@ -1244,7 +1227,7 @@ export default function App() {
         </div>
       )}
 
-      <footer className="bg-slate-100 border-t border-slate-200 px-8 py-8 text-center mt-auto">
+      <footer className="bg-sky-50 border-t border-sky-200 px-8 py-8 text-center mt-auto">
         <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
           Hệ thống SGC - CKN • Giải pháp dữ liệu xây dựng
         </p>
@@ -1267,32 +1250,33 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
       {/* Review Actions */}
       {(onSave || onCancel) && (
-        <div className="flex items-center justify-between bg-orange-50 border-2 border-orange-100 p-6 rounded-[32px] shadow-lg animate-pulse-subtle">
-          <div className="flex items-center gap-4">
-            <div className="bg-orange-500 p-3 rounded-2xl text-white">
+        <div className="flex items-center justify-between bg-white border border-slate-200 p-8 rounded-3xl shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500" />
+          <div className="flex items-center gap-5">
+            <div className="bg-orange-50 p-3 rounded-2xl text-orange-600">
               <AlertCircle size={24} />
             </div>
             <div>
-              <h4 className="text-lg font-black text-orange-900 uppercase tracking-tight">Vui lòng kiểm tra dữ liệu</h4>
-              <p className="text-xs text-orange-700 font-bold uppercase tracking-widest mt-1">Dữ liệu chưa được lưu vào hệ thống</p>
+              <h4 className="text-lg font-bold text-slate-900 uppercase tracking-tight">Kiểm tra dữ liệu trích xuất</h4>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Dữ liệu cần được xác nhận trước khi lưu</p>
             </div>
           </div>
           <div className="flex gap-4">
             {onCancel && (
               <button 
                 onClick={() => onCancel(result.id)}
-                className="px-8 py-4 bg-white text-red-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-all border-2 border-red-100 shadow-sm flex items-center gap-2"
+                className="px-6 py-3 bg-white text-slate-400 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-all border border-slate-200 shadow-sm flex items-center gap-2"
               >
-                <X size={18} />
+                <X size={16} />
                 Hủy bỏ
               </button>
             )}
             {onSave && (
               <button 
                 onClick={() => onSave(result)}
-                className="px-8 py-4 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2"
+                className="px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 flex items-center gap-2"
               >
-                <Save size={18} />
+                <Save size={16} />
                 Lưu dữ liệu
               </button>
             )}
@@ -1302,74 +1286,73 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-500" />} />
-        <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-orange-500" />} />
-        <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-500" />} />
-        <StatCard title="Kết thúc" value={result.constructionEnd} icon={<Calendar className="text-orange-500" />} />
+        <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
+        <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
+        <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
+        <StatCard title="Kết thúc" value={result.constructionEnd} icon={<Calendar className="text-blue-600" />} />
       </div>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
-          <div className="w-2 h-8 bg-orange-500 rounded-full" />
-          Dữ liệu trích xuất chi tiết
-        </h3>
-        <div className="flex gap-3">
-          <div className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl text-xs font-black uppercase tracking-widest border border-blue-200">
-            {result.layers.length} Lớp địa chất
+        <div className="space-y-1">
+          <h3 className="text-xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
+            <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+            Chi tiết các lớp địa chất
+          </h3>
+          <p className="text-xs text-sky-400 font-medium ml-4">Thông số kỹ thuật trích xuất từ biên bản</p>
+        </div>
+        <div className="flex gap-2">
+          <div className="px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-sky-100">
+            {result.layers.length} Lớp
           </div>
-          <div className="px-4 py-2 bg-orange-100 text-orange-700 rounded-xl text-xs font-black uppercase tracking-widest border border-orange-200">
-            Tốc độ TB: {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)} m/h
+          <div className="px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-sky-100">
+            TB: {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)} m/h
           </div>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[2000px]">
+      <div className="modern-card overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="pro-table min-w-[2000px]">
             <thead>
-              <tr className="bg-slate-100 border-b-2 border-slate-200">
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200 sticky left-0 bg-slate-100 z-10">Dự án</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Hạng mục</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Tên bộ phận</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Số hiệu cọc</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Đường kính</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Bắt đầu thi công</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Kết thúc thi công</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Lớp thiết kế</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Bắt đầu khoan</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Kết thúc khoan</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Thời gian khoan (h)</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Cao độ bắt đầu</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Cao độ kết thúc</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 border-r border-slate-200">Chiều dài (m)</th>
-                <th className="px-6 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Tốc độ (m/h)</th>
+              <tr>
+                <th className="sticky left-0 bg-sky-100 z-10">Dự án</th>
+                <th>Hạng mục</th>
+                <th>Tên bộ phận</th>
+                <th>Số hiệu cọc</th>
+                <th>Đường kính</th>
+                <th>Bắt đầu thi công</th>
+                <th>Kết thúc thi công</th>
+                <th>Lớp thiết kế</th>
+                <th>Bắt đầu khoan</th>
+                <th>Kết thúc khoan</th>
+                <th className="text-center">Thời gian (h)</th>
+                <th className="text-center">Cao độ đầu</th>
+                <th className="text-center">Cao độ cuối</th>
+                <th className="text-center">Chiều dài (m)</th>
+                <th className="text-right">Tốc độ (m/h)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="">
               {result.layers.map((layer, idx) => (
-                <tr key={idx} className="hover:bg-blue-50/50 transition-colors group">
-                  <td className="px-6 py-5 text-xs font-bold text-slate-600 border-r border-slate-100 sticky left-0 bg-white group-hover:bg-blue-50/50 z-10">{layer.project}</td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-600 border-r border-slate-100">{layer.item}</td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-900 border-r border-slate-100">{layer.componentName}</td>
-                  <td className="px-6 py-5 text-xs font-black text-blue-700 border-r border-slate-100">{layer.pileId}</td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-600 border-r border-slate-100">{layer.diameter}</td>
-                  <td className="px-6 py-5 text-xs font-medium text-slate-500 border-r border-slate-100">{layer.constructionStart}</td>
-                  <td className="px-6 py-5 text-xs font-medium text-slate-500 border-r border-slate-100">{layer.constructionEnd}</td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-900 border-r border-slate-100 min-w-[300px] leading-relaxed italic">{layer.layerDesign}</td>
-                  <td className="px-6 py-5 text-xs font-black text-slate-900 border-r border-slate-100">{layer.timeFrom}</td>
-                  <td className="px-6 py-5 text-xs font-black text-slate-900 border-r border-slate-100">{layer.timeTo}</td>
-                  <td className="px-6 py-5 text-xs font-black text-blue-800 border-r border-slate-100 text-center bg-blue-50/30">
-                    {layer.durationHours.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-600 border-r border-slate-100 text-center">{layer.elevationFrom}</td>
-                  <td className="px-6 py-5 text-xs font-bold text-slate-600 border-r border-slate-100 text-center">{layer.elevationTo}</td>
-                  <td className="px-6 py-5 text-xs font-black text-slate-900 border-r border-slate-100 text-center">
-                    {layer.lengthMeters.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-5 text-center">
+                <tr key={idx} className="hover:bg-sky-50/80 transition-colors group">
+                  <td className="sticky left-0 bg-white group-hover:bg-sky-50 z-10 font-bold text-blue-900">{layer.project}</td>
+                  <td className="text-slate-600">{layer.item}</td>
+                  <td className="text-blue-900 font-medium">{layer.componentName}</td>
+                  <td className="font-bold text-blue-900">{layer.pileId}</td>
+                  <td className="text-slate-600">{layer.diameter}</td>
+                  <td className="text-slate-500">{layer.constructionStart}</td>
+                  <td className="text-slate-500">{layer.constructionEnd}</td>
+                  <td className="text-slate-600 italic text-xs min-w-[300px] leading-relaxed">{layer.layerDesign}</td>
+                  <td className="font-bold text-blue-900">{layer.timeFrom}</td>
+                  <td className="font-bold text-blue-900">{layer.timeTo}</td>
+                  <td className="text-center font-bold text-blue-900 bg-sky-50/30">{layer.durationHours.toFixed(2)}</td>
+                  <td className="text-center text-slate-600">{layer.elevationFrom}</td>
+                  <td className="text-center text-slate-600">{layer.elevationTo}</td>
+                  <td className="text-center font-bold text-blue-900">{layer.lengthMeters.toFixed(2)}</td>
+                  <td className="text-right">
                     <span className={cn(
-                      "inline-flex items-center px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
-                      layer.speedMph > 5 ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-orange-100 text-orange-700 border border-orange-200"
+                      "inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest",
+                      layer.speedMph > 5 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-orange-50 text-orange-600 border border-orange-100"
                     )}>
                       {layer.speedMph.toFixed(2)}
                     </span>
@@ -1382,26 +1365,29 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="bg-blue-900 rounded-[40px] p-10 shadow-2xl md:col-span-2 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-800 rounded-full -mr-32 -mt-32 opacity-20" />
-          <h4 className="text-orange-400 font-black uppercase tracking-[0.3em] text-xs mb-6 flex items-center gap-3">
-            <Activity size={16} />
+        <div className="modern-card p-10 md:col-span-2 bg-blue-900 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32" />
+          <h4 className="text-sky-400 font-bold uppercase tracking-[0.3em] text-[10px] mb-6 flex items-center gap-2">
+            <Activity size={14} />
             Phân tích năng suất địa chất
           </h4>
           <p className="text-blue-50 text-lg leading-relaxed font-medium italic relative z-10">
             "{result.summary}"
           </p>
         </div>
-        <div className="bg-white border-2 border-blue-50 rounded-[40px] p-10 shadow-xl flex flex-col justify-center items-center text-center">
-          <h4 className="text-slate-400 font-black uppercase tracking-widest text-xs mb-4">Tốc độ khoan trung bình</h4>
-          <div className="flex items-baseline gap-3">
-            <span className="text-7xl font-black text-blue-800 tracking-tighter">
+        <div className="modern-card p-10 flex flex-col justify-center items-center text-center">
+          <h4 className="text-sky-400 font-bold uppercase tracking-widest text-[10px] mb-4">Tốc độ khoan trung bình</h4>
+          <div className="flex items-baseline gap-2">
+            <span className="text-6xl font-bold text-blue-900 tracking-tighter">
               {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)}
             </span>
-            <span className="text-orange-500 font-black uppercase tracking-widest text-sm">m/h</span>
+            <span className="text-sky-400 font-bold uppercase tracking-widest text-xs">m/h</span>
           </div>
-          <div className="mt-6 w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-orange-500 rounded-full" style={{ width: '70%' }} />
+          <div className="mt-8 w-full h-1.5 bg-sky-100 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-orange-500 transition-all duration-1000" 
+              style={{ width: `${Math.min(100, (result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length) * 10)}%` }} 
+            />
           </div>
         </div>
       </div>
@@ -1423,91 +1409,94 @@ function SummaryView({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
       <div className="flex items-center justify-between">
-        <h3 className="text-3xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-4">
-          <div className="w-2 h-10 bg-blue-700 rounded-full" />
-          Tổng hợp dữ liệu thi công
-        </h3>
+        <div className="space-y-1">
+          <h3 className="text-2xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
+            <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+            Tổng hợp dữ liệu thi công
+          </h3>
+          <p className="text-xs text-sky-400 font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
+        </div>
         <div className="flex items-center gap-4">
-          <div className="bg-white border border-slate-200 rounded-2xl px-6 py-3 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng số cọc đã quét</p>
-            <p className="text-2xl font-black text-blue-800">{history.length}</p>
+          <div className="bg-white border border-sky-200 rounded-2xl px-5 py-2.5 shadow-sm">
+            <p className="text-[9px] font-bold text-sky-400 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
+            <p className="text-xl font-bold text-blue-900">{history.length}</p>
           </div>
         </div>
       </div>
 
       {history.length === 0 ? (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[40px] py-32 flex flex-col items-center justify-center text-center">
+        <div className="bg-white border border-sky-200 border-dashed rounded-3xl py-32 flex flex-col items-center justify-center text-center shadow-sm">
           <div className="bg-slate-50 p-6 rounded-full mb-6">
-            <History className="text-slate-300 w-12 h-12" />
+            <History className="text-slate-300 w-10 h-10" />
           </div>
-          <h4 className="text-xl font-bold text-slate-400 uppercase tracking-widest">Chưa có dữ liệu lịch sử</h4>
-          <p className="text-slate-400 mt-2">Hãy bắt đầu bằng cách quét biên bản đầu tiên</p>
+          <h4 className="text-lg font-bold text-slate-400 uppercase tracking-widest">Chưa có dữ liệu lịch sử</h4>
+          <p className="text-slate-400 mt-2 text-sm">Hãy bắt đầu bằng cách quét biên bản đầu tiên</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+          <div className="modern-card overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="pro-table">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Dự án</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Hạng mục</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Tên bộ phận</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Số hiệu cọc</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Đường kính</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày bắt đầu thi công</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Ngày kết thúc thi công</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500">Xem tập tin</th>
-                    <th className="px-8 py-6 text-[11px] uppercase tracking-widest font-black text-slate-500 text-right">Thao tác</th>
+                  <tr>
+                    <th>Dự án</th>
+                    <th>Hạng mục</th>
+                    <th>Tên bộ phận</th>
+                    <th>Số hiệu cọc</th>
+                    <th>Đường kính</th>
+                    <th>Bắt đầu</th>
+                    <th>Kết thúc</th>
+                    <th>Tập tin</th>
+                    <th className="text-right">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="">
                   {history.map((item) => (
-                    <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                      <td className="px-8 py-6 text-sm font-bold text-slate-800">{item.project}</td>
-                      <td className="px-8 py-6 text-sm text-slate-600">{item.item}</td>
-                      <td className="px-8 py-6 text-sm text-slate-600">{item.componentName}</td>
-                      <td className="px-8 py-6 text-sm font-black text-blue-700">{item.pileId}</td>
-                      <td className="px-8 py-6 text-sm font-bold text-slate-600">{item.diameter}</td>
-                      <td className="px-8 py-6 text-sm text-slate-500">{item.constructionStart}</td>
-                      <td className="px-8 py-6 text-sm text-slate-500">{item.constructionEnd}</td>
-                      <td className="px-8 py-6">
+                    <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
+                      <td className="font-bold text-blue-900">{item.project}</td>
+                      <td className="text-slate-600">{item.item}</td>
+                      <td className="text-slate-600">{item.componentName}</td>
+                      <td className="font-bold text-blue-900">{item.pileId}</td>
+                      <td className="font-medium text-slate-600">{item.diameter}</td>
+                      <td className="text-slate-500">{item.constructionStart}</td>
+                      <td className="text-slate-500">{item.constructionEnd}</td>
+                      <td>
                         {item.fileUrl ? (
                           <a 
                             href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-bold text-xs uppercase tracking-widest"
+                            className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest transition-colors"
                           >
-                            <ExternalLink size={16} />
-                            Xem tập tin
+                            <ExternalLink size={12} />
+                            Xem
                           </a>
                         ) : (
-                          <span className="text-slate-300 text-xs font-bold uppercase tracking-widest italic">Chưa có tệp</span>
+                          <span className="text-sky-200 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
                         )}
                       </td>
-                      <td className="px-8 py-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button 
                             onClick={() => onEdit(item)}
-                            className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                            className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
                             title="Chỉnh sửa"
                           >
-                            <Edit2 size={20} />
+                            <Edit2 size={14} />
                           </button>
                           <button 
                             onClick={() => onDelete(item.id)}
-                            className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                            className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-100"
                             title="Xóa"
                           >
-                            <Trash2 size={20} />
+                            <Trash2 size={14} />
                           </button>
                           <button 
                             onClick={() => onSelectResult(item)}
-                            className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-slate-600 hover:text-white transition-all shadow-sm"
+                            className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
                             title="Xem chi tiết"
                           >
-                            <ChevronRight size={20} />
+                            <ChevronRight size={14} />
                           </button>
                         </div>
                       </td>
@@ -1525,12 +1514,17 @@ function SummaryView({
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all border-b-4 border-b-blue-100">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 bg-slate-50 rounded-lg">{icon}</div>
-        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</span>
+    <div className="modern-card p-6 group">
+      <div className="flex items-center justify-between mb-4">
+        <div className="p-2.5 bg-sky-50 rounded-xl group-hover:bg-sky-100 transition-colors">
+          {icon}
+        </div>
+        <div className="h-1 w-10 bg-sky-100 rounded-full overflow-hidden">
+          <div className="h-full bg-orange-500 w-1/3 group-hover:w-full transition-all duration-700" />
+        </div>
       </div>
-      <div className="text-xl font-black text-slate-800 truncate" title={value}>
+      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-sky-400 block mb-1">{title}</span>
+      <div className="text-xl font-bold text-blue-900 truncate" title={value}>
         {value || "---"}
       </div>
     </div>
@@ -1647,20 +1641,20 @@ function EditSplitView({
   return (
     <div className="fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300">
       {/* Header */}
-      <div className="h-16 bg-slate-50 border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
+      <div className="h-16 bg-sky-50 border-b border-sky-100 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <div className="bg-blue-600 p-2 rounded-lg text-white">
             <Edit2 size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{data.project}</p>
+            <h3 className="text-sm font-black text-blue-900 uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
+            <p className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">{data.project}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors"
+            className="px-4 py-2 bg-sky-100 text-sky-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-sky-200 transition-colors"
           >
             Hủy bỏ
           </button>
@@ -1677,62 +1671,62 @@ function EditSplitView({
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Data Form */}
-        <div className="w-1/2 border-r border-slate-200 bg-white overflow-y-auto p-8 space-y-8 custom-scrollbar">
+        <div className="w-1/2 border-r border-sky-100 bg-white overflow-y-auto p-8 space-y-8 custom-scrollbar">
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dự án</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Dự án</label>
               <input 
                 value={data.project} 
                 onChange={(e) => updateField('project', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hạng mục</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Hạng mục</label>
               <input 
                 value={data.item} 
                 onChange={(e) => updateField('item', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên bộ phận</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Tên bộ phận</label>
               <input 
                 value={data.componentName} 
                 onChange={(e) => updateField('componentName', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số hiệu cọc</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Số hiệu cọc</label>
               <input 
                 value={data.pileId} 
                 onChange={(e) => updateField('pileId', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đường kính</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Đường kính</label>
               <input 
                 value={data.diameter} 
                 onChange={(e) => updateField('diameter', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bắt đầu thi công</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kết thúc thi công</label>
+              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
               />
             </div>
           </div>
@@ -1742,71 +1736,71 @@ function EditSplitView({
               <Layers size={14} />
               Chi tiết các lớp địa chất
             </h4>
-            <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-              <table className="w-full text-left border-collapse min-w-[1200px]">
+            <div className="overflow-x-auto border border-sky-100 rounded-xl custom-scrollbar">
+              <table className="pro-table min-w-[1200px]">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Lớp thiết kế</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Từ (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Đến (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Cao độ từ</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Cao độ đến</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Thời gian (h)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Chiều dài (m)</th>
-                    <th className="px-4 py-3 text-[9px] uppercase tracking-widest font-black text-slate-400">Tốc độ (m/h)</th>
+                  <tr>
+                    <th>Lớp thiết kế</th>
+                    <th>Từ (h)</th>
+                    <th>Đến (h)</th>
+                    <th>Cao độ từ</th>
+                    <th>Cao độ đến</th>
+                    <th>Thời gian (h)</th>
+                    <th>Chiều dài (m)</th>
+                    <th>Tốc độ (m/h)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="">
                   {data.layers.map((layer, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-2 py-2">
+                    <tr key={idx} className="hover:bg-sky-50 transition-colors">
+                      <td className="p-0">
                         <input 
                           value={layer.layerDesign} 
                           onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-slate-900 font-medium focus:ring-0"
+                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-medium focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="p-0">
                         <input 
                           type="time"
                           value={layer.timeFrom} 
                           onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-0"
+                          className="w-full h-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="p-0">
                         <input 
                           type="time"
                           value={layer.timeTo} 
                           onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-0"
+                          className="w-full h-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="p-0">
                         <input 
                           type="number"
                           step="0.1"
                           value={layer.elevationFrom} 
                           onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-slate-900 font-bold focus:ring-0 text-center"
+                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-bold focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none text-center"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="p-0">
                         <input 
                           type="number"
                           step="0.1"
                           value={layer.elevationTo} 
                           onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                          className="w-full bg-transparent border-none text-xs text-slate-900 font-bold focus:ring-0 text-center"
+                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-bold focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none text-center"
                         />
                       </td>
-                      <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
+                      <td className="px-4 py-3 text-xs font-black text-sky-400 text-center bg-sky-50/50">
                         {layer.durationHours.toFixed(2)}
                       </td>
-                      <td className="px-4 py-2 text-xs font-black text-slate-500 text-center">
+                      <td className="px-4 py-3 text-xs font-black text-sky-400 text-center bg-sky-50/50">
                         {layer.lengthMeters.toFixed(2)}
                       </td>
-                      <td className="px-4 py-2 text-xs font-black text-emerald-600 text-center">
+                      <td className="px-4 py-3 text-xs font-black text-emerald-600 text-center bg-emerald-50/30">
                         {layer.speedMph.toFixed(2)}
                       </td>
                     </tr>
@@ -1817,12 +1811,12 @@ function EditSplitView({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Tóm tắt phân tích</label>
             <textarea 
               value={data.summary} 
               onChange={(e) => updateField('summary', e.target.value)}
               rows={4}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 font-medium focus:border-blue-500 outline-none transition-all resize-none"
+              className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all resize-none"
             />
           </div>
         </div>
@@ -1837,7 +1831,7 @@ function EditSplitView({
                   href={displayUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-slate-900 text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-slate-200 shadow-2xl flex items-center gap-2"
+                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-blue-900 text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-sky-100 shadow-2xl flex items-center gap-2"
                 >
                   <ExternalLink size={14} />
                   Mở tab mới
@@ -1846,7 +1840,7 @@ function EditSplitView({
                   href={displayUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-slate-900 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all border border-slate-200 shadow-2xl flex items-center gap-2"
+                  className="px-4 py-2 bg-white/90 backdrop-blur-md rounded-xl text-blue-900 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all border border-sky-100 shadow-2xl flex items-center gap-2"
                 >
                   <ArrowDownToLine size={14} />
                   Tải xuống
@@ -1854,21 +1848,21 @@ function EditSplitView({
               </div>
               
               {isPdf && numPages > 0 && (
-                <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-200 shadow-2xl">
+                <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-sky-100 shadow-2xl">
                   <button 
                     onClick={() => setPageNumber(p => Math.max(1, p - 1))}
                     disabled={pageNumber <= 1}
-                    className="text-slate-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
+                    className="text-blue-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
                   >
                     <ChevronLeft size={18} />
                   </button>
-                  <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest min-w-[60px] text-center">
+                  <span className="text-[10px] font-black text-blue-900 uppercase tracking-widest min-w-[60px] text-center">
                     {pageNumber} / {numPages}
                   </span>
                   <button 
                     onClick={() => setPageNumber(p => Math.min(numPages, p + 1))}
                     disabled={pageNumber >= numPages}
-                    className="text-slate-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
+                    className="text-blue-900 disabled:opacity-30 hover:text-blue-600 transition-colors"
                   >
                     <ChevronRight size={18} />
                   </button>
@@ -1878,7 +1872,7 @@ function EditSplitView({
           )}
 
           {isLoading ? (
-            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-4">
+            <div className="w-full h-full flex flex-col items-center justify-center text-sky-400 gap-4">
               <Loader2 size={48} className="animate-spin text-blue-500" />
               <p className="text-xs font-black uppercase tracking-widest opacity-60">Đang tải tài liệu...</p>
             </div>
@@ -1891,14 +1885,14 @@ function EditSplitView({
               </div>
               <button 
                 onClick={() => setDisplayUrl(displayUrl)} 
-                className="mt-4 px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                className="mt-4 px-6 py-2 bg-sky-50 hover:bg-sky-100 text-blue-900 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
               >
                 Thử lại
               </button>
             </div>
           ) : displayUrl ? (
             isPdf ? (
-              <div className="w-full h-full bg-slate-50 overflow-auto flex justify-center p-8 custom-scrollbar">
+              <div className="w-full h-full bg-sky-50/50 overflow-auto flex justify-center p-8 custom-scrollbar">
                 <div 
                   className="shadow-2xl bg-white origin-top transition-transform duration-200"
                   style={{ transform: `scale(${zoom})` }}
@@ -1913,7 +1907,7 @@ function EditSplitView({
                     loading={
                       <div className="flex flex-col items-center justify-center p-20">
                         <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
-                        <p className="text-sm text-slate-500">Đang tải PDF...</p>
+                        <p className="text-sm text-sky-500">Đang tải PDF...</p>
                       </div>
                     }
                   >
@@ -1928,7 +1922,7 @@ function EditSplitView({
               </div>
             ) : (
               <div 
-                className="w-full h-full flex items-center justify-center cursor-move bg-slate-50"
+                className="w-full h-full flex items-center justify-center cursor-move bg-sky-50/50"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1969,7 +1963,7 @@ function EditSplitView({
               </div>
             )
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+            <div className="w-full h-full flex flex-col items-center justify-center text-sky-600 gap-4">
               <ImageIcon size={64} className="opacity-20" />
               <p className="text-sm font-black uppercase tracking-widest opacity-40">Không tìm thấy tệp tài liệu</p>
             </div>
@@ -1977,28 +1971,28 @@ function EditSplitView({
 
           {/* Zoom Controls */}
           {displayUrl && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-slate-200 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-sky-100 shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300">
               <button 
                 onClick={handleZoomOut}
-                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
+                className="p-3 hover:bg-sky-50 rounded-xl text-blue-900 transition-colors"
                 title="Thu nhỏ"
               >
                 <ZoomOutIcon size={20} />
               </button>
-              <div className="w-16 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">
+              <div className="w-16 text-center text-[10px] font-black text-blue-900 uppercase tracking-widest">
                 {Math.round(zoom * 100)}%
               </div>
               <button 
                 onClick={handleZoomIn}
-                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
+                className="p-3 hover:bg-sky-50 rounded-xl text-blue-900 transition-colors"
                 title="Phóng to"
               >
                 <ZoomInIcon size={20} />
               </button>
-              <div className="w-px h-6 bg-slate-200 mx-1" />
+              <div className="w-px h-6 bg-sky-100 mx-1" />
               <button 
                 onClick={handleResetZoom}
-                className="p-3 hover:bg-slate-100 rounded-xl text-slate-900 transition-colors"
+                className="p-3 hover:bg-sky-50 rounded-xl text-blue-900 transition-colors"
                 title="Đặt lại"
               >
                 <RotateCcw size={20} />
@@ -2007,7 +2001,7 @@ function EditSplitView({
           )}
 
           {/* Fullscreen Hint */}
-          <div className="absolute top-6 right-6 p-3 bg-slate-100/40 rounded-xl text-slate-400 pointer-events-none">
+          <div className="absolute top-6 right-6 p-3 bg-sky-100/40 rounded-xl text-sky-400 pointer-events-none">
             <Maximize2 size={16} />
           </div>
         </div>
