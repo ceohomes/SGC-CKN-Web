@@ -818,7 +818,7 @@ export default function App() {
       <aside 
         ref={sidebarRef}
         className={cn(
-          "fixed top-0 left-0 h-full w-72 bg-slate-900 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-slate-800",
+          "fixed top-0 left-0 h-full w-72 bg-blue-950 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-blue-900",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onMouseLeave={() => setIsSidebarOpen(false)}
@@ -826,7 +826,7 @@ export default function App() {
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-slate-700">
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-blue-800">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
@@ -837,26 +837,26 @@ export default function App() {
               </div>
               <div>
                 <span className="font-bold text-white uppercase tracking-tight block text-lg">SGC - CKN</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
               </div>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-blue-900 rounded-lg transition-colors text-blue-400">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <nav className="space-y-1 flex-1">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
+            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'upload' 
                   ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-slate-800 text-slate-400"
+                  : "hover:bg-blue-900 text-blue-300"
               )}
             >
-              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-slate-500 group-hover:text-white"} />
+              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-blue-400 group-hover:text-white"} />
               <span className="font-medium text-sm">Xử lý biên bản</span>
             </button>
 
@@ -866,18 +866,18 @@ export default function App() {
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'summary' 
                   ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-slate-800 text-slate-400"
+                  : "hover:bg-blue-900 text-blue-300"
               )}
             >
-              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-slate-500 group-hover:text-white"} />
+              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-blue-400 group-hover:text-white"} />
               <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
             </button>
           </nav>
 
-          <div className="pt-6 border-t border-slate-800">
-            <div className="bg-slate-800/50 rounded-xl p-4">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
-              <p className="text-xs font-medium text-slate-300">v2.1.0 Professional</p>
+          <div className="pt-6 border-t border-blue-900">
+            <div className="bg-blue-900/60 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
+              <p className="text-xs font-medium text-blue-200">v2.1.0 Professional</p>
             </div>
           </div>
         </div>
@@ -938,9 +938,9 @@ export default function App() {
             {(processingFiles.length > 0 || pendingResults.length > 0) ? (
               <div className="flex gap-0 h-[calc(100vh-160px)] rounded-3xl overflow-hidden border border-slate-200 shadow-xl">
 
-                {/* CỘT TRÁI: Danh sách file */}
-                <div className="w-72 flex-shrink-0 bg-slate-900 flex flex-col">
-                  <div className="px-5 py-4 border-b border-slate-700/50">
+                {/* CỘT TRÁI: Danh sách file - thu gọn */}
+                <div className="w-52 flex-shrink-0 bg-blue-950 flex flex-col">
+                  <div className="px-5 py-4 border-b border-blue-900/70">
                     <div className="flex items-center gap-2">
                       <Loader2 className={cn("w-4 h-4 text-blue-400", isProcessing && "animate-spin")} />
                       <span className="text-[11px] font-black text-white uppercase tracking-widest">
@@ -960,8 +960,8 @@ export default function App() {
                           file.status === 'completed' && file.result
                             ? currentResult?.id === file.result?.id
                               ? "bg-blue-600 cursor-pointer"
-                              : "bg-slate-800 hover:bg-slate-700 cursor-pointer"
-                            : "bg-slate-800/50 cursor-default"
+                              : "bg-blue-900/60 hover:bg-blue-900 cursor-pointer"
+                            : "bg-blue-900/30 cursor-default"
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -969,7 +969,7 @@ export default function App() {
                             "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
                             file.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" :
                             file.status === 'error' ? "bg-red-500/20 text-red-400" :
-                            "bg-slate-700 text-slate-400"
+                            "bg-blue-800 text-blue-300"
                           )}>
                             {file.status === 'completed' ? <CheckCircle2 size={14} /> :
                              file.status === 'error' ? <AlertCircle size={14} /> :
@@ -982,7 +982,7 @@ export default function App() {
                               "text-[10px] font-medium mt-0.5",
                               file.status === 'completed' ? "text-emerald-400" :
                               file.status === 'error' ? "text-red-400" :
-                              file.status === 'processing' ? "text-orange-400" : "text-slate-500"
+                              file.status === 'processing' ? "text-orange-400" : "text-blue-400"
                             )}>
                               {file.status === 'pending' ? 'Đang chờ...' :
                                file.status === 'processing' ? `Phân tích... ${file.progress}%` :
@@ -991,13 +991,13 @@ export default function App() {
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); removeProcessingFile(file.id); }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-blue-500 hover:text-red-400 transition-all"
                           >
                             <Trash2 size={12} />
                           </button>
                         </div>
                         {(file.status === 'processing' || file.status === 'pending') && (
-                          <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                          <div className="mt-2 h-1 bg-blue-900 rounded-full overflow-hidden">
                             <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${file.progress}%` }} />
                           </div>
                         )}
@@ -1013,7 +1013,7 @@ export default function App() {
                           "p-3 rounded-xl cursor-pointer transition-all group relative",
                           currentResult?.id === result.id
                             ? "bg-orange-500"
-                            : "bg-slate-800 hover:bg-slate-700"
+                            : "bg-blue-900/60 hover:bg-blue-900"
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -1026,7 +1026,7 @@ export default function App() {
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); cancelResult(result.id); }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-blue-500 hover:text-red-400 transition-all"
                           >
                             <X size={12} />
                           </button>
@@ -1036,7 +1036,22 @@ export default function App() {
                   </div>
 
                   {/* Footer cột trái */}
-                  <div className="p-3 border-t border-slate-700/50 space-y-2">
+                  <div className="p-3 border-t border-blue-900/70 space-y-2">
+                    {/* Nút Lưu tất cả - chỉ hiện khi có pending results */}
+                    {pendingResults.length > 0 && processingFiles.every(f => f.status === 'completed' || f.status === 'error') && (
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm(`Lưu tất cả ${pendingResults.length} kết quả?\n\nFile sẽ được upload GitHub và dữ liệu lưu Supabase.`)) return;
+                          for (const r of [...pendingResults]) {
+                            await saveResult(r);
+                          }
+                        }}
+                        className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+                      >
+                        <Save size={12} />
+                        Lưu tất cả ({pendingResults.length})
+                      </button>
+                    )}
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
@@ -1044,7 +1059,7 @@ export default function App() {
                       <Upload size={12} />
                       Thêm file
                     </button>
-                    {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && (
+                    {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && pendingResults.length === 0 && (
                       <button
                         onClick={() => setProcessingFiles([])}
                         className="w-full py-2 text-slate-500 hover:text-red-400 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
@@ -2328,7 +2343,7 @@ function EditSplitView({
 
         {/* Right: File Viewer */}
         {/* Right: File Viewer - 1/3 màn hình */}
-        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '40%' }}>
+        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '28%' }}>
           {/* Toolbar for Viewer - luôn hiển thị */}
           {displayUrl && (
             <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 z-20">
