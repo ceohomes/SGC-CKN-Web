@@ -1927,7 +1927,7 @@ function EditSplitView({
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {(() => {
-                      // Tính màu nền theo nhóm actualGeology
+                      // Tính màu nền theo nhóm layerDesign (Lớp Thiết Kế)
                       const groupColors = [
                         'bg-white',
                         'bg-blue-50',
@@ -1943,7 +1943,7 @@ function EditSplitView({
                       const groupMap: Record<string, number> = {};
                       let groupCount = 0;
                       return data.layers.map((layer, idx) => {
-                        const key = layer.actualGeology?.trim() || '__empty__';
+                        const key = layer.layerDesign?.trim() || '__empty__';
                         if (!(key in groupMap)) { groupMap[key] = groupCount % groupColors.length; groupCount++; }
                         const rowBg = groupColors[groupMap[key]];
                         return (
