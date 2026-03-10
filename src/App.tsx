@@ -15,6 +15,7 @@ import {
   Calendar,
   Layers,
   Menu,
+  Plus,
   Database,
   History,
   X,
@@ -33,6 +34,16 @@ import {
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -130,26 +141,26 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
       {
         parts: [
           {
-            text: `Bạn là một chuyên gia OCR xây dựng. Hãy trích xuất dữ liệu từ "Biên bản theo dõi địa chất".
-            
-            Yêu cầu trích xuất:
-            1. Dự án (project)
-            2. Hạng mục (item)
-            3. Tên bộ phận (componentName)
-            4. Số hiệu cọc (pileId)
-            5. Đường kính (diameter)
-            6. Thời gian bắt đầu thi công (constructionStart)
-            7. Thời gian kết thúc thi công (constructionEnd)
-            8. Danh sách các lớp địa chất (layers): 
-               - layerNumber: Số thứ tự lớp.
-               - layerDesign: Nội dung mô tả thiết kế địa chất.
-               - timeFrom: Giờ bắt đầu khoan (định dạng HH:mm).
-               - timeTo: Giờ kết thúc khoan (định dạng HH:mm).
-               - elevationFrom: Cao độ bắt đầu.
-               - elevationTo: Cao độ kết thúc.
-               - actualGeology: Địa chất thực tế (ví dụ: 1(1), 1(2)...).
-            
-            Lưu ý: Chỉ trích xuất số liệu thô. Trả về JSON.`
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng chuyên nghiệp. Hãy trích xuất dữ liệu từ hình ảnh hoặc PDF của "Biên bản theo dõi địa chất" hoặc "Nhật ký thi công cọc".
+
+Yêu cầu trích xuất chi tiết:
+1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
+2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc.
+3. Bảng chi tiết địa chất (layers):
+   - layerNumber: Số thứ tự lớp (1, 2, 3...).
+   - layerDesign: Mô tả địa chất theo thiết kế (ví dụ: Sét pha, cát hạt trung...).
+   - timeFrom: Giờ bắt đầu khoan lớp này (định dạng HH:mm).
+   - timeTo: Giờ kết thúc khoan lớp này (định dạng HH:mm).
+   - elevationFrom: Cao độ bắt đầu của lớp (mét).
+   - elevationTo: Cao độ kết thúc của lớp (mét).
+   - actualGeology: Ký hiệu địa chất thực tế (ví dụ: 1, 1a, 2...).
+
+4. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
+
+Lưu ý quan trọng: 
+- Nếu không tìm thấy dữ liệu, hãy để trống hoặc ước tính hợp lý dựa trên ngữ cảnh.
+- Đảm bảo các con số cao độ là số thực.
+- Trả về kết quả dưới dạng JSON chuẩn.`
           },
           {
             inlineData: {
@@ -749,7 +760,7 @@ export default function App() {
       <aside 
         ref={sidebarRef}
         className={cn(
-          "fixed top-0 left-0 h-full w-72 bg-sky-50 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-sky-200",
+          "fixed top-0 left-0 h-full w-72 bg-slate-900 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-slate-800",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onMouseLeave={() => setIsSidebarOpen(false)}
@@ -757,7 +768,7 @@ export default function App() {
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-sky-200">
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-slate-700">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
@@ -767,27 +778,27 @@ export default function App() {
                 )}
               </div>
               <div>
-                <span className="font-bold text-blue-900 uppercase tracking-tight block text-lg">SGC - CKN</span>
-                <span className="text-[8px] font-bold text-sky-400 uppercase tracking-[0.2em]">Management System</span>
+                <span className="font-bold text-white uppercase tracking-tight block text-lg">SGC - CKN</span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
               </div>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-sky-100 rounded-lg transition-colors text-sky-400">
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <nav className="space-y-1 flex-1">
-            <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-4 px-4">Main Navigation</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'upload' 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-200" 
-                  : "hover:bg-sky-100 text-slate-600"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-slate-800 text-slate-400"
               )}
             >
-              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-sky-400 group-hover:text-blue-600"} />
+              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-slate-500 group-hover:text-white"} />
               <span className="font-medium text-sm">Xử lý biên bản</span>
             </button>
 
@@ -796,48 +807,48 @@ export default function App() {
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'summary' 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-200" 
-                  : "hover:bg-sky-100 text-slate-600"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-slate-800 text-slate-400"
               )}
             >
-              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-sky-400 group-hover:text-blue-600"} />
+              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-slate-500 group-hover:text-white"} />
               <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
             </button>
           </nav>
 
-          <div className="pt-6 border-t border-sky-200">
-            <div className="bg-sky-100/50 rounded-xl p-4">
-              <p className="text-[10px] font-bold text-sky-500 uppercase tracking-widest mb-1">Current Version</p>
-              <p className="text-xs font-medium text-blue-900">v2.1.0 Professional</p>
+          <div className="pt-6 border-t border-slate-800">
+            <div className="bg-slate-800/50 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
+              <p className="text-xs font-medium text-slate-300">v2.1.0 Professional</p>
             </div>
           </div>
         </div>
       </aside>
 
       {/* Header */}
-      <header className="bg-blue-900 border-b border-blue-800 px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[80px]">
+      <header className="bg-blue-900 border-b border-blue-800 px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[64px]">
         <div 
-          className="flex items-center gap-6 cursor-pointer group"
+          className="flex items-center gap-4 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border-2 border-blue-700 bg-white">
+          <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                <Construction className="text-white w-10 h-10" />
+                <Construction className="text-white w-6 h-6" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-[24px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[12px] text-blue-300 font-bold uppercase tracking-[0.25em] mt-2">
+            <h1 className="text-[20px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[10px] text-blue-300 font-bold uppercase tracking-[0.25em] mt-1">
               Construction Management
             </p>
           </div>
-          <div className="ml-3 p-2.5 bg-white/10 rounded-xl text-blue-300 group-hover:text-white transition-colors">
-            <Menu size={24} />
+          <div className="ml-2 p-2 bg-white/10 rounded-lg text-blue-300 group-hover:text-white transition-colors">
+            <Menu size={20} />
           </div>
         </div>
         
@@ -1032,12 +1043,12 @@ export default function App() {
                     {isGithubConnected ? (
                       <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
                         <Github size={12} fill="currentColor" />
-                        <span className="text-[9px] font-bold uppercase tracking-widest">GitHub Connected</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">Đã kết nối GitHub</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 px-3 py-1 bg-sky-100 text-sky-400 rounded-full border border-sky-200">
                         <Github size={12} />
-                        <span className="text-[9px] font-bold uppercase tracking-widest">GitHub Disconnected</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest">Chưa kết nối GitHub</span>
                       </div>
                     )}
                   </div>
@@ -1195,10 +1206,10 @@ export default function App() {
                       </div>
                       <div>
                         <p className="text-xs font-bold text-blue-900 uppercase tracking-tight">
-                          {isGithubConnected ? "GitHub Connected" : "GitHub Disconnected"}
+                          {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
                         </p>
                         <p className="text-[9px] text-sky-400 font-bold uppercase tracking-widest leading-none mt-1">
-                          {isGithubConnected ? "Auto-sync enabled" : "Setup token to sync"}
+                          {isGithubConnected ? "Tự động đồng bộ" : "Cấu hình để đồng bộ"}
                         </p>
                       </div>
                     </div>
@@ -1300,9 +1311,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
         <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
+        <StatCard title="Tổng chiều sâu" value={`${result.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
         <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
         <StatCard title="Kết thúc" value={result.constructionEnd} icon={<Calendar className="text-blue-600" />} />
       </div>
@@ -1438,8 +1450,62 @@ function SummaryView({
             <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
             <p className="text-xl font-bold text-black">{history.length}</p>
           </div>
+          <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
+            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng chiều sâu</p>
+            <p className="text-xl font-bold text-black">
+              {history.reduce((acc, res) => acc + res.layers.reduce((lAcc, l) => lAcc + l.lengthMeters, 0), 0).toFixed(1)} m
+            </p>
+          </div>
         </div>
       </div>
+
+      {history.length > 0 && (
+        <div className="modern-card p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+              <BarChart3 size={16} className="text-blue-600" />
+              Biểu đồ tốc độ khoan trung bình (m/h)
+            </h4>
+          </div>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={history.slice().reverse().map(item => ({
+                name: item.pileId,
+                speed: parseFloat((item.layers.reduce((acc, l) => acc + l.speedMph, 0) / item.layers.length).toFixed(2))
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
+                  dy={10}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ 
+                    borderRadius: '12px', 
+                    border: 'none', 
+                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                />
+                <Bar dataKey="speed" radius={[6, 6, 0, 0]}>
+                  {history.slice().reverse().map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#2563eb' : '#f97316'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {history.length === 0 ? (
         <div className="bg-white border border-sky-200 border-dashed rounded-3xl py-32 flex flex-col items-center justify-center text-center shadow-sm">
@@ -1461,6 +1527,7 @@ function SummaryView({
                     <th>Tên bộ phận</th>
                     <th>Số hiệu</th>
                     <th>Đường kính</th>
+                    <th>Chiều sâu (m)</th>
                     <th>Bắt đầu</th>
                     <th>Kết thúc</th>
                     <th>Tập tin</th>
@@ -1475,6 +1542,7 @@ function SummaryView({
                       <td className="text-black">{item.componentName}</td>
                       <td className="font-bold text-black">{item.pileId}</td>
                       <td className="font-medium text-black">{item.diameter}</td>
+                      <td className="font-bold text-orange-600">{item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}</td>
                       <td className="text-black">{item.constructionStart}</td>
                       <td className="text-black">{item.constructionEnd}</td>
                       <td>
@@ -1629,12 +1697,16 @@ function EditSplitView({
     // Recalculate duration and speed if times or elevations change
     if (['timeFrom', 'timeTo', 'elevationFrom', 'elevationTo'].includes(field as string)) {
       const layer = newLayers[idx];
-      const start = new Date(`2000-01-01T${layer.timeFrom}`);
-      const end = new Date(`2000-01-01T${layer.timeTo}`);
-      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        let diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-        if (diff < 0) diff += 24;
-        layer.durationHours = diff;
+      
+      // Parse times
+      const startMinutes = parseTimeToMinutes(layer.timeFrom);
+      const endMinutes = parseTimeToMinutes(layer.timeTo);
+      
+      if (startMinutes !== 0 || endMinutes !== 0) {
+        let durationMinutes = endMinutes - startMinutes;
+        if (durationMinutes < 0) durationMinutes += 24 * 60;
+        if (durationMinutes <= 0) durationMinutes = 30; 
+        layer.durationHours = durationMinutes / 60;
       }
       
       const elevStart = parseFloat(layer.elevationFrom.toString());
@@ -1647,6 +1719,28 @@ function EditSplitView({
       }
     }
     
+    setData(prev => ({ ...prev, layers: newLayers }));
+  };
+
+  const addLayer = () => {
+    const lastLayer = data.layers[data.layers.length - 1];
+    const newLayer: DrillLayer = {
+      ...lastLayer,
+      layerNumber: data.layers.length + 1,
+      timeFrom: lastLayer?.timeTo || '00:00',
+      timeTo: lastLayer?.timeTo || '00:00',
+      elevationFrom: lastLayer?.elevationTo || 0,
+      elevationTo: lastLayer?.elevationTo || 0,
+      durationHours: 0,
+      lengthMeters: 0,
+      speedMph: 0
+    };
+    setData(prev => ({ ...prev, layers: [...prev.layers, newLayer] }));
+  };
+
+  const removeLayer = (idx: number) => {
+    if (data.layers.length <= 1) return;
+    const newLayers = data.layers.filter((_, i) => i !== idx).map((l, i) => ({ ...l, layerNumber: i + 1 }));
     setData(prev => ({ ...prev, layers: newLayers }));
   };
 
@@ -1664,8 +1758,8 @@ function EditSplitView({
             <Edit2 size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-white uppercase tracking-tight">CHI TIẾT BIÊN BẢN</h3>
-            <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest">{data.project}</p>
+            <h3 className="text-lg font-black text-white uppercase tracking-tight">CHI TIẾT BIÊN BẢN</h3>
+            <p className="text-sm text-blue-100 font-bold uppercase tracking-widest">{data.project}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -1749,24 +1843,34 @@ function EditSplitView({
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-xs font-black text-black uppercase tracking-widest flex items-center gap-2">
-              <Layers size={14} />
-              Chi tiết các lớp địa chất
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black text-black uppercase tracking-widest flex items-center gap-2">
+                <Layers size={14} />
+                Chi tiết các lớp địa chất
+              </h4>
+              <button 
+                onClick={addLayer}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2"
+              >
+                <Plus size={12} />
+                Thêm lớp
+              </button>
+            </div>
             <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm bg-white">
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full border-collapse table-fixed min-w-[1000px]">
+                <table className="w-full border-collapse table-fixed min-w-[1100px]">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="w-[12%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Địa chất thực tế</th>
-                      <th className="w-[18%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
+                      <th className="w-[10%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Địa chất</th>
+                      <th className="w-[20%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
                       <th className="w-[10%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Từ (h)</th>
                       <th className="w-[10%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Đến (h)</th>
                       <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ từ</th>
                       <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ đến</th>
-                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Thời gian</th>
-                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Chiều dài</th>
-                      <th className="w-[18%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider">Tốc độ (m/h)</th>
+                      <th className="w-[8%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">T.Gian</th>
+                      <th className="w-[8%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Dài (m)</th>
+                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">V (m/h)</th>
+                      <th className="w-[4%] px-2 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1776,34 +1880,34 @@ function EditSplitView({
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-blue-700 font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[9px] text-blue-700 font-bold focus:bg-white px-4 py-3 outline-none transition-all"
                             placeholder="..."
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
-                          <div 
-                            contentEditable
-                            suppressContentEditableWarning
-                            onBlur={(e) => updateLayer(idx, 'layerDesign', e.currentTarget.textContent || '')}
-                            className="w-full bg-transparent text-[11px] text-black font-medium focus:bg-white px-4 py-2 outline-none leading-relaxed transition-all whitespace-pre-wrap break-words"
-                          >
-                            {layer.layerDesign}
-                          </div>
-                        </td>
-                        <td className="p-0 border-r border-slate-200 align-top">
-                          <input 
-                            type="time"
-                            value={layer.timeFrom} 
-                            onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                          <textarea 
+                            value={layer.layerDesign}
+                            onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
+                            rows={2}
+                            className="w-full bg-transparent border-none text-[9px] text-black font-medium focus:bg-white px-4 py-2 outline-none leading-relaxed transition-all resize-none"
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
                           <input 
-                            type="time"
+                            type="text"
+                            value={layer.timeFrom} 
+                            onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
+                            className="w-full bg-transparent border-none text-[9px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                            placeholder="HH:mm"
+                          />
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            type="text"
                             value={layer.timeTo} 
                             onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[9px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                            placeholder="HH:mm"
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
@@ -1812,7 +1916,7 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationFrom} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
+                            className="w-full bg-transparent border-none text-[9px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
@@ -1821,22 +1925,30 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationTo} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
+                            className="w-full bg-transparent border-none text-[9px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
                           />
                         </td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
-                          {layer.durationHours.toFixed(2)}h
+                        <td className="px-4 py-4 text-[9px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                          {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-4 py-4 text-[11px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
-                          {layer.lengthMeters.toFixed(2)}m
+                        <td className="px-4 py-4 text-[9px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                          {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-4 py-4 text-[11px] font-black text-center align-top bg-slate-50">
+                        <td className="px-4 py-4 text-[9px] font-black text-center align-top bg-slate-50 border-r border-slate-200">
                           <span className={cn(
-                            "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold",
+                            "inline-flex items-center px-1.5 py-0.5 rounded-full text-[8px] font-bold",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                           )}>
-                            {layer.speedMph.toFixed(2)} m/h
+                            {layer.speedMph.toFixed(2)}
                           </span>
+                        </td>
+                        <td className="p-0 align-top text-center">
+                          <button 
+                            onClick={() => removeLayer(idx)}
+                            className="mt-3 p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </td>
                       </tr>
                     ))}
