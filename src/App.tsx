@@ -1913,8 +1913,8 @@ function EditSplitView({
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
                       <th className="px-1 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
@@ -2025,7 +2025,7 @@ function EditSplitView({
 
         {/* Right: File Viewer */}
         {/* Right: File Viewer - 1/3 màn hình */}
-        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '33.333%' }}>
+        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '40%' }}>
           {/* Toolbar for Viewer - luôn hiển thị */}
           {displayUrl && (
             <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 z-20">
