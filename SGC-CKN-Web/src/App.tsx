@@ -32,7 +32,8 @@ import {
   Maximize2,
   Minimize2,
   ZoomIn as ZoomInIcon,
-  ZoomOut as ZoomOutIcon
+  ZoomOut as ZoomOutIcon,
+  BarChart2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1971,7 +1972,7 @@ function EditSplitView({
                               e.target.style.height = e.target.scrollHeight + 'px';
                             }}
                             rows={1}
-                            className={`w-full bg-transparent border-none text-[12px] ${rowText} font-normal focus:bg-white px-2 py-1 text-left outline-none leading-normal transition-all resize-none overflow-hidden`}
+                            className={`w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-left outline-none leading-normal transition-all resize-none overflow-hidden`}
                             style={{height: 'auto'}}
                           />
                         </td>
@@ -2033,6 +2034,143 @@ function EditSplitView({
                       });
                     })()}
                   </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Bảng tổng hợp theo Lớp Thiết Kế */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-black text-black uppercase tracking-widest flex items-center gap-2">
+                <BarChart2 size={14} />
+                Tổng hợp thống kê theo lớp thiết kế
+              </h4>
+            </div>
+            <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm bg-white">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full border-collapse table-auto">
+                  <thead>
+                    <tr className="bg-blue-900 text-white">
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">STT</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-black uppercase tracking-wider border-r border-blue-700" style={{minWidth:'220px'}}>Lớp Thiết Kế</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Số đoạn</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ từ (m)</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ đến (m)</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng T.Gian (h)</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng Dài (m)</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider whitespace-nowrap">V TB (m/h)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {(() => {
+                      // Gộp các dòng cùng layerDesign liên tiếp thành từng nhóm
+                      const groups: {
+                        layerDesign: string;
+                        segments: number;
+                        elevationFrom: number;
+                        elevationTo: number;
+                        totalDuration: number;
+                        totalLength: number;
+                        avgSpeed: number;
+                        colorIdx: number;
+                      }[] = [];
+
+                      const groupColors = [
+                        { row: 'bg-sky-200',     text: 'text-sky-900' },
+                        { row: 'bg-amber-200',   text: 'text-amber-900' },
+                        { row: 'bg-emerald-200', text: 'text-emerald-900' },
+                        { row: 'bg-rose-200',    text: 'text-rose-900' },
+                        { row: 'bg-violet-200',  text: 'text-violet-900' },
+                        { row: 'bg-lime-200',    text: 'text-lime-900' },
+                        { row: 'bg-orange-200',  text: 'text-orange-900' },
+                        { row: 'bg-cyan-200',    text: 'text-cyan-900' },
+                        { row: 'bg-pink-200',    text: 'text-pink-900' },
+                        { row: 'bg-teal-200',    text: 'text-teal-900' },
+                        { row: 'bg-red-200',     text: 'text-red-900' },
+                        { row: 'bg-indigo-200',  text: 'text-indigo-900' },
+                      ];
+
+                      let colorCount = 0;
+                      data.layers.forEach((layer) => {
+                        const key = layer.layerDesign?.trim() || '(Chưa có)';
+                        const last = groups[groups.length - 1];
+                        if (last && last.layerDesign === key) {
+                          last.segments += 1;
+                          last.elevationTo = layer.elevationTo;
+                          last.totalDuration += layer.durationHours;
+                          last.totalLength += layer.lengthMeters;
+                        } else {
+                          groups.push({
+                            layerDesign: key,
+                            segments: 1,
+                            elevationFrom: layer.elevationFrom,
+                            elevationTo: layer.elevationTo,
+                            totalDuration: layer.durationHours,
+                            totalLength: layer.lengthMeters,
+                            avgSpeed: 0,
+                            colorIdx: colorCount % groupColors.length,
+                          });
+                          colorCount++;
+                        }
+                      });
+
+                      // Tính V TB = tổng dài / tổng thời gian
+                      groups.forEach(g => {
+                        g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0;
+                      });
+
+                      return groups.map((g, i) => {
+                        const { row: rowBg, text: rowText } = groupColors[g.colorIdx];
+                        return (
+                          <tr key={i} className="hover:opacity-90 transition-colors">
+                            <td className={`px-3 py-2 text-[11px] font-bold text-center border-r border-slate-200 ${rowBg}`}>{i + 1}</td>
+                            <td className={`px-3 py-2 text-[11px] font-medium border-r border-slate-200 ${rowBg} text-black`}>{g.layerDesign}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationFrom}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationTo}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.totalDuration.toFixed(2)}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{g.totalLength.toFixed(2)}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center ${rowBg}`}>
+                              <span className={cn(
+                                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                                g.avgSpeed > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
+                              )}>
+                                {g.avgSpeed.toFixed(2)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 border-t-2 border-slate-400">
+                      <td colSpan={2} className="px-3 py-2 text-[11px] font-black text-black uppercase border-r border-slate-300">Tổng cộng</td>
+                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                        {data.layers.length}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-center border-r border-slate-300">
+                        {data.layers.length > 0 ? data.layers[0].elevationFrom : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] text-center border-r border-slate-300">
+                        {data.layers.length > 0 ? data.layers[data.layers.length - 1].elevationTo : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                        {data.layers.reduce((s, l) => s + l.durationHours, 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                        {data.layers.reduce((s, l) => s + l.lengthMeters, 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-[11px] font-black text-center text-black">
+                        {(() => {
+                          const totalLen = data.layers.reduce((s, l) => s + l.lengthMeters, 0);
+                          const totalDur = data.layers.reduce((s, l) => s + l.durationHours, 0);
+                          return totalDur > 0 ? (totalLen / totalDur).toFixed(2) : '—';
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
