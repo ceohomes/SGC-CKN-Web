@@ -781,7 +781,7 @@ export default function App() {
               </div>
               <div>
                 <span className="font-bold text-white uppercase tracking-tight block text-lg">SGC - CKN</span>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
               </div>
             </div>
             <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
@@ -1864,16 +1864,16 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Địa chất</th>
-                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
-                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Từ (h)</th>
-                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Đến (h)</th>
-                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ từ</th>
-                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ đến</th>
-                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">T.Gian</th>
-                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
-                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
-                      <th className="px-1 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider"></th>
+                      <th className="px-2 py-2 text-left text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Địa chất</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Từ (h)</th>
+                      <th className="px-2 py-2 text-left text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Đến (h)</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ từ</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ đến</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">T.Gian</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
+                      <th className="px-2 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
+                      <th className="px-1 py-2 text-center text-[10px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1883,7 +1883,7 @@ function EditSplitView({
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-blue-700 font-bold focus:bg-white px-2 py-1.5 outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[10px] text-blue-700 font-bold focus:bg-white px-2 py-1.5 outline-none transition-all"
                             placeholder="..."
                           />
                         </td>
@@ -1892,7 +1892,7 @@ function EditSplitView({
                             value={layer.layerDesign}
                             onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
                             rows={2}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-medium focus:bg-white px-2 py-1.5 outline-none leading-relaxed transition-all resize-none"
+                            className="w-full bg-transparent border-none text-[10px] text-black font-medium focus:bg-white px-2 py-1.5 outline-none leading-relaxed transition-all resize-none"
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
@@ -1900,7 +1900,7 @@ function EditSplitView({
                             type="text"
                             value={layer.timeFrom} 
                             onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[10px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '50px' }}
                           />
@@ -1910,7 +1910,7 @@ function EditSplitView({
                             type="text"
                             value={layer.timeTo} 
                             onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[10px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '50px' }}
                           />
@@ -1921,7 +1921,7 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationFrom} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                            className="bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[10px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
                             style={{ minWidth: '60px', width: '60px' }}
                           />
                         </td>
@@ -1931,19 +1931,19 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationTo} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                            className="bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[10px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
                             style={{ minWidth: '60px', width: '60px' }}
                           />
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[10px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[10px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-black text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[10px] font-black text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
-                            "inline-flex items-center px-1 py-0.5 rounded-full text-[7px] font-bold",
+                            "inline-flex items-center px-1 py-0.5 rounded-full text-[10px] font-bold",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                           )}>
                             {layer.speedMph.toFixed(2)}
