@@ -413,8 +413,8 @@ export default function App() {
     };
     checkGithubStatus();
 
-    // Periodic check every 30 seconds
-    const statusInterval = setInterval(checkGithubStatus, 30000);
+    // Periodic check every 5 minutes
+    const statusInterval = setInterval(checkGithubStatus, 300000);
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
@@ -455,9 +455,12 @@ export default function App() {
     };
   }, []);
 
-  // Save history to localStorage whenever it changes
+  // Save history to localStorage với debounce 500ms tránh ghi liên tục
   useEffect(() => {
-    localStorage.setItem('pile_drill_history', JSON.stringify(history));
+    const timer = setTimeout(() => {
+      localStorage.setItem('pile_drill_history', JSON.stringify(history));
+    }, 500);
+    return () => clearTimeout(timer);
   }, [history]);
 
   // Bấm Esc để đóng modal/overlay theo thứ tự ưu tiên
@@ -581,6 +584,8 @@ export default function App() {
     setIsProcessing(true);
     setError(null);
 
+    const collectedResults: ExtractionResult[] = [];
+
     const processFile = async (pFile: ProcessingFile, file: File) => {
       setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
 
@@ -650,15 +655,10 @@ export default function App() {
           _mimeType: mimeType,
         };
 
-        // KHÔNG upload GitHub hay lưu Supabase ở đây
-        // Chờ người dùng xác nhận bấm "Lưu dữ liệu"
-
+        // Tự động lưu ngay sau khi quét xong
+        collectedResults.push(result);
         setPendingResults(prev => [result, ...prev]);
         setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
-        
-        if (files.length === 1) {
-          setCurrentResult(result);
-        }
 
       } catch (err: any) {
         console.error(err);
@@ -671,8 +671,19 @@ export default function App() {
       await processFile(newFiles[i], Array.from(files)[i]);
     }
 
+    // Tự động lưu tất cả kết quả đã quét và chuyển về bảng dữ liệu
     setIsProcessing(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (collectedResults.length > 0) {
+      for (const r of collectedResults) {
+        await saveResult(r);
+      }
+      setPendingResults([]);
+      setProcessingFiles([]);
+      setCurrentResult(null);
+      setActiveSheet('summary');
+    }
   };
 
   const removeProcessingFile = (id: string) => {
@@ -769,74 +780,55 @@ export default function App() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa?\n\nDữ liệu trên Supabase và file trên GitHub sẽ bị xóa vĩnh viễn.")) return;
 
     const itemToDelete = history.find(item => item.id === id);
 
-    // 1. Xóa Supabase
-    if (supabase) {
-      try {
-        const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
-        if (error) throw error;
-      } catch (e: any) {
-        alert("❌ Lỗi khi xóa dữ liệu trên Supabase: " + (e?.message || e));
-        return;
-      }
-    }
-
-    // 2. Xóa file GitHub - gọi thẳng GitHub API từ frontend
-    if (itemToDelete?.fileUrl) {
-      try {
-        const creds = githubCreds;
-        if (!creds?.token || !creds?.username) {
-          console.warn("GitHub credentials not available, skipping file delete");
-        } else {
-          const { token, username, repo } = creds;
-          const decodedUrl = decodeURIComponent(itemToDelete.fileUrl);
-          let path = '';
-          const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)/);
-          if (match) path = match[1];
-
-          if (path) {
-            const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-              headers: {
-                'Authorization': `token ${token}`,
-                'Accept': 'application/vnd.github.v3+json'
-              }
-            });
-
-            if (getRes.ok) {
-              const fileData = await getRes.json();
-              const delRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `token ${token}`,
-                  'Accept': 'application/vnd.github.v3+json',
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  message: `Delete construction report: ${path}`,
-                  sha: fileData.sha
-                })
-              });
-              if (!delRes.ok) {
-                const err = await delRes.json();
-                alert("⚠️ Đã xóa Supabase, nhưng xóa file GitHub thất bại: " + (err?.message || "Lỗi không xác định"));
-              }
-            } else {
-              console.warn("File not found on GitHub, possibly already deleted");
-            }
-          }
-        }
-      } catch (e: any) {
-        alert("⚠️ Đã xóa Supabase, nhưng lỗi khi xóa file GitHub: " + (e?.message || e));
-      }
-    }
-
-    // 3. Cập nhật UI
+    // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
     setHistory(prev => prev.filter(item => item.id !== id));
     if (currentResult?.id === id) setCurrentResult(null);
+
+    // Gọi API ngầm (không chặn UI)
+    (async () => {
+      // 1. Xóa Supabase
+      if (supabase) {
+        try {
+          const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
+          if (error) console.error("Lỗi xóa Supabase:", error.message);
+        } catch (e: any) {
+          console.error("Lỗi kết nối Supabase:", e?.message);
+        }
+      }
+
+      // 2. Xóa file GitHub
+      if (itemToDelete?.fileUrl) {
+        try {
+          const creds = githubCreds;
+          if (creds?.token && creds?.username) {
+            const { token, username, repo } = creds;
+            const decodedUrl = decodeURIComponent(itemToDelete.fileUrl);
+            const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)/);
+            const path = match?.[1];
+            if (path) {
+              const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+              });
+              if (getRes.ok) {
+                const fileData = await getRes.json();
+                await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+                  method: 'DELETE',
+                  headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ message: `Delete construction report: ${path}`, sha: fileData.sha })
+                });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error("Lỗi xóa GitHub:", e?.message);
+        }
+      }
+    })();
   };
 
   const handleEdit = (result: ExtractionResult) => {
@@ -844,24 +836,18 @@ export default function App() {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveEdit = async (updatedResult: ExtractionResult) => {
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from('drill_extractions')
-          .update(updatedResult)
-          .eq('id', updatedResult.id);
-        if (error) throw error;
-      } catch (e) {
-        console.error("Failed to update Supabase", e);
-        alert("Lỗi khi cập nhật dữ liệu");
-        return;
-      }
-    }
-
+  const handleSaveEdit = (updatedResult: ExtractionResult) => {
+    // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
     setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
     setIsEditModalOpen(false);
     setEditingResult(null);
+
+    // Gọi API ngầm (không chặn UI)
+    if (supabase) {
+      supabase.from('drill_extractions').update(updatedResult).eq('id', updatedResult.id)
+        .then(({ error }) => { if (error) console.error("Lỗi cập nhật Supabase:", error.message); })
+        .catch(e => console.error("Lỗi kết nối Supabase:", e?.message));
+    }
   };
 
   return (
@@ -951,18 +937,18 @@ export default function App() {
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
+          <div className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                <Construction className="text-white w-4 h-4" />
+                <Construction className="text-white w-5 h-5" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-[15px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[8px] text-blue-300 font-bold uppercase tracking-[0.2em] mt-0.5">
+            <h1 className="text-[18px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[9px] text-blue-300 font-bold uppercase tracking-[0.2em] mt-0.5">
               Construction Management
             </p>
           </div>
@@ -1005,7 +991,7 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <Loader2 className={cn("w-4 h-4 text-blue-400", isProcessing && "animate-spin")} />
                       <span className="text-[11px] font-black text-white uppercase tracking-widest">
-                        Tiến trình ({processingFiles.filter(f => f.status !== 'completed').length + pendingResults.length})
+                        Tiến trình ({processingFiles.filter(f => f.status !== 'completed').length})
                       </span>
                     </div>
                   </div>
@@ -1066,52 +1052,13 @@ export default function App() {
                     ))}
 
                     {/* Pending results chưa lưu */}
-                    {pendingResults.map((result) => (
-                      <div
-                        key={result.id}
-                        onClick={() => setCurrentResult(result)}
-                        className={cn(
-                          "p-3 rounded-xl cursor-pointer transition-all group relative",
-                          currentResult?.id === result.id
-                            ? "bg-orange-500"
-                            : "bg-blue-900/60 hover:bg-blue-900"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center flex-shrink-0">
-                            <AlertCircle size={14} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-white truncate">{result.pileId || result.fileName}</p>
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); cancelResult(result.id); }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-blue-500 hover:text-red-400 transition-all"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {/* Pending results đã được tự động lưu, không cần hiển thị */}
+
                   </div>
 
                   {/* Footer cột trái */}
                   <div className="p-3 border-t border-blue-900/70 space-y-2">
-                    {/* Nút Lưu tất cả - chỉ hiện khi có pending results */}
-                    {pendingResults.length > 0 && processingFiles.every(f => f.status === 'completed' || f.status === 'error') && (
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm(`Lưu tất cả ${pendingResults.length} kết quả?\n\nFile sẽ được upload GitHub và dữ liệu lưu Supabase.`)) return;
-                          for (const r of [...pendingResults]) {
-                            await saveResult(r);
-                          }
-                        }}
-                        className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
-                      >
-                        <Save size={12} />
-                        Lưu tất cả ({pendingResults.length})
-                      </button>
-                    )}
+                    {/* Nút Lưu tất cả đã bị thay bằng auto-save */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
