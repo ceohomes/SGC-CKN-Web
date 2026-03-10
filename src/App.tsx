@@ -1695,6 +1695,24 @@ function EditSplitView({
 
   const handleMouseUp = () => setIsDragging(false);
 
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setZoom(prev => Math.min(Math.max(prev + delta, 0.3), 5));
+  };
+
+  const [transformOrigin, setTransformOrigin] = useState('top center');
+
+  const handleWheelWithOrigin = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setTransformOrigin(`${x}% ${y}%`);
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setZoom(prev => Math.min(Math.max(prev + delta, 0.3), 5));
+  };
+
   const updateField = (field: keyof ExtractionResult, value: string) => {
     setData(prev => ({ ...prev, [field]: value }));
   };
@@ -1864,16 +1882,16 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
-                      <th className="px-2 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
-                      <th className="px-1 py-2 text-center text-[11px] font-black text-black uppercase tracking-wider"></th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
+                      <th className="px-1 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1883,7 +1901,7 @@ function EditSplitView({
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-blue-700 font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[12px] text-blue-700 font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all"
                             placeholder="..."
                           />
                         </td>
@@ -1892,7 +1910,7 @@ function EditSplitView({
                             value={layer.layerDesign}
                             onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
                             rows={2}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none leading-relaxed transition-all resize-none"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none leading-relaxed transition-all resize-none"
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
@@ -1900,7 +1918,7 @@ function EditSplitView({
                             type="text"
                             value={layer.timeFrom} 
                             onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
@@ -1910,7 +1928,7 @@ function EditSplitView({
                             type="text"
                             value={layer.timeTo} 
                             onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[11px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
@@ -1921,7 +1939,7 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationFrom} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                            className="bg-transparent border-none text-[11px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
@@ -1931,19 +1949,19 @@ function EditSplitView({
                             step="0.1"
                             value={layer.elevationTo} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                            className="bg-transparent border-none text-[11px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="px-2 py-1.5 text-[11px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[11px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[11px] font-normal text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[12px] font-normal text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
-                            "inline-flex items-center px-1 py-0.5 rounded-full text-[11px] font-normal",
+                            "inline-flex items-center px-1 py-0.5 rounded-full text-[12px] font-normal",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                           )}>
                             {layer.speedMph.toFixed(2)}
@@ -1966,7 +1984,7 @@ function EditSplitView({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <label className="text-[12px] font-black text-slate-900 uppercase tracking-widest">Tóm tắt phân tích</label>
             <textarea 
               value={data.summary} 
               onChange={(e) => updateField('summary', e.target.value)}
@@ -1987,7 +2005,7 @@ function EditSplitView({
                   href={displayUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-slate-50 rounded-lg text-blue-900 text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-slate-200 flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-slate-50 rounded-lg text-blue-900 text-[12px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-slate-200 flex items-center gap-1.5"
                 >
                   <ExternalLink size={12} />
                   Mở tab mới
@@ -1995,7 +2013,7 @@ function EditSplitView({
                 <a 
                   href={displayUrl} 
                   download
-                  className="px-3 py-1.5 bg-slate-50 rounded-lg text-blue-900 text-[11px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all border border-slate-200 flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-slate-50 rounded-lg text-blue-900 text-[12px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all border border-slate-200 flex items-center gap-1.5"
                 >
                   <ArrowDownToLine size={12} />
                   Tải xuống
@@ -2007,14 +2025,14 @@ function EditSplitView({
                     <button onClick={() => setPageNumber(p => Math.max(1, p - 1))} disabled={pageNumber <= 1} className="p-1 text-blue-900 disabled:opacity-30 hover:text-blue-600">
                       <ChevronLeft size={14} />
                     </button>
-                    <span className="text-[11px] font-black text-blue-900">{pageNumber}/{numPages}</span>
+                    <span className="text-[12px] font-black text-blue-900">{pageNumber}/{numPages}</span>
                     <button onClick={() => setPageNumber(p => Math.min(numPages, p + 1))} disabled={pageNumber >= numPages} className="p-1 text-blue-900 disabled:opacity-30 hover:text-blue-600">
                       <ChevronRight size={14} />
                     </button>
                   </div>
                 )}
                 <button onClick={handleZoomOut} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors" title="Thu nhỏ"><ZoomOutIcon size={14} /></button>
-                <span className="text-[11px] font-black text-blue-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                <span className="text-[12px] font-black text-blue-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
                 <button onClick={handleZoomIn} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors" title="Phóng to"><ZoomInIcon size={14} /></button>
                 <button onClick={handleResetZoom} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors ml-1" title="Đặt lại"><RotateCcw size={14} /></button>
               </div>
@@ -2031,18 +2049,18 @@ function EditSplitView({
               <AlertCircle size={48} className="opacity-50" />
               <div>
                 <p className="text-sm font-black uppercase tracking-widest">Lỗi tải tài liệu</p>
-                <p className="text-[11px] opacity-60 mt-1">{loadError}</p>
+                <p className="text-[12px] opacity-60 mt-1">{loadError}</p>
               </div>
               <button 
                 onClick={() => setDisplayUrl(displayUrl)} 
-                className="mt-4 px-6 py-2 bg-sky-50 hover:bg-sky-100 text-blue-900 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all"
+                className="mt-4 px-6 py-2 bg-sky-50 hover:bg-sky-100 text-blue-900 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all"
               >
                 Thử lại
               </button>
             </div>
           ) : displayUrl ? (
             isPdf ? (
-              <div className="w-full h-full bg-slate-100 overflow-auto flex justify-center custom-scrollbar">
+              <div className="w-full h-full bg-slate-100 overflow-auto flex justify-center custom-scrollbar" onWheel={handleWheel}>
                 <div 
                   className="bg-white shadow-lg origin-top transition-transform duration-200"
                   style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', width: '100%' }}
@@ -2074,6 +2092,7 @@ function EditSplitView({
             ) : (
               <div 
                 className="w-full h-full overflow-auto bg-slate-100 custom-scrollbar"
+                onWheel={handleWheelWithOrigin}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -2082,8 +2101,8 @@ function EditSplitView({
                 <div 
                   style={{ 
                     transform: `scale(${zoom})`,
-                    transformOrigin: 'top center',
-                    transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                    transformOrigin: transformOrigin,
+                    transition: isDragging ? 'none' : 'transform 0.15s ease-out'
                   }}
                 >
                   <img 
