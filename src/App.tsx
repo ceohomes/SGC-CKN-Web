@@ -1675,42 +1675,42 @@ function EditSplitView({
     loadFile();
   }, [data.fileUrl]);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 5));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5));
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 8));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.2));
   const handleResetZoom = () => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isPdf) return;
+    e.preventDefault();
     setIsDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || isPdf) return;
+    if (!isDragging) return;
     setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   };
 
   const handleMouseUp = () => setIsDragging(false);
 
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.15 : 0.15;
-    setZoom(prev => Math.min(Math.max(prev + delta, 0.3), 5));
-  };
-
-  const [transformOrigin, setTransformOrigin] = useState('top center');
-
-  const handleWheelWithOrigin = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
+    const scaleFactor = e.deltaY > 0 ? 0.88 : 1.12;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setTransformOrigin(`${x}% ${y}%`);
-    const delta = e.deltaY > 0 ? -0.15 : 0.15;
-    setZoom(prev => Math.min(Math.max(prev + delta, 0.3), 5));
+    // Vị trí con trỏ trong container
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    setZoom(prev => {
+      const newZoom = Math.min(Math.max(prev * scaleFactor, 0.2), 8);
+      // Điều chỉnh position để zoom tại vị trí con trỏ
+      setPosition(pos => ({
+        x: mouseX - (mouseX - pos.x) * (newZoom / prev),
+        y: mouseY - (mouseY - pos.y) * (newZoom / prev),
+      }));
+      return newZoom;
+    });
   };
 
   const updateField = (field: keyof ExtractionResult, value: string) => {
@@ -2091,8 +2091,9 @@ function EditSplitView({
               </div>
             ) : (
               <div 
-                className="w-full h-full overflow-auto bg-slate-100 custom-scrollbar"
-                onWheel={handleWheelWithOrigin}
+                className="w-full h-full bg-slate-100 relative"
+                style={{ overflow: 'hidden', cursor: isDragging ? 'grabbing' : 'grab' }}
+                onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -2100,9 +2101,13 @@ function EditSplitView({
               >
                 <div 
                   style={{ 
-                    transform: `scale(${zoom})`,
-                    transformOrigin: transformOrigin,
-                    transition: isDragging ? 'none' : 'transform 0.15s ease-out'
+                    position: 'absolute',
+                    top: 0, left: 0,
+                    transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+                    transformOrigin: '0 0',
+                    transition: isDragging ? 'none' : 'transform 0.05s ease-out',
+                    userSelect: 'none',
+                    width: '100%',
                   }}
                 >
                   <img 
