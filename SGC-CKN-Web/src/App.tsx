@@ -262,6 +262,9 @@ export default function App() {
   const [isGithubConnected, setIsGithubConnected] = useState<boolean>(false);
   const [isConnectingGithub, setIsConnectingGithub] = useState<boolean>(false);
   const [githubCreds, setGithubCreds] = useState<{token: string, username: string, repo: string} | null>(null);
+  const [githubTokenInput, setGithubTokenInput] = useState('');
+  const [githubUsernameInput, setGithubUsernameInput] = useState('');
+  const [githubRepoInput, setGithubRepoInput] = useState('construction-reports');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -342,6 +345,9 @@ export default function App() {
             const repo = data.find((s: any) => s.id === 'github_repo')?.value || 'construction-reports';
             if (token && username) {
               setGithubCreds({ token, username, repo });
+              setGithubTokenInput(token);
+              setGithubUsernameInput(username);
+              setGithubRepoInput(repo);
               setIsGithubConnected(true);
               return;
             }
@@ -470,20 +476,23 @@ export default function App() {
   };
 
   const connectGithub = async () => {
-    const token = prompt("Nhập GitHub Personal Access Token (cần quyền 'repo'):");
-    if (!token) return;
-    const username = prompt("Nhập GitHub Username:");
-    if (!username) return;
-    const repo = prompt("Nhập tên Repository (mặc định: construction-reports):") || "construction-reports";
+    const token = githubTokenInput.trim();
+    const username = githubUsernameInput.trim();
+    const repo = githubRepoInput.trim() || 'construction-reports';
+
+    if (!token || !username) {
+      alert("Vui lòng nhập đầy đủ GitHub Token và Username.");
+      return;
+    }
 
     if (supabase) {
       try {
         await supabase.from('app_settings').upsert([
-          { id: 'github_token', value: token.trim(), updated_at: new Date().toISOString() },
-          { id: 'github_username', value: username.trim(), updated_at: new Date().toISOString() },
-          { id: 'github_repo', value: repo.trim(), updated_at: new Date().toISOString() },
+          { id: 'github_token', value: token, updated_at: new Date().toISOString() },
+          { id: 'github_username', value: username, updated_at: new Date().toISOString() },
+          { id: 'github_repo', value: repo, updated_at: new Date().toISOString() },
         ]);
-        setGithubCreds({ token: token.trim(), username: username.trim(), repo: repo.trim() });
+        setGithubCreds({ token, username, repo });
         setIsGithubConnected(true);
         alert("✅ Đã kết nối GitHub thành công!");
       } catch (e: any) {
@@ -1264,8 +1273,8 @@ export default function App() {
 
                 <div className="space-y-3">
                   <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
-                  <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                  <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 space-y-3">
+                    <div className="flex items-center gap-3 mb-2">
                       <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-emerald-100 text-emerald-600" : "bg-sky-200 text-sky-400")}>
                         <Github size={18} />
                       </div>
@@ -1274,21 +1283,51 @@ export default function App() {
                           {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
                         </p>
                         <p className="text-[9px] text-sky-400 font-bold uppercase tracking-widest leading-none mt-1">
-                          {isGithubConnected ? "Tự động đồng bộ" : "Cấu hình để đồng bộ"}
+                          {isGithubConnected ? "Đang đồng bộ tự động" : "Điền thông tin để đồng bộ"}
                         </p>
                       </div>
                     </div>
-                    <button 
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Personal Access Token</label>
+                      <input
+                        type="password"
+                        value={githubTokenInput}
+                        onChange={(e) => setGithubTokenInput(e.target.value)}
+                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">GitHub Username</label>
+                      <input
+                        type="text"
+                        value={githubUsernameInput}
+                        onChange={(e) => setGithubUsernameInput(e.target.value)}
+                        placeholder="username"
+                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Repository Name</label>
+                      <input
+                        type="text"
+                        value={githubRepoInput}
+                        onChange={(e) => setGithubRepoInput(e.target.value)}
+                        placeholder="construction-reports"
+                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
+                      />
+                    </div>
+                    <button
                       onClick={connectGithub}
                       disabled={isConnectingGithub}
                       className={cn(
-                        "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-                        isGithubConnected 
-                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" 
+                        "w-full py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all",
+                        isGithubConnected
+                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
                           : "bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-100"
                       )}
                     >
-                      {isConnectingGithub ? "..." : isGithubConnected ? "Active" : "Connect"}
+                      {isConnectingGithub ? "Đang lưu..." : isGithubConnected ? "✓ Cập nhật kết nối" : "Lưu & kết nối"}
                     </button>
                   </div>
                 </div>
