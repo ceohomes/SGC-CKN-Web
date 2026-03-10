@@ -1639,6 +1639,17 @@ function EditSplitView({
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
 
+  // Helper: chuyển GitHub download_url hoặc API URL sang raw URL để tránh CORS
+  const toRawGithubUrl = (url: string): string => {
+    if (!url) return url;
+    if (url.includes('raw.githubusercontent.com')) return url;
+    const apiMatch = url.match(/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/contents\/(.+?)(\?|$)/);
+    if (apiMatch) return `https://raw.githubusercontent.com/${apiMatch[1]}/${apiMatch[2]}/main/${apiMatch[3]}`;
+    const blobMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)/);
+    if (blobMatch) return `https://raw.githubusercontent.com/${blobMatch[1]}/${blobMatch[2]}/${blobMatch[3]}/${blobMatch[4]}`;
+    return url;
+  };
+
   useEffect(() => {
     async function loadFile() {
       if (!data.fileUrl) {
@@ -1742,21 +1753,8 @@ function EditSplitView({
     setData(prev => ({ ...prev, layers: newLayers }));
   };
 
-  // Helper: chuyển GitHub download_url hoặc API URL sang raw URL để tránh CORS
-  const toRawGithubUrl = (url: string): string => {
-    if (!url) return url;
-    // Nếu đã là raw URL thì giữ nguyên
-    if (url.includes('raw.githubusercontent.com')) return url;
-    // Chuyển api.github.com/repos/USER/REPO/contents/PATH -> raw.githubusercontent.com/USER/REPO/main/PATH
-    const apiMatch = url.match(/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/contents\/(.+?)(\?|$)/);
-    if (apiMatch) return `https://raw.githubusercontent.com/${apiMatch[1]}/${apiMatch[2]}/main/${apiMatch[3]}`;
-    // Chuyển github.com/USER/REPO/blob/BRANCH/PATH -> raw.githubusercontent.com
-    const blobMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)/);
-    if (blobMatch) return `https://raw.githubusercontent.com/${blobMatch[1]}/${blobMatch[2]}/${blobMatch[3]}/${blobMatch[4]}`;
-    return url;
-  };
 
-
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setPageNumber(1);
   };
