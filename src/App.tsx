@@ -1534,9 +1534,12 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
       </div>
       </div>
+      )}
     </div>
   );
-} 
+}
+
+function SummaryView({ 
   history, 
   onSelectResult, 
   onEdit, 
