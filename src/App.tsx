@@ -419,16 +419,25 @@ export default function App() {
     localStorage.setItem('pile_drill_history', JSON.stringify(history));
   }, [history]);
 
-  // Bấm Esc để đóng file đang xem
+  // Bấm Esc để đóng modal/overlay theo thứ tự ưu tiên
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && currentResult) {
+      if (e.key !== 'Escape') return;
+      // Ưu tiên: EditModal > Settings > currentResult > Sidebar
+      if (isEditModalOpen) {
+        setIsEditModalOpen(false);
+        setEditingResult(null);
+      } else if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (currentResult) {
         setCurrentResult(null);
+      } else if (isSidebarOpen) {
+        setIsSidebarOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentResult]);
+  }, [isEditModalOpen, isSettingsOpen, currentResult, isSidebarOpen]);
 
   const saveApiKey = async (key: string) => {
     setUserApiKey(key);
@@ -1033,7 +1042,6 @@ export default function App() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-white truncate">{result.pileId || result.fileName}</p>
-                            <p className="text-[10px] text-orange-300 font-medium mt-0.5">Chờ kiểm duyệt</p>
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); cancelResult(result.id); }}
@@ -1095,13 +1103,21 @@ export default function App() {
                             {currentResult.fileName || currentResult.pileId}
                           </h3>
                         </div>
-                        {pendingResults.some(r => r.id === currentResult.id) && (
+                        {pendingResults.some(r => r.id === currentResult.id) ? (
                           <button
                             onClick={() => saveResult(currentResult)}
                             className="px-6 py-2.5 bg-white text-blue-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
                           >
                             <Save size={14} />
                             Lưu dữ liệu
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setCurrentResult(null)}
+                            className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/20 flex items-center gap-2"
+                          >
+                            <X size={14} />
+                            Thoát
                           </button>
                         )}
                       </div>
@@ -1798,6 +1814,16 @@ function EditSplitView({
       window.removeEventListener('mouseup', onUp);
     };
   }, []);
+
+  // ESC để đóng khi là full-screen modal (không phải embedded)
+  useEffect(() => {
+    if (embedded) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [embedded, onClose]);
 
   // Helper: chuyển GitHub download_url hoặc API URL sang raw URL để tránh CORS
   const toRawGithubUrl = (url: string): string => {
