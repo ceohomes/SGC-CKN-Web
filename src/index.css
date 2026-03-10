@@ -36,21 +36,21 @@
 
   /* Professional Table Styles */
   .pro-table {
-    @apply w-full border-collapse border border-sky-200;
+    @apply w-full border-collapse border border-slate-300;
   }
   .pro-table thead tr {
-    @apply bg-sky-100 border-b border-sky-200;
+    @apply bg-slate-100 border-b border-slate-300;
   }
   .pro-table th {
-    @apply px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-sky-700 text-left border-r border-sky-200 last:border-r-0;
+    @apply px-6 py-5 text-[13px] font-black uppercase tracking-widest text-blue-900 text-center border-r border-slate-300 last:border-r-0;
   }
   .pro-table td {
-    @apply px-6 py-4 text-sm text-slate-600 border-b border-sky-200 border-r border-sky-200 last:border-r-0;
+    @apply px-6 py-4 text-[13px] text-black border-b border-slate-300 border-r border-slate-300 last:border-r-0;
   }
   
   /* Modern Card */
   .modern-card {
-    @apply bg-white border border-sky-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300;
+    @apply bg-white border border-slate-300 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300;
   }
   
   /* Glass Effect */

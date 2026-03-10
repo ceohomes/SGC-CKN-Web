@@ -64,7 +64,7 @@ interface DrillLayer {
   timeTo: string;
   elevationFrom: number;
   elevationTo: number;
-  geologyType: string;
+  actualGeology: string;
   durationHours: number;
   lengthMeters: number;
   speedMph: number;
@@ -147,7 +147,7 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
                - timeTo: Giờ kết thúc khoan (định dạng HH:mm).
                - elevationFrom: Cao độ bắt đầu.
                - elevationTo: Cao độ kết thúc.
-               - geologyType: Địa chất thực tế.
+               - actualGeology: Địa chất thực tế (ví dụ: 1(1), 1(2)...).
             
             Lưu ý: Chỉ trích xuất số liệu thô. Trả về JSON.`
           },
@@ -183,9 +183,9 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
                 timeTo: { type: Type.STRING },
                 elevationFrom: { type: Type.NUMBER },
                 elevationTo: { type: Type.NUMBER },
-                geologyType: { type: Type.STRING }
+                actualGeology: { type: Type.STRING }
               },
-              required: ["layerNumber", "layerDesign", "timeFrom", "timeTo", "elevationFrom", "elevationTo", "geologyType"]
+              required: ["layerNumber", "layerDesign", "timeFrom", "timeTo", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
           summary: { type: Type.STRING }
@@ -815,47 +815,47 @@ export default function App() {
       </aside>
 
       {/* Header */}
-      <header className="bg-white border-b border-sky-200 px-8 py-4 flex items-center justify-between sticky top-0 z-30 shadow-sm backdrop-blur-md bg-white/90">
+      <header className="bg-blue-900 border-b border-blue-800 px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[80px]">
         <div 
-          className="flex items-center gap-4 cursor-pointer group"
+          className="flex items-center gap-6 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform border border-sky-200">
+          <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border-2 border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                <Construction className="text-white w-5 h-5" />
+                <Construction className="text-white w-10 h-10" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-blue-900 uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[9px] text-sky-400 font-bold uppercase tracking-[0.15em] mt-1">
+            <h1 className="text-[24px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[12px] text-blue-300 font-bold uppercase tracking-[0.25em] mt-2">
               Construction Management
             </p>
           </div>
-          <div className="ml-2 p-1.5 bg-sky-50 rounded-lg text-sky-400 group-hover:text-blue-600 transition-colors">
-            <Menu size={16} />
+          <div className="ml-3 p-2.5 bg-white/10 rounded-xl text-blue-300 group-hover:text-white transition-colors">
+            <Menu size={24} />
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
           {activeSheet === 'upload' && (
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="bg-orange-500 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-all flex items-center gap-2 shadow-lg shadow-orange-100 uppercase tracking-widest"
+              className="bg-orange-500 text-white px-8 py-3.5 rounded-2xl text-sm font-black hover:bg-orange-600 transition-all flex items-center gap-3 shadow-xl shadow-orange-900/40 uppercase tracking-widest border-2 border-orange-400/20"
             >
-              <Upload size={14} />
-              Quét biên bản
+              <Upload size={20} />
+              Up Nhật ký thi công
             </button>
           )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2.5 bg-white border border-sky-200 text-sky-600 rounded-xl hover:bg-sky-50 transition-all shadow-sm"
+            className="p-3 bg-white/10 border border-white/10 text-white rounded-2xl hover:bg-white/20 transition-all shadow-sm"
           >
-            <Settings size={18} />
+            <Settings size={22} />
           </button>
         </div>
       </header>
@@ -864,7 +864,7 @@ export default function App() {
 
       <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
-          <div className="max-w-6xl mx-auto space-y-12">
+          <div className="w-full space-y-12">
             {/* Processing Queue */}
             {processingFiles.length > 0 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1025,8 +1025,8 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <h3 className="text-xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
-                      <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+                    <h3 className="text-[18px] font-black text-blue-900 tracking-tight flex items-center gap-3 uppercase">
+                      <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
                       Dữ liệu thi công mới nhất
                     </h3>
                     {isGithubConnected ? (
@@ -1062,19 +1062,19 @@ export default function App() {
                           <th>Bắt đầu</th>
                           <th>Kết thúc</th>
                           <th>Tập tin</th>
-                          <th className="text-right">Thao tác</th>
+                          <th className="text-center">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody className="">
                         {history.slice(0, 10).map((item) => (
                           <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
                             <td className="font-bold text-blue-900">{item.project}</td>
-                            <td className="text-slate-600">{item.item}</td>
-                            <td className="text-slate-600">{item.componentName}</td>
+                            <td className="text-slate-900 font-medium">{item.item}</td>
+                            <td className="text-slate-900 font-medium">{item.componentName}</td>
                             <td className="font-bold text-blue-900">{item.pileId}</td>
-                            <td className="font-medium text-slate-600">{item.diameter}</td>
-                            <td className="text-slate-500">{item.constructionStart}</td>
-                            <td className="text-slate-500">{item.constructionEnd}</td>
+                            <td className="font-bold text-slate-900">{item.diameter}</td>
+                            <td className="text-slate-900 font-medium">{item.constructionStart}</td>
+                            <td className="text-slate-900 font-medium">{item.constructionEnd}</td>
                             <td>
                               {item.fileUrl ? (
                                 <a 
@@ -1242,7 +1242,7 @@ export default function App() {
         </div>
       )}
 
-      <footer className="bg-sky-50 border-t border-sky-200 px-8 py-8 text-center mt-auto">
+      <footer className="bg-sky-50 border-t border-sky-200 px-8 py-4 text-center mt-auto">
         <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
           Hệ thống SGC - CKN • Giải pháp dữ liệu xây dựng
         </p>
@@ -1309,65 +1309,67 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
 
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
-            <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+          <h3 className="text-[18px] font-black text-black tracking-tight flex items-center gap-3 uppercase">
+            <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
             Chi tiết các lớp địa chất
           </h3>
-          <p className="text-xs text-sky-400 font-medium ml-4">Thông số kỹ thuật trích xuất từ biên bản</p>
+          <p className="text-xs text-slate-900 font-medium ml-4">Thông số kỹ thuật trích xuất từ biên bản</p>
         </div>
         <div className="flex gap-2">
-          <div className="px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-sky-100">
+          <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
             {result.layers.length} Lớp
           </div>
-          <div className="px-3 py-1.5 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-sky-100">
+          <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
             TB: {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)} m/h
           </div>
         </div>
       </div>
 
-      <div className="modern-card overflow-hidden">
+      <div className="modern-card overflow-hidden border border-slate-300 shadow-sm">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="pro-table min-w-[2000px]">
+          <table className="w-full border-collapse table-fixed min-w-[1500px]">
             <thead>
-              <tr>
-                <th className="sticky left-0 bg-sky-100 z-10">Dự án</th>
-                <th>Hạng mục</th>
-                <th>Tên bộ phận</th>
-                <th>Số hiệu cọc</th>
-                <th>Đường kính</th>
-                <th>Bắt đầu thi công</th>
-                <th>Kết thúc thi công</th>
-                <th>Lớp thiết kế</th>
-                <th>Bắt đầu khoan</th>
-                <th>Kết thúc khoan</th>
-                <th className="text-center">Thời gian (h)</th>
-                <th className="text-center">Cao độ đầu</th>
-                <th className="text-center">Cao độ cuối</th>
-                <th className="text-center">Chiều dài (m)</th>
-                <th className="text-right">Tốc độ (m/h)</th>
+              <tr className="bg-slate-100 border-b border-slate-300">
+                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Hạng mục</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[150px]">Tên bộ phận</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Số hiệu</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Bắt đầu thi công</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Kết thúc thi công</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Địa chất thực tế</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[300px]">Lớp thiết kế</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Bắt đầu khoan</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Kết thúc khoan</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Thời gian</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đầu</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ cuối</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Chiều dài</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[120px]">Tốc độ (m/h)</th>
               </tr>
             </thead>
-            <tbody className="">
+            <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
-                <tr key={idx} className="hover:bg-sky-50/80 transition-colors group">
-                  <td className="sticky left-0 bg-white group-hover:bg-sky-50 z-10 font-bold text-blue-900">{layer.project}</td>
-                  <td className="text-slate-600">{layer.item}</td>
-                  <td className="text-blue-900 font-medium">{layer.componentName}</td>
-                  <td className="font-bold text-blue-900">{layer.pileId}</td>
-                  <td className="text-slate-600">{layer.diameter}</td>
-                  <td className="text-slate-500">{layer.constructionStart}</td>
-                  <td className="text-slate-500">{layer.constructionEnd}</td>
-                  <td className="text-slate-600 italic text-xs min-w-[300px] leading-relaxed">{layer.layerDesign}</td>
-                  <td className="font-bold text-blue-900">{layer.timeFrom}</td>
-                  <td className="font-bold text-blue-900">{layer.timeTo}</td>
-                  <td className="text-center font-bold text-blue-900 bg-sky-50/30">{layer.durationHours.toFixed(2)}</td>
-                  <td className="text-center text-slate-600">{layer.elevationFrom}</td>
-                  <td className="text-center text-slate-600">{layer.elevationTo}</td>
-                  <td className="text-center font-bold text-blue-900">{layer.lengthMeters.toFixed(2)}</td>
-                  <td className="text-right">
+                <tr key={idx} className="group hover:bg-slate-50 transition-colors">
+                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 font-bold text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
+                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.item}</td>
+                  <td className="text-black font-medium px-4 py-3 text-[11px] border-r border-slate-200">{layer.componentName}</td>
+                  <td className="font-bold text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.pileId}</td>
+                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.diameter}</td>
+                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionStart}</td>
+                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionEnd}</td>
+                  <td className="text-blue-700 font-bold px-4 py-3 text-[11px] border-r border-slate-200">{layer.actualGeology}</td>
+                  <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
+                  <td className="font-bold text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.timeFrom}</td>
+                  <td className="font-bold text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.timeTo}</td>
+                  <td className="text-center font-bold text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}h</td>
+                  <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationFrom}</td>
+                  <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
+                  <td className="text-center font-bold text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.lengthMeters.toFixed(2)}m</td>
+                  <td className="text-center px-4 py-3">
                     <span className={cn(
-                      "inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest",
-                      layer.speedMph > 5 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-orange-50 text-orange-600 border border-orange-100"
+                      "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold",
+                      layer.speedMph > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
                     )}>
                       {layer.speedMph.toFixed(2)}
                     </span>
@@ -1382,23 +1384,23 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="modern-card p-10 md:col-span-2 bg-blue-900 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32" />
-          <h4 className="text-sky-400 font-bold uppercase tracking-[0.3em] text-[10px] mb-6 flex items-center gap-2">
+          <h4 className="text-sky-300 font-bold uppercase tracking-[0.3em] text-[10px] mb-6 flex items-center gap-2">
             <Activity size={14} />
             Phân tích năng suất địa chất
           </h4>
-          <p className="text-blue-50 text-lg leading-relaxed font-medium italic relative z-10">
+          <p className="text-white text-lg leading-relaxed font-medium italic relative z-10">
             "{result.summary}"
           </p>
         </div>
         <div className="modern-card p-10 flex flex-col justify-center items-center text-center">
-          <h4 className="text-sky-400 font-bold uppercase tracking-widest text-[10px] mb-4">Tốc độ khoan trung bình</h4>
+          <h4 className="text-slate-900 font-bold uppercase tracking-widest text-[10px] mb-4">Tốc độ khoan trung bình</h4>
           <div className="flex items-baseline gap-2">
-            <span className="text-6xl font-bold text-blue-900 tracking-tighter">
+            <span className="text-6xl font-bold text-black tracking-tighter">
               {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)}
             </span>
-            <span className="text-sky-400 font-bold uppercase tracking-widest text-xs">m/h</span>
+            <span className="text-slate-900 font-bold uppercase tracking-widest text-xs">m/h</span>
           </div>
-          <div className="mt-8 w-full h-1.5 bg-sky-100 rounded-full overflow-hidden">
+          <div className="mt-8 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div 
               className="h-full bg-orange-500 transition-all duration-1000" 
               style={{ width: `${Math.min(100, (result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length) * 10)}%` }} 
@@ -1425,16 +1427,16 @@ function SummaryView({
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-2xl font-bold text-blue-900 tracking-tight flex items-center gap-3">
-            <div className="w-1.5 h-8 bg-orange-500 rounded-full" />
+          <h3 className="text-[18px] font-black text-black tracking-tight flex items-center gap-3 uppercase">
+            <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
             Tổng hợp dữ liệu thi công
           </h3>
-          <p className="text-xs text-sky-400 font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
+          <p className="text-xs text-slate-900 font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="bg-white border border-sky-200 rounded-2xl px-5 py-2.5 shadow-sm">
-            <p className="text-[9px] font-bold text-sky-400 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
-            <p className="text-xl font-bold text-blue-900">{history.length}</p>
+          <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
+            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
+            <p className="text-xl font-bold text-black">{history.length}</p>
           </div>
         </div>
       </div>
@@ -1457,58 +1459,58 @@ function SummaryView({
                     <th>Dự án</th>
                     <th>Hạng mục</th>
                     <th>Tên bộ phận</th>
-                    <th>Số hiệu cọc</th>
+                    <th>Số hiệu</th>
                     <th>Đường kính</th>
                     <th>Bắt đầu</th>
                     <th>Kết thúc</th>
                     <th>Tập tin</th>
-                    <th className="text-right">Thao tác</th>
+                    <th className="text-center">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="">
                   {history.map((item) => (
-                    <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
-                      <td className="font-bold text-blue-900">{item.project}</td>
-                      <td className="text-slate-600">{item.item}</td>
-                      <td className="text-slate-600">{item.componentName}</td>
-                      <td className="font-bold text-blue-900">{item.pileId}</td>
-                      <td className="font-medium text-slate-600">{item.diameter}</td>
-                      <td className="text-slate-500">{item.constructionStart}</td>
-                      <td className="text-slate-500">{item.constructionEnd}</td>
+                    <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="font-bold text-black">{item.project}</td>
+                      <td className="text-black">{item.item}</td>
+                      <td className="text-black">{item.componentName}</td>
+                      <td className="font-bold text-black">{item.pileId}</td>
+                      <td className="font-medium text-black">{item.diameter}</td>
+                      <td className="text-black">{item.constructionStart}</td>
+                      <td className="text-black">{item.constructionEnd}</td>
                       <td>
                         {item.fileUrl ? (
                           <a 
                             href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest transition-colors"
+                            className="flex items-center gap-1.5 text-blue-700 hover:text-blue-900 font-bold text-[10px] uppercase tracking-widest transition-colors"
                           >
                             <ExternalLink size={12} />
                             Xem
                           </a>
                         ) : (
-                          <span className="text-sky-200 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
+                          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
                         )}
                       </td>
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button 
                             onClick={() => onEdit(item)}
-                            className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
+                            className="p-2 bg-slate-50 text-black rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-300"
                             title="Chỉnh sửa"
                           >
                             <Edit2 size={14} />
                           </button>
                           <button 
                             onClick={() => onDelete(item.id)}
-                            className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-100"
+                            className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-200"
                             title="Xóa"
                           >
                             <Trash2 size={14} />
                           </button>
                           <button 
                             onClick={() => onSelectResult(item)}
-                            className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
+                            className="p-2 bg-slate-50 text-black rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-300"
                             title="Xem chi tiết"
                           >
                             <ChevronRight size={14} />
@@ -1531,15 +1533,15 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
   return (
     <div className="modern-card p-6 group">
       <div className="flex items-center justify-between mb-4">
-        <div className="p-2.5 bg-sky-50 rounded-xl group-hover:bg-sky-100 transition-colors">
+        <div className="p-2.5 bg-slate-50 rounded-xl group-hover:bg-slate-100 transition-colors">
           {icon}
         </div>
-        <div className="h-1 w-10 bg-sky-100 rounded-full overflow-hidden">
+        <div className="h-1 w-10 bg-slate-100 rounded-full overflow-hidden">
           <div className="h-full bg-orange-500 w-1/3 group-hover:w-full transition-all duration-700" />
         </div>
       </div>
-      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-sky-400 block mb-1">{title}</span>
-      <div className="text-xl font-bold text-blue-900 truncate" title={value}>
+      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-900 block mb-1">{title}</span>
+      <div className="text-xl font-bold text-black truncate" title={value}>
         {value || "---"}
       </div>
     </div>
@@ -1656,26 +1658,26 @@ function EditSplitView({
   return (
     <div className="fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300">
       {/* Header */}
-      <div className="h-16 bg-sky-50 border-b border-sky-100 flex items-center justify-between px-6 shrink-0">
+      <div className="h-16 bg-blue-900 border-b border-blue-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
-          <div className="bg-blue-600 p-2 rounded-lg text-white">
+          <div className="bg-white/20 p-2 rounded-lg text-white">
             <Edit2 size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-blue-900 uppercase tracking-tight">Chỉnh sửa dữ liệu: {data.pileId}</h3>
-            <p className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">{data.project}</p>
+            <h3 className="text-sm font-black text-white uppercase tracking-tight">CHI TIẾT BIÊN BẢN</h3>
+            <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest">{data.project}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-sky-100 text-sky-600 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-sky-200 transition-colors"
+            className="px-4 py-2 bg-white/10 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-colors border border-white/20"
           >
             Hủy bỏ
           </button>
           <button 
             onClick={() => onSave(data)}
-            className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20 flex items-center gap-2"
+            className="px-6 py-2 bg-white text-blue-900 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg shadow-blue-950/20 flex items-center gap-2"
           >
             <Save size={14} />
             Lưu thay đổi
@@ -1689,149 +1691,168 @@ function EditSplitView({
         <div className="w-1/2 border-r border-sky-100 bg-white overflow-y-auto p-8 space-y-8 custom-scrollbar">
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Dự án</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
               <input 
                 value={data.project} 
                 onChange={(e) => updateField('project', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Hạng mục</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
               <input 
                 value={data.item} 
                 onChange={(e) => updateField('item', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Tên bộ phận</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên bộ phận</label>
               <input 
                 value={data.componentName} 
                 onChange={(e) => updateField('componentName', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Số hiệu cọc</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Số hiệu cọc</label>
               <input 
                 value={data.pileId} 
                 onChange={(e) => updateField('pileId', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Đường kính</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
               <input 
                 value={data.diameter} 
                 onChange={(e) => updateField('diameter', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Bắt đầu thi công</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Kết thúc thi công</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
-                className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all"
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
+            <h4 className="text-xs font-black text-black uppercase tracking-widest flex items-center gap-2">
               <Layers size={14} />
               Chi tiết các lớp địa chất
             </h4>
-            <div className="overflow-x-auto border border-sky-100 rounded-xl custom-scrollbar">
-              <table className="pro-table min-w-[1200px]">
-                <thead>
-                  <tr>
-                    <th>Lớp thiết kế</th>
-                    <th>Từ (h)</th>
-                    <th>Đến (h)</th>
-                    <th>Cao độ từ</th>
-                    <th>Cao độ đến</th>
-                    <th>Thời gian (h)</th>
-                    <th>Chiều dài (m)</th>
-                    <th>Tốc độ (m/h)</th>
-                  </tr>
-                </thead>
-                <tbody className="">
-                  {data.layers.map((layer, idx) => (
-                    <tr key={idx} className="hover:bg-sky-50 transition-colors">
-                      <td className="p-0">
-                        <input 
-                          value={layer.layerDesign} 
-                          onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
-                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-medium focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
-                        />
-                      </td>
-                      <td className="p-0">
-                        <input 
-                          type="time"
-                          value={layer.timeFrom} 
-                          onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                          className="w-full h-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
-                        />
-                      </td>
-                      <td className="p-0">
-                        <input 
-                          type="time"
-                          value={layer.timeTo} 
-                          onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                          className="w-full h-full bg-transparent border-none text-xs text-blue-600 font-black focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none"
-                        />
-                      </td>
-                      <td className="p-0">
-                        <input 
-                          type="number"
-                          step="0.1"
-                          value={layer.elevationFrom} 
-                          onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-bold focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none text-center"
-                        />
-                      </td>
-                      <td className="p-0">
-                        <input 
-                          type="number"
-                          step="0.1"
-                          value={layer.elevationTo} 
-                          onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                          className="w-full h-full bg-transparent border-none text-xs text-blue-900 font-bold focus:ring-2 focus:ring-blue-500/20 px-4 py-3 outline-none text-center"
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-xs font-black text-sky-400 text-center bg-sky-50/50">
-                        {layer.durationHours.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-black text-sky-400 text-center bg-sky-50/50">
-                        {layer.lengthMeters.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-black text-emerald-600 text-center bg-emerald-50/30">
-                        {layer.speedMph.toFixed(2)}
-                      </td>
+            <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm bg-white">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full border-collapse table-fixed min-w-[1000px]">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300">
+                      <th className="w-[12%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Địa chất thực tế</th>
+                      <th className="w-[18%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
+                      <th className="w-[10%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Từ (h)</th>
+                      <th className="w-[10%] px-4 py-3 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Đến (h)</th>
+                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ từ</th>
+                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ đến</th>
+                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Thời gian</th>
+                      <th className="w-[10%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300">Chiều dài</th>
+                      <th className="w-[18%] px-4 py-3 text-center text-[12px] font-black text-black uppercase tracking-wider">Tốc độ (m/h)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {data.layers.map((layer, idx) => (
+                      <tr key={idx} className="group hover:bg-slate-50 transition-colors">
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            value={layer.actualGeology} 
+                            onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
+                            className="w-full bg-transparent border-none text-[11px] text-blue-700 font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                            placeholder="..."
+                          />
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <div 
+                            contentEditable
+                            suppressContentEditableWarning
+                            onBlur={(e) => updateLayer(idx, 'layerDesign', e.currentTarget.textContent || '')}
+                            className="w-full bg-transparent text-[11px] text-black font-medium focus:bg-white px-4 py-2 outline-none leading-relaxed transition-all whitespace-pre-wrap break-words"
+                          >
+                            {layer.layerDesign}
+                          </div>
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            type="time"
+                            value={layer.timeFrom} 
+                            onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
+                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                          />
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            type="time"
+                            value={layer.timeTo} 
+                            onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
+                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none transition-all"
+                          />
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            type="number"
+                            step="0.1"
+                            value={layer.elevationFrom} 
+                            onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
+                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
+                          />
+                        </td>
+                        <td className="p-0 border-r border-slate-200 align-top">
+                          <input 
+                            type="number"
+                            step="0.1"
+                            value={layer.elevationTo} 
+                            onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
+                            className="w-full bg-transparent border-none text-[11px] text-black font-bold focus:bg-white px-4 py-3 outline-none text-center transition-all"
+                          />
+                        </td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                          {layer.durationHours.toFixed(2)}h
+                        </td>
+                        <td className="px-4 py-4 text-[11px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                          {layer.lengthMeters.toFixed(2)}m
+                        </td>
+                        <td className="px-4 py-4 text-[11px] font-black text-center align-top bg-slate-50">
+                          <span className={cn(
+                            "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold",
+                            layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
+                          )}>
+                            {layer.speedMph.toFixed(2)} m/h
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Tóm tắt phân tích</label>
             <textarea 
               value={data.summary} 
               onChange={(e) => updateField('summary', e.target.value)}
               rows={4}
-              className="w-full bg-sky-50/50 border border-sky-100 rounded-xl px-4 py-3 text-sm text-blue-900 font-medium focus:border-blue-500 outline-none transition-all resize-none"
+              className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-medium focus:border-blue-500 outline-none transition-all resize-none shadow-sm"
             />
           </div>
         </div>
@@ -1907,7 +1928,7 @@ function EditSplitView({
             </div>
           ) : displayUrl ? (
             isPdf ? (
-              <div className="w-full h-full bg-sky-50/50 overflow-auto flex justify-center p-8 custom-scrollbar">
+              <div className="w-full h-full bg-white overflow-auto flex justify-center p-8 custom-scrollbar">
                 <div 
                   className="shadow-2xl bg-white origin-top transition-transform duration-200"
                   style={{ transform: `scale(${zoom})` }}
@@ -1937,7 +1958,7 @@ function EditSplitView({
               </div>
             ) : (
               <div 
-                className="w-full h-full flex items-center justify-center cursor-move bg-sky-50/50"
+                className="w-full h-full flex items-center justify-center cursor-move bg-white"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
