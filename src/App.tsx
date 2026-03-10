@@ -1926,8 +1926,28 @@ function EditSplitView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {data.layers.map((layer, idx) => (
-                      <tr key={idx} className="group hover:bg-slate-50 transition-colors">
+                    {(() => {
+                      // Tính màu nền theo nhóm actualGeology
+                      const groupColors = [
+                        'bg-white',
+                        'bg-blue-50',
+                        'bg-amber-50',
+                        'bg-green-50',
+                        'bg-purple-50',
+                        'bg-rose-50',
+                        'bg-cyan-50',
+                        'bg-orange-50',
+                        'bg-teal-50',
+                        'bg-indigo-50',
+                      ];
+                      const groupMap: Record<string, number> = {};
+                      let groupCount = 0;
+                      return data.layers.map((layer, idx) => {
+                        const key = layer.actualGeology?.trim() || '__empty__';
+                        if (!(key in groupMap)) { groupMap[key] = groupCount % groupColors.length; groupCount++; }
+                        const rowBg = groupColors[groupMap[key]];
+                        return (
+                      <tr key={idx} className={`group transition-colors ${rowBg} hover:opacity-90`}>
                         <td className="p-0 border-r border-slate-200 align-middle" style={{width:'70px'}}>
                           <input 
                             value={layer.actualGeology} 
@@ -2005,7 +2025,9 @@ function EditSplitView({
                         </td>
 
                       </tr>
-                    ))}
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
