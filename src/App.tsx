@@ -2122,7 +2122,7 @@ function EditSplitView({
               </div>
             ) : (
               <div 
-                className="w-full h-full bg-slate-100 relative"
+                className="w-full h-full bg-[#1e1e1e] relative"
                 style={{ overflow: 'hidden', cursor: isDragging ? 'grabbing' : 'grab' }}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
@@ -2130,40 +2130,46 @@ function EditSplitView({
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {/* Wrapper căn giữa */}
-                <div style={{
-                  position: 'absolute',
-                  top: '50%', left: '50%',
-                  transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  transition: isDragging ? 'none' : 'transform 0.05s ease-out',
-                  userSelect: 'none',
-                  width: '90%',
-                }}>
-                  <img 
-                    src={displayUrl} 
-                    alt="Tài liệu đã quét" 
-                    className="w-full h-auto block shadow-lg"
-                    draggable={false}
-                    crossOrigin="anonymous"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      console.error("Image load failed", e);
-                      fetch(displayUrl!)
-                        .then(res => {
-                          if (!res.ok) return res.text();
-                          return null;
-                        })
-                        .then(text => {
-                          if (text) setLoadError(text);
-                          else setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
-                        })
-                        .catch(() => {
-                          setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
-                        });
-                    }}
-                  />
-                </div>
+                <img 
+                  src={displayUrl} 
+                  alt="Tài liệu đã quét" 
+                  draggable={false}
+                  crossOrigin="anonymous"
+                  referrerPolicy="no-referrer"
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px)) scale(${zoom})`,
+                    transformOrigin: 'center center',
+                    transition: isDragging ? 'none' : 'transform 0.05s ease-out',
+                    userSelect: 'none',
+                    maxWidth: 'none',
+                    // Fit ảnh vừa khung khi zoom=1, giữ nguyên độ phân giải thực khi zoom>1
+                    width: 'auto',
+                    height: 'auto',
+                    maxHeight: '95%',
+                    objectFit: 'contain',
+                    imageRendering: zoom > 1.5 ? 'auto' : 'auto',
+                    boxShadow: '0 4px 32px rgba(0,0,0,0.5)',
+                  }}
+                  onLoad={(e) => {
+                    // Reset position khi ảnh mới load
+                    positionRef.current = { x: 0, y: 0 };
+                    setPosition({ x: 0, y: 0 });
+                    setZoom(1);
+                  }}
+                  onError={(e) => {
+                    console.error("Image load failed", e);
+                    fetch(displayUrl!)
+                      .then(res => { if (!res.ok) return res.text(); return null; })
+                      .then(text => {
+                        if (text) setLoadError(text);
+                        else setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                      })
+                      .catch(() => setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới."));
+                  }}
+                />
               </div>
             )
           ) : (
