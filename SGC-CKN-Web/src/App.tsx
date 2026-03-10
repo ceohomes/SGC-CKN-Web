@@ -261,6 +261,7 @@ export default function App() {
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [isGithubConnected, setIsGithubConnected] = useState<boolean>(false);
   const [isConnectingGithub, setIsConnectingGithub] = useState<boolean>(false);
+  const [githubCreds, setGithubCreds] = useState<{token: string, username: string, repo: string} | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -331,12 +332,26 @@ export default function App() {
     loadData();
 
     const checkGithubStatus = async () => {
-      // First check if environment variables are available directly (for static deployments)
-      if (process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME) {
-        setIsGithubConnected(true);
-        return;
+      // Ưu tiên đọc từ Supabase app_settings (hoạt động trên Cloudflare Pages)
+      if (supabase) {
+        try {
+          const { data } = await supabase.from('app_settings').select('*');
+          if (data) {
+            const token = data.find((s: any) => s.id === 'github_token')?.value || '';
+            const username = data.find((s: any) => s.id === 'github_username')?.value || '';
+            const repo = data.find((s: any) => s.id === 'github_repo')?.value || 'construction-reports';
+            if (token && username) {
+              setGithubCreds({ token, username, repo });
+              setIsGithubConnected(true);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load GitHub creds from Supabase", e);
+        }
       }
 
+      // Fallback: check server endpoint
       try {
         const res = await fetch('/api/auth/github/status');
         if (res.ok) {
@@ -455,15 +470,28 @@ export default function App() {
   };
 
   const connectGithub = async () => {
-    alert(`HƯỚNG DẪN KẾT NỐI GITHUB:
-1. Truy cập GitHub Settings > Developer Settings > Personal Access Tokens.
-2. Tạo Token mới (Classic hoặc Fine-grained) với quyền 'repo'.
-3. Mở bảng 'Secrets' trong AI Studio Build.
-4. Thêm các biến sau:
-   - GITHUB_TOKEN: (Token của bạn)
-   - GITHUB_USERNAME: (Tên người dùng GitHub)
-   - GITHUB_REPO: (Tên repository, mặc định: construction-reports)
-5. Khởi động lại Server nếu cần.`);
+    const token = prompt("Nhập GitHub Personal Access Token (cần quyền 'repo'):");
+    if (!token) return;
+    const username = prompt("Nhập GitHub Username:");
+    if (!username) return;
+    const repo = prompt("Nhập tên Repository (mặc định: construction-reports):") || "construction-reports";
+
+    if (supabase) {
+      try {
+        await supabase.from('app_settings').upsert([
+          { id: 'github_token', value: token.trim(), updated_at: new Date().toISOString() },
+          { id: 'github_username', value: username.trim(), updated_at: new Date().toISOString() },
+          { id: 'github_repo', value: repo.trim(), updated_at: new Date().toISOString() },
+        ]);
+        setGithubCreds({ token: token.trim(), username: username.trim(), repo: repo.trim() });
+        setIsGithubConnected(true);
+        alert("✅ Đã kết nối GitHub thành công!");
+      } catch (e: any) {
+        alert("❌ Lỗi lưu thông tin GitHub: " + (e?.message || e));
+      }
+    } else {
+      alert("❌ Cần kết nối Supabase trước để lưu thông tin GitHub.");
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -570,11 +598,9 @@ export default function App() {
               console.log("Backend upload failed, trying client-side fallback...");
             }
 
-            // Client-side fallback if backend failed but we have env vars
-            if (!uploadData && process.env.GITHUB_TOKEN && process.env.GITHUB_USERNAME) {
-              const token = process.env.GITHUB_TOKEN;
-              const username = process.env.GITHUB_USERNAME;
-              const repo = process.env.GITHUB_REPO || "construction-reports";
+            // Client-side fallback if backend failed but we have credentials
+            if (!uploadData && githubCreds) {
+              const { token, username, repo } = githubCreds;
               
               // Add timestamp to filename to avoid "File already exists" error
               const timestamp = new Date().getTime();
@@ -700,43 +726,64 @@ export default function App() {
     if (!window.confirm("Bạn có chắc chắn muốn xóa?\n\nDữ liệu trên Supabase và file trên GitHub sẽ bị xóa vĩnh viễn.")) return;
 
     const itemToDelete = history.find(item => item.id === id);
-    let supabaseOk = false;
-    let githubOk = true; // mặc định ok nếu không có file
 
     // 1. Xóa Supabase
     if (supabase) {
       try {
         const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
         if (error) throw error;
-        supabaseOk = true;
       } catch (e: any) {
-        console.error("Failed to delete from Supabase", e);
         alert("❌ Lỗi khi xóa dữ liệu trên Supabase: " + (e?.message || e));
         return;
       }
-    } else {
-      supabaseOk = true;
     }
 
-    // 2. Xóa file GitHub nếu có
-    if (itemToDelete?.fileUrl && isGithubConnected) {
-      githubOk = false;
+    // 2. Xóa file GitHub - gọi thẳng GitHub API từ frontend
+    if (itemToDelete?.fileUrl) {
       try {
-        const res = await fetch('/api/github/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileUrl: itemToDelete.fileUrl })
-        });
-        if (res.ok) {
-          githubOk = true;
+        const creds = githubCreds;
+        if (!creds?.token || !creds?.username) {
+          console.warn("GitHub credentials not available, skipping file delete");
         } else {
-          const err = await res.json();
-          console.error("GitHub delete failed:", err);
-          alert("⚠️ Đã xóa dữ liệu Supabase, nhưng xóa file GitHub thất bại:\n" + (err?.error || "Lỗi không xác định"));
+          const { token, username, repo } = creds;
+          const decodedUrl = decodeURIComponent(itemToDelete.fileUrl);
+          let path = '';
+          const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)/);
+          if (match) path = match[1];
+
+          if (path) {
+            const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+              headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+              }
+            });
+
+            if (getRes.ok) {
+              const fileData = await getRes.json();
+              const delRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `token ${token}`,
+                  'Accept': 'application/vnd.github.v3+json',
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  message: `Delete construction report: ${path}`,
+                  sha: fileData.sha
+                })
+              });
+              if (!delRes.ok) {
+                const err = await delRes.json();
+                alert("⚠️ Đã xóa Supabase, nhưng xóa file GitHub thất bại: " + (err?.message || "Lỗi không xác định"));
+              }
+            } else {
+              console.warn("File not found on GitHub, possibly already deleted");
+            }
+          }
         }
       } catch (e: any) {
-        console.error("Failed to delete from GitHub", e);
-        alert("⚠️ Đã xóa dữ liệu Supabase, nhưng không thể kết nối GitHub để xóa file.");
+        alert("⚠️ Đã xóa Supabase, nhưng lỗi khi xóa file GitHub: " + (e?.message || e));
       }
     }
 
