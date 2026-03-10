@@ -1917,8 +1917,8 @@ function EditSplitView({
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
+                      <th className="hidden" style={{width:'80px'}}>Cao độ từ</th>
+                      <th className="hidden" style={{width:'80px'}}>Cao độ đến</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
@@ -1989,7 +1989,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className="hidden border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
@@ -1999,7 +1999,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className="hidden border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
