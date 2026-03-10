@@ -1414,6 +1414,9 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
       )}
 
+      {/* Quick Stats + Detail - chỉ hiện sau khi đã lưu */}
+      {!(onSave || onCancel) && (
+      <div className="space-y-8">
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
@@ -1530,11 +1533,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           </div>
         </div>
       </div>
+      </div> {/* end !(onSave || onCancel) */}
     </div>
   );
-}
-
-function SummaryView({ 
+} 
   history, 
   onSelectResult, 
   onEdit, 
