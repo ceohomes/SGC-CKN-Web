@@ -2080,6 +2080,7 @@ function EditSplitView({
                   <thead>
                     <tr className="bg-blue-900 text-white">
                       <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">STT</th>
+                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Đường kính</th>
                       <th className="px-3 py-2 text-left text-[11px] font-black uppercase tracking-wider border-r border-blue-700" style={{minWidth:'220px'}}>Lớp Thiết Kế</th>
                       <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Số đoạn</th>
                       <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ từ (m)</th>
@@ -2091,18 +2092,6 @@ function EditSplitView({
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {(() => {
-                      // Gộp các dòng cùng layerDesign liên tiếp thành từng nhóm
-                      const groups: {
-                        layerDesign: string;
-                        segments: number;
-                        elevationFrom: number;
-                        elevationTo: number;
-                        totalDuration: number;
-                        totalLength: number;
-                        avgSpeed: number;
-                        colorIdx: number;
-                      }[] = [];
-
                       const groupColors = [
                         { row: 'bg-sky-200',     text: 'text-sky-900' },
                         { row: 'bg-amber-200',   text: 'text-amber-900' },
@@ -2118,9 +2107,24 @@ function EditSplitView({
                         { row: 'bg-indigo-200',  text: 'text-indigo-900' },
                       ];
 
-                      let colorCount = 0;
+                      // Dùng cùng logic màu với bảng chi tiết: đếm theo khối liên tiếp
+                      const groups: {
+                        layerDesign: string;
+                        segments: number;
+                        elevationFrom: number;
+                        elevationTo: number;
+                        totalDuration: number;
+                        totalLength: number;
+                        avgSpeed: number;
+                        colorIdx: number;
+                      }[] = [];
+
+                      let groupCount = 0;
+                      let prevKey = '';
                       data.layers.forEach((layer) => {
                         const key = layer.layerDesign?.trim() || '(Chưa có)';
+                        if (key !== prevKey) { groupCount++; prevKey = key; }
+                        const colorIdx = (groupCount - 1) % groupColors.length;
                         const last = groups[groups.length - 1];
                         if (last && last.layerDesign === key) {
                           last.segments += 1;
@@ -2136,22 +2140,21 @@ function EditSplitView({
                             totalDuration: layer.durationHours,
                             totalLength: layer.lengthMeters,
                             avgSpeed: 0,
-                            colorIdx: colorCount % groupColors.length,
+                            colorIdx,
                           });
-                          colorCount++;
                         }
                       });
 
-                      // Tính V TB = tổng dài / tổng thời gian
                       groups.forEach(g => {
                         g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0;
                       });
 
                       return groups.map((g, i) => {
-                        const { row: rowBg, text: rowText } = groupColors[g.colorIdx];
+                        const { row: rowBg } = groupColors[g.colorIdx];
                         return (
                           <tr key={i} className="hover:opacity-90 transition-colors">
                             <td className={`px-3 py-2 text-[11px] font-bold text-center border-r border-slate-200 ${rowBg}`}>{i + 1}</td>
+                            <td className={`px-3 py-2 text-[11px] text-black text-center border-r border-slate-200 ${rowBg}`}>{data.diameter}</td>
                             <td className={`px-3 py-2 text-[11px] font-medium border-r border-slate-200 ${rowBg} text-black`}>{g.layerDesign}</td>
                             <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
                             <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationFrom}</td>
@@ -2173,7 +2176,7 @@ function EditSplitView({
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-100 border-t-2 border-slate-400">
-                      <td colSpan={2} className="px-3 py-2 text-[11px] font-black text-black uppercase border-r border-slate-300">Tổng cộng</td>
+                      <td colSpan={3} className="px-3 py-2 text-[11px] font-black text-black uppercase border-r border-slate-300">Tổng cộng</td>
                       <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
                         {data.layers.length}
                       </td>
