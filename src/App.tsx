@@ -592,7 +592,9 @@ export default function App() {
 
               if (ghRes.ok) {
                 const ghData = await ghRes.json();
-                uploadData = { fileUrl: ghData.content.download_url };
+                // Dùng raw.githubusercontent.com để tránh CORS khi hiển thị trực tiếp
+                const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
+                uploadData = { fileUrl: rawUrl };
                 console.log("GitHub upload success:", uploadData.fileUrl);
               } else {
                 const errorData = await ghRes.json();
@@ -1089,7 +1091,7 @@ export default function App() {
                             <td>
                               {item.fileUrl ? (
                                 <a 
-                                  href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
+                                  href={item.fileUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest transition-colors"
@@ -1548,7 +1550,7 @@ function SummaryView({
                       <td>
                         {item.fileUrl ? (
                           <a 
-                            href={item.fileUrl.includes('github') ? `/api/proxy/github?url=${encodeURIComponent(item.fileUrl)}` : item.fileUrl} 
+                            href={item.fileUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="flex items-center gap-1.5 text-blue-700 hover:text-blue-900 font-bold text-[10px] uppercase tracking-widest transition-colors"
@@ -1653,13 +1655,9 @@ function EditSplitView({
       setLoadError(null);
       setIsLoading(true);
 
-      // If it's a GitHub URL, use our proxy directly as the source
-      if (url.includes('githubusercontent.com') || url.includes('github.com')) {
-        const proxyUrl = `/api/proxy/github?url=${encodeURIComponent(url)}`;
-        setDisplayUrl(proxyUrl);
-      } else {
-        setDisplayUrl(url);
-      }
+      // Raw githubusercontent URLs có thể load trực tiếp, không cần proxy
+      // Cloudflare Pages không hỗ trợ server-side proxy
+      setDisplayUrl(toRawGithubUrl(url));
       setIsLoading(false);
     }
 
@@ -1744,7 +1742,21 @@ function EditSplitView({
     setData(prev => ({ ...prev, layers: newLayers }));
   };
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+  // Helper: chuyển GitHub download_url hoặc API URL sang raw URL để tránh CORS
+  const toRawGithubUrl = (url: string): string => {
+    if (!url) return url;
+    // Nếu đã là raw URL thì giữ nguyên
+    if (url.includes('raw.githubusercontent.com')) return url;
+    // Chuyển api.github.com/repos/USER/REPO/contents/PATH -> raw.githubusercontent.com/USER/REPO/main/PATH
+    const apiMatch = url.match(/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/contents\/(.+?)(\?|$)/);
+    if (apiMatch) return `https://raw.githubusercontent.com/${apiMatch[1]}/${apiMatch[2]}/main/${apiMatch[3]}`;
+    // Chuyển github.com/USER/REPO/blob/BRANCH/PATH -> raw.githubusercontent.com
+    const blobMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)/);
+    if (blobMatch) return `https://raw.githubusercontent.com/${blobMatch[1]}/${blobMatch[2]}/${blobMatch[3]}/${blobMatch[4]}`;
+    return url;
+  };
+
+
     setNumPages(numPages);
     setPageNumber(1);
   };
@@ -2089,6 +2101,7 @@ function EditSplitView({
                     className="max-w-none shadow-2xl bg-white"
                     style={{ maxHeight: '90vh' }}
                     draggable={false}
+                    crossOrigin="anonymous"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       console.error("Image load failed", e);
