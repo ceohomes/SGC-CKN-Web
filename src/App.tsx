@@ -1533,7 +1533,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           </div>
         </div>
       </div>
-      </div> {/* end !(onSave || onCancel) */}
+      </div>
     </div>
   );
 } 
