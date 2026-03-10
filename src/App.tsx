@@ -419,6 +419,17 @@ export default function App() {
     localStorage.setItem('pile_drill_history', JSON.stringify(history));
   }, [history]);
 
+  // Bấm Esc để đóng file đang xem
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && currentResult) {
+        setCurrentResult(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentResult]);
+
   const saveApiKey = async (key: string) => {
     setUserApiKey(key);
     localStorage.setItem('gemini_api_key', key);
@@ -1080,32 +1091,18 @@ export default function App() {
                           <div className="bg-white/10 p-2.5 rounded-xl">
                             <FileText size={20} className="text-white" />
                           </div>
-                          <div>
-                            <h3 className="text-base font-bold text-white uppercase tracking-tight">
-                              {currentResult.fileName || currentResult.pileId}
-                            </h3>
-                            <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-0.5">
-                              {pendingResults.some(r => r.id === currentResult.id) ? "Đang chờ kiểm duyệt — Xem và chỉnh sửa trước khi lưu" : "Dữ liệu đã lưu"}
-                            </p>
-                          </div>
+                          <h3 className="text-base font-bold text-white uppercase tracking-tight">
+                            {currentResult.fileName || currentResult.pileId}
+                          </h3>
                         </div>
                         {pendingResults.some(r => r.id === currentResult.id) && (
-                          <div className="flex gap-3">
-                            <button
-                              onClick={() => { cancelResult(currentResult.id); setCurrentResult(null); }}
-                              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10 flex items-center gap-2"
-                            >
-                              <X size={14} />
-                              Hủy bỏ
-                            </button>
-                            <button
-                              onClick={() => saveResult(currentResult)}
-                              className="px-6 py-2.5 bg-white text-blue-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
-                            >
-                              <Save size={14} />
-                              Lưu dữ liệu
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => saveResult(currentResult)}
+                            className="px-6 py-2.5 bg-white text-blue-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
+                          >
+                            <Save size={14} />
+                            Lưu dữ liệu
+                          </button>
                         )}
                       </div>
 
