@@ -748,7 +748,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8fafc] font-sans overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-slate-50 font-sans overflow-x-hidden">
       {/* Sidebar Overlay */}
       <div 
         className={cn(
@@ -762,7 +762,7 @@ export default function App() {
       <aside 
         ref={sidebarRef}
         className={cn(
-          "fixed top-0 left-0 h-full w-64 bg-white z-50 shadow-xl transition-transform duration-500 ease-out transform border-r border-[#e2e8f0]",
+          "fixed top-0 left-0 h-full w-72 bg-slate-900 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-slate-800",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onMouseLeave={() => setIsSidebarOpen(false)}
@@ -770,37 +770,37 @@ export default function App() {
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center border border-[#e2e8f0]">
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-slate-700">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="bg-[#0ea5e9] w-full h-full flex items-center justify-center">
+                  <div className="bg-blue-600 w-full h-full flex items-center justify-center">
                     <Construction className="text-white w-5 h-5" />
                   </div>
                 )}
               </div>
               <div>
-                <span className="font-bold text-[#0f172a] uppercase tracking-tight block text-lg">SGC - CKN</span>
-                <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-[0.2em]">Hệ thống quản lý</span>
+                <span className="font-bold text-white uppercase tracking-tight block text-lg">SGC - CKN</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
               </div>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-1.5 hover:bg-[#f1f5f9] rounded-lg transition-colors text-[#94a3b8]">
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <nav className="space-y-1 flex-1">
-            <p className="text-[9px] font-bold text-[#94a3b8] uppercase tracking-[0.25em] mb-3 px-3">Danh mục chính</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'upload' 
-                  ? "bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]" 
-                  : "hover:bg-[#f8fafc] text-[#64748b] hover:text-[#0f172a]"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-slate-800 text-slate-400"
               )}
             >
-              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-[#94a3b8] group-hover:text-[#0f172a]"} />
+              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-slate-500 group-hover:text-white"} />
               <span className="font-medium text-sm">Xử lý biên bản</span>
             </button>
 
@@ -809,47 +809,47 @@ export default function App() {
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'summary' 
-                  ? "bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]" 
-                  : "hover:bg-[#f8fafc] text-[#64748b] hover:text-[#0f172a]"
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-slate-800 text-slate-400"
               )}
             >
-              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-[#94a3b8] group-hover:text-[#0f172a]"} />
+              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-slate-500 group-hover:text-white"} />
               <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
             </button>
           </nav>
 
-          <div className="pt-4 border-t border-[#f1f5f9]">
-            <div className="bg-[#f8fafc] rounded-lg p-3 border border-[#f1f5f9]">
-              <p className="text-[9px] font-bold text-[#94a3b8] uppercase tracking-[0.2em] mb-1">Phiên bản hiện tại</p>
-              <p className="text-[11px] font-medium text-[#64748b]">v2.1.0 Professional</p>
+          <div className="pt-6 border-t border-slate-800">
+            <div className="bg-slate-800/50 rounded-xl p-4">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
+              <p className="text-xs font-medium text-slate-300">v2.1.0 Professional</p>
             </div>
           </div>
         </div>
       </aside>
 
       {/* Header */}
-      <header className="bg-white border-b border-[#e2e8f0] px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-sm text-[#0f172a] min-h-[60px]">
+      <header className="bg-blue-900 border-b border-blue-800 px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[64px]">
         <div 
           className="flex items-center gap-4 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform border border-[#e2e8f0] bg-[#f1f5f9]">
+          <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <div className="bg-[#0ea5e9] w-full h-full flex items-center justify-center">
+              <div className="bg-blue-600 w-full h-full flex items-center justify-center">
                 <Construction className="text-white w-6 h-6" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-[18px] font-black tracking-[0.08em] text-[#0f172a] uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[9px] text-[#94a3b8] font-bold uppercase tracking-[0.3em] mt-1">
+            <h1 className="text-[20px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[10px] text-blue-300 font-bold uppercase tracking-[0.25em] mt-1">
               Construction Management
             </p>
           </div>
-          <div className="ml-2 p-2 bg-[#f1f5f9] rounded-lg text-[#64748b] group-hover:text-[#0f172a] transition-colors">
+          <div className="ml-2 p-2 bg-white/10 rounded-lg text-blue-300 group-hover:text-white transition-colors">
             <Menu size={20} />
           </div>
         </div>
@@ -858,7 +858,7 @@ export default function App() {
           {activeSheet === 'upload' && (
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="bg-[#0ea5e9] text-white px-6 py-2.5 rounded-lg text-[11px] font-black hover:bg-[#0284c7] transition-all flex items-center gap-2 uppercase tracking-widest"
+              className="bg-orange-500 text-white px-8 py-3.5 rounded-2xl text-sm font-black hover:bg-orange-600 transition-all flex items-center gap-3 shadow-xl shadow-orange-900/40 uppercase tracking-widest border-2 border-orange-400/20"
             >
               <Upload size={20} />
               Up Nhật ký thi công
@@ -866,7 +866,7 @@ export default function App() {
           )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2.5 bg-[#f1f5f9] border border-[#e2e8f0] text-[#64748b] rounded-lg hover:bg-[#e2e8f0] hover:text-[#0f172a] transition-all"
+            className="p-3 bg-white/10 border border-white/10 text-white rounded-2xl hover:bg-white/20 transition-all shadow-sm"
           >
             <Settings size={22} />
           </button>
@@ -875,22 +875,22 @@ export default function App() {
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
-      <main className="flex-1 p-6 w-full space-y-8">
+      <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
           <div className="w-full space-y-12">
             {/* Processing Queue */}
             {processingFiles.length > 0 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-[15px] font-black text-[#0f172a] uppercase tracking-wider flex items-center gap-3">
-                    <Loader2 className={cn("w-5 h-5 text-[#0ea5e9]", isProcessing && "animate-spin")} />
+                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
+                    <Loader2 className={cn("w-6 h-6 text-blue-600", isProcessing && "animate-spin")} />
                     Tiến trình xử lý ({processingFiles.filter(f => f.status !== 'completed').length})
                   </h3>
                   <div className="flex gap-4">
                     {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && (
                       <button 
                         onClick={() => setProcessingFiles([])}
-                        className="text-[10px] font-black text-[#94a3b8] hover:text-red-500 uppercase tracking-[0.15em] transition-colors flex items-center gap-2"
+                        className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors flex items-center gap-2"
                       >
                         <Trash2 size={14} />
                         Xóa danh sách
@@ -944,7 +944,7 @@ export default function App() {
                       {file.status === 'completed' && file.result && (
                         <button 
                           onClick={() => setCurrentResult(file.result!)}
-                          className="mt-4 w-full py-2 bg-[#1e40af] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-[#1d4ed8] transition-all flex items-center justify-center gap-2"
+                          className="mt-5 w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
                         >
                           <ExternalLink size={14} />
                           Kiểm tra & Lưu
@@ -963,24 +963,24 @@ export default function App() {
 
             {/* Current Selected Result */}
             {currentResult && (
-              <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-4">
-                <div className="flex items-center justify-between bg-[#1e40af] px-6 py-4 rounded-xl text-white border border-[#1d4ed8]">
+              <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-6">
+                <div className="flex items-center justify-between bg-blue-600 p-8 rounded-3xl text-white shadow-xl">
                   <div className="flex items-center gap-5">
-                    <div className="bg-white/5 p-2.5 rounded-lg border border-white/10">
+                    <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-white/10">
                       <FileText size={24} />
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-bold uppercase tracking-wide">
+                      <h3 className="text-xl font-bold uppercase tracking-tight">
                         {currentResult.fileName || currentResult.pileId}
                       </h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                      <p className="text-xs text-blue-100 font-bold uppercase tracking-widest mt-1">
                         {pendingResults.some(r => r.id === currentResult.id) ? "Đang chờ kiểm duyệt" : "Dữ liệu trích xuất thành công"}
                       </p>
                     </div>
                   </div>
                   <button 
                     onClick={() => setCurrentResult(null)}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10"
+                    className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10 backdrop-blur-sm"
                   >
                     Đóng kết quả
                   </button>
@@ -997,7 +997,7 @@ export default function App() {
             {pendingResults.length > 0 && !currentResult && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-[15px] font-bold text-[#0f172a] tracking-wide flex items-center gap-3">
+                  <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
                     <AlertCircle className="w-5 h-5 text-orange-500" />
                     Đang chờ kiểm duyệt ({pendingResults.length})
                   </h3>
@@ -1016,13 +1016,13 @@ export default function App() {
                       <div className="mt-6 flex gap-2">
                         <button 
                           onClick={() => cancelResult(result.id)}
-                          className="flex-1 py-2 bg-[#f1f5f9] text-[#64748b] rounded-lg text-[9px] font-bold uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-all"
+                          className="flex-1 py-2 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-all"
                         >
                           Hủy
                         </button>
                         <button 
                           onClick={() => setCurrentResult(result)}
-                          className="flex-[2] py-2 bg-[#0ea5e9] text-white rounded-lg text-[9px] font-bold uppercase tracking-widest hover:bg-[#0284c7] transition-all"
+                          className="flex-[2] py-2 bg-blue-600 text-white rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                         >
                           Xem & Lưu
                         </button>
@@ -1038,8 +1038,8 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <h3 className="text-[15px] font-black text-[#0f172a] tracking-wider flex items-center gap-3 uppercase">
-                      <div className="w-1 h-6 bg-[#0ea5e9] rounded-full" />
+                    <h3 className="text-[18px] font-black text-blue-900 tracking-tight flex items-center gap-3 uppercase">
+                      <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
                       Dữ liệu thi công mới nhất
                     </h3>
                     {isGithubConnected ? (
@@ -1151,7 +1151,7 @@ export default function App() {
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-sky-100">
-            <div className="bg-[#0f172a] px-6 py-4 text-white flex items-center justify-between">
+            <div className="bg-blue-600 p-8 text-white flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-sm border border-white/10">
                   <Settings size={20} />
@@ -1168,7 +1168,7 @@ export default function App() {
             <div className="p-8 space-y-8">
               <div className="space-y-6">
                 <div className="space-y-3">
-                  <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.2em] ml-1">Logo tùy chỉnh</label>
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Logo tùy chỉnh</label>
                   <div className="flex items-center gap-4 p-4 bg-sky-50 rounded-2xl border border-sky-100">
                     <div className="w-14 h-14 bg-white rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-sky-200">
                       {customLogo ? (
@@ -1200,14 +1200,14 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
                   <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-emerald-100 text-emerald-600" : "bg-sky-200 text-sky-400")}>
                         <Github size={18} />
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold text-[#0f172a] uppercase tracking-tight">
+                        <p className="text-xs font-bold text-blue-900 uppercase tracking-tight">
                           {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
                         </p>
                         <p className="text-[9px] text-sky-400 font-bold uppercase tracking-widest leading-none mt-1">
@@ -1231,7 +1231,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[9px] font-bold text-[#64748b] uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
+                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
                   <div className="relative">
                     <input 
                       type="password"
@@ -1323,11 +1323,11 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
 
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-[15px] font-black text-[#0f172a] tracking-wider flex items-center gap-3 uppercase">
-            <div className="w-1 h-6 bg-[#0ea5e9] rounded-full" />
+          <h3 className="text-[18px] font-black text-black tracking-tight flex items-center gap-3 uppercase">
+            <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
             Chi tiết các lớp địa chất
           </h3>
-          <p className="text-[11px] text-[#64748b] font-medium ml-4">Thông số kỹ thuật trích xuất từ biên bản</p>
+          <p className="text-xs text-slate-900 font-medium ml-4">Thông số kỹ thuật trích xuất từ biên bản</p>
         </div>
         <div className="flex gap-2">
           <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
@@ -1343,28 +1343,28 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full border-collapse table-fixed min-w-[1500px]">
             <thead>
-              <tr className="bg-[#f1f5f9] border-b border-[#e2e8f0]">
-                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[120px]">Dự án</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[120px]">Hạng mục</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[150px]">Tên bộ phận</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Số hiệu</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Đường kính</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[140px]">Bắt đầu thi công</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[140px]">Kết thúc thi công</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[120px]">Địa chất thực tế</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[300px]">Lớp thiết kế</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Bắt đầu khoan</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Kết thúc khoan</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Thời gian</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Cao độ đầu</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Cao độ cuối</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] w-[100px]">Chiều dài</th>
+              <tr className="bg-slate-100 border-b border-slate-300">
+                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Hạng mục</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[150px]">Tên bộ phận</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Số hiệu</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Bắt đầu thi công</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Kết thúc thi công</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Địa chất thực tế</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[300px]">Lớp thiết kế</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Bắt đầu khoan</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Kết thúc khoan</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Thời gian</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đầu</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ cuối</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Chiều dài</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[120px]">Tốc độ (m/h)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#f1f5f9]">
+            <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
-                <tr key={idx} className="group hover:bg-[#f8fafc] transition-colors">
+                <tr key={idx} className="group hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.item}</td>
                   <td className="text-black font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.componentName}</td>
@@ -1441,20 +1441,20 @@ function SummaryView({
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-[15px] font-black text-[#0f172a] tracking-wider flex items-center gap-3 uppercase">
-            <div className="w-1 h-6 bg-[#0ea5e9] rounded-full" />
+          <h3 className="text-[18px] font-black text-black tracking-tight flex items-center gap-3 uppercase">
+            <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
             Tổng hợp dữ liệu thi công
           </h3>
-          <p className="text-[11px] text-[#64748b] font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
+          <p className="text-xs text-slate-900 font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
-            <p className="text-[9px] font-bold text-[#64748b] uppercase tracking-widest mb-0.5">Tổng số cọc</p>
-            <p className="text-xl font-bold text-[#0f172a]">{history.length}</p>
+            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
+            <p className="text-xl font-bold text-black">{history.length}</p>
           </div>
           <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
-            <p className="text-[9px] font-bold text-[#64748b] uppercase tracking-widest mb-0.5">Tổng chiều sâu</p>
-            <p className="text-xl font-bold text-[#0f172a]">
+            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng chiều sâu</p>
+            <p className="text-xl font-bold text-black">
               {history.reduce((acc, res) => acc + res.layers.reduce((lAcc, l) => lAcc + l.lengthMeters, 0), 0).toFixed(1)} m
             </p>
           </div>
@@ -1553,7 +1553,7 @@ function SummaryView({
                             href={item.fileUrl} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-[#0ea5e9] hover:text-[#0284c7] font-bold text-[10px] uppercase tracking-widest transition-colors"
+                            className="flex items-center gap-1.5 text-blue-700 hover:text-blue-900 font-bold text-[10px] uppercase tracking-widest transition-colors"
                           >
                             <ExternalLink size={12} />
                             Xem
@@ -1610,7 +1610,7 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
           <div className="h-full bg-orange-500 w-1/3 group-hover:w-full transition-all duration-700" />
         </div>
       </div>
-      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#334155] block mb-1">{title}</span>
+      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-900 block mb-1">{title}</span>
       <div className="text-xl font-bold text-black truncate" title={value}>
         {value || "---"}
       </div>
@@ -1801,16 +1801,12 @@ function EditSplitView({
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setPageNumber(1);
-    // PDF render ở 1400px, cần zoom ~0.43 để fit vừa khung ban đầu
-    positionRef.current = { x: 0, y: 0 };
-    setPosition({ x: 0, y: 0 });
-    setZoom(0.43);
   };
 
   return (
-    <div className="fixed inset-0 bg-[#f8fafc] z-[200] flex flex-col animate-in fade-in duration-300">
+    <div className="fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300">
       {/* Header */}
-      <div className="h-14 bg-[#1e40af] border-b border-[#1d4ed8] flex items-center justify-between px-6 shrink-0">
+      <div className="h-16 bg-blue-900 border-b border-blue-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <div className="bg-white/20 p-2 rounded-lg text-white">
             <Edit2 size={18} />
@@ -1823,7 +1819,7 @@ function EditSplitView({
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-white/5 text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-white/15 transition-colors border border-white/10"
+            className="px-4 py-2 bg-white/10 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-colors border border-white/20"
           >
             Hủy bỏ
           </button>
@@ -1907,27 +1903,27 @@ function EditSplitView({
                 Chi tiết các lớp địa chất
               </h4>
             </div>
-            <div className="overflow-hidden border border-[#e2e8f0] rounded-xl bg-white">
+            <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm bg-white">
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full border-collapse table-auto">
                   <thead>
-                    <tr className="bg-[#f1f5f9] border-b border-[#e2e8f0]">
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0]" style={{minWidth:'220px'}}>Lớp thiết kế</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-[#334155] uppercase tracking-wider border-r border-[#e2e8f0] whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
+                    <tr className="bg-slate-100 border-b border-slate-300">
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
                       <th className="px-1 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#f1f5f9]">
+                  <tbody className="divide-y divide-slate-200">
                     {data.layers.map((layer, idx) => (
-                      <tr key={idx} className="group hover:bg-[#f8fafc] transition-colors">
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle" style={{width:'70px'}}>
+                      <tr key={idx} className="group hover:bg-slate-50 transition-colors">
+                        <td className="p-0 border-r border-slate-200 align-middle" style={{width:'70px'}}>
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
@@ -1935,7 +1931,7 @@ function EditSplitView({
                             placeholder="..."
                           />
                         </td>
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle" style={{minWidth:'220px'}}>
+                        <td className="p-0 border-r border-slate-200 align-middle" style={{minWidth:'220px'}}>
                           <textarea 
                             value={layer.layerDesign}
                             onChange={(e) => {
@@ -1948,7 +1944,7 @@ function EditSplitView({
                             style={{height: 'auto'}}
                           />
                         </td>
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle">
+                        <td className="p-0 border-r border-slate-200 align-middle">
                           <input 
                             type="text"
                             value={layer.timeFrom} 
@@ -1958,7 +1954,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle">
+                        <td className="p-0 border-r border-slate-200 align-middle">
                           <input 
                             type="text"
                             value={layer.timeTo} 
@@ -1968,7 +1964,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle whitespace-nowrap">
+                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
@@ -1978,7 +1974,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-[#f1f5f9] align-middle whitespace-nowrap">
+                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
@@ -1988,10 +1984,10 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-[#f1f5f9] align-middle whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-[#f1f5f9] align-middle whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
                           {layer.lengthMeters.toFixed(2)}
                         </td>
                         <td className="px-2 py-1 text-[12px] font-normal text-center align-middle bg-slate-50 border-r border-slate-200 whitespace-nowrap">
@@ -2066,9 +2062,9 @@ function EditSplitView({
                     </button>
                   </div>
                 )}
-                <button onClick={handleZoomOut} className="p-1.5 hover:bg-[#f1f5f9] rounded-md text-[#334155] transition-colors" title="Thu nhỏ"><ZoomOutIcon size={14} /></button>
-                <span className="text-[11px] font-black text-[#0f172a] w-10 text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={handleZoomIn} className="p-1.5 hover:bg-[#f1f5f9] rounded-md text-[#334155] transition-colors" title="Phóng to"><ZoomInIcon size={14} /></button>
+                <button onClick={handleZoomOut} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors" title="Thu nhỏ"><ZoomOutIcon size={14} /></button>
+                <span className="text-[12px] font-black text-blue-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={handleZoomIn} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors" title="Phóng to"><ZoomInIcon size={14} /></button>
                 <button onClick={handleResetZoom} className="p-1.5 hover:bg-slate-100 rounded-lg text-blue-900 transition-colors ml-1" title="Đặt lại"><RotateCcw size={14} /></button>
               </div>
             </div>
@@ -2129,8 +2125,7 @@ function EditSplitView({
                   >
                     <Page 
                       pageNumber={pageNumber}
-                      width={1400}
-                      scale={1}
+                      width={600}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
                     />
