@@ -1890,15 +1890,7 @@ function EditSplitView({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
-              <input 
-                value={data.diameter} 
-                onChange={(e) => updateField('diameter', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
-            </div>
+          <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
@@ -1930,6 +1922,7 @@ function EditSplitView({
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
@@ -1977,6 +1970,9 @@ function EditSplitView({
                             className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-2 py-1 text-center outline-none transition-all`}
                             placeholder="..."
                           />
+                        </td>
+                        <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
+                          {data.diameter}
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'220px'}}>
                           <textarea 
