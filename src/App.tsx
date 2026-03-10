@@ -167,6 +167,23 @@ const normalizeDateTime = (raw: string): string => {
   return s; // giữ nguyên nếu không parse được
 };
 
+// Tính thời gian thi công (giờ) từ constructionStart đến constructionEnd
+// Định dạng: "HH:mm DD/MM/YYYY"
+const calcConstructionDurationHours = (start: string, end: string): number => {
+  if (!start || !end) return 0;
+  const parseDateTime = (s: string): Date | null => {
+    // Expect "HH:mm DD/MM/YYYY"
+    const m = s.trim().match(/(\d{1,2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!m) return null;
+    return new Date(parseInt(m[5]), parseInt(m[4]) - 1, parseInt(m[3]), parseInt(m[1]), parseInt(m[2]));
+  };
+  const d1 = parseDateTime(start);
+  const d2 = parseDateTime(end);
+  if (!d1 || !d2) return 0;
+  const diff = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
+  return diff > 0 ? diff : 0;
+};
+
 const parseTimeToMinutes = (timeStr: string): number => {
   if (!timeStr) return 0;
   let cleanTime = timeStr.toLowerCase()
@@ -1193,6 +1210,9 @@ export default function App() {
                           <th>Đường kính</th>
                           <th>Bắt đầu</th>
                           <th>Kết thúc</th>
+                          <th className="text-center">Chiều dài (m)</th>
+                          <th className="text-center">T.Gian TC (h)</th>
+                          <th className="text-center">Vận tốc TB (m/h)</th>
                           <th>Tập tin</th>
                           <th className="text-center">Thao tác</th>
                         </tr>
@@ -1208,6 +1228,30 @@ export default function App() {
                             <td className="font-normal text-slate-900">{item.diameter}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionStart}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionEnd}</td>
+                            <td className="text-center font-bold text-orange-600">
+                              {item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}
+                            </td>
+                            <td className="text-center text-slate-700">
+                              {(() => {
+                                const h = calcConstructionDurationHours(item.constructionStart, item.constructionEnd);
+                                return h > 0 ? h.toFixed(2) : '—';
+                              })()}
+                            </td>
+                            <td className="text-center">
+                              {(() => {
+                                const totalLen = item.layers.reduce((acc, l) => acc + l.lengthMeters, 0);
+                                const h = calcConstructionDurationHours(item.constructionStart, item.constructionEnd);
+                                const v = h > 0 ? totalLen / h : 0;
+                                return (
+                                  <span className={cn(
+                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold",
+                                    v > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
+                                  )}>
+                                    {v > 0 ? v.toFixed(2) : '—'}
+                                  </span>
+                                );
+                              })()}
+                            </td>
                             <td>
                               {item.fileUrl ? (
                                 <a 
@@ -1595,16 +1639,11 @@ function SummaryView({
   onEdit: (res: ExtractionResult) => void,
   onDelete: (id: string) => void
 }) {
-  const [filterProject, setFilterProject] = useState('');
-  const [filterPile, setFilterPile] = useState('');
-
-  // --- Tính toán số liệu tổng hợp ---
-  const totalPiles = history.length;
+  const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
   const totalDepth = history.reduce((acc, r) => acc + r.layers.reduce((s, l) => s + l.lengthMeters, 0), 0);
   const avgSpeed = history.length > 0
     ? history.reduce((acc, r) => acc + (r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)), 0) / history.length
     : 0;
-  const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
 
   // Phân bố theo dự án (Pie)
   const projectDist = projects.map(p => ({
@@ -1638,12 +1677,6 @@ function SummaryView({
     .map(([name, value]) => ({ name, value }));
 
   const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b'];
-
-  // Lọc bảng
-  const filtered = history.filter(r =>
-    (!filterProject || r.project?.toLowerCase().includes(filterProject.toLowerCase())) &&
-    (!filterPile || r.pileId?.toLowerCase().includes(filterPile.toLowerCase()))
-  );
 
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
@@ -1785,65 +1818,6 @@ function SummaryView({
         </div>
       </div>
 
-      {/* ── Bảng dữ liệu có filter ── */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-            <Database size={14} className="text-blue-600" /> Danh sách cọc ({filtered.length}/{totalPiles})
-          </h4>
-          <div className="flex gap-2">
-            <input value={filterProject} onChange={e => setFilterProject(e.target.value)} placeholder="Lọc dự án..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-36" />
-            <input value={filterPile} onChange={e => setFilterPile(e.target.value)} placeholder="Lọc số hiệu..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-32" />
-          </div>
-        </div>
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="pro-table">
-            <thead>
-              <tr>
-                <th className="w-12">STT</th>
-                <th>Dự án</th>
-                <th>Hạng mục</th>
-                <th>Tên bộ phận</th>
-                <th>Số hiệu</th>
-                <th>Đường kính</th>
-                <th className="text-center">Chiều sâu (m)</th>
-                <th className="text-center">Bắt đầu</th>
-                <th className="text-center">Kết thúc</th>
-                <th>Tập tin</th>
-                <th className="text-center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item, index) => (
-                <tr key={item.id} className="hover:bg-sky-50/60 transition-colors group cursor-pointer" onClick={() => onSelectResult(item)}>
-                  <td className="text-center font-bold text-blue-700 text-xs">{item.stt ?? (history.length - history.indexOf(item))}</td>
-                  <td className="font-normal text-blue-900">{item.project}</td>
-                  <td className="text-slate-700">{item.item}</td>
-                  <td className="text-slate-700">{item.componentName}</td>
-                  <td className="font-bold text-blue-700">{item.pileId}</td>
-                  <td className="text-center text-slate-700">{item.diameter}</td>
-                  <td className="text-center font-bold text-orange-600">{item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}</td>
-                  <td className="text-center text-slate-700">{item.constructionStart}</td>
-                  <td className="text-center text-slate-700">{item.constructionEnd}</td>
-                  <td onClick={e => e.stopPropagation()}>
-                    {item.fileUrl ? (
-                      <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest">
-                        <ExternalLink size={11} /> Xem
-                      </a>
-                    ) : <span className="text-slate-300 text-[10px] italic">Chưa có</span>}
-                  </td>
-                  <td className="text-center" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button onClick={() => onEdit(item)} className="p-1.5 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Sửa"><Edit2 size={13} /></button>
-                      <button onClick={() => onDelete(item.id)} className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-100" title="Xóa"><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
