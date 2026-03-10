@@ -115,6 +115,47 @@ type AppSheet = 'upload' | 'summary';
 
 // --- Helper Functions ---
 
+// Chuẩn hóa chuỗi ngày giờ bất kỳ → "HH:mm DD/MM/YYYY"
+const normalizeDateTime = (raw: string): string => {
+  if (!raw) return '';
+  const s = raw.trim();
+
+  // Tách phần giờ (HH:mm hoặc HH:MMh hoặc HHhMM)
+  const timeMatch = s.match(/(\d{1,2})[h:](\d{2})/i);
+  const hh = timeMatch ? timeMatch[1].padStart(2, '0') : '';
+  const mm = timeMatch ? timeMatch[2].padStart(2, '0') : '';
+
+  // Tách phần ngày – ưu tiên DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
+  let day = '', month = '', year = '';
+  const dmyMatch = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  const ymdMatch = s.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (dmyMatch) {
+    day   = dmyMatch[1].padStart(2, '0');
+    month = dmyMatch[2].padStart(2, '0');
+    year  = dmyMatch[3];
+  } else if (ymdMatch) {
+    year  = ymdMatch[1];
+    month = ymdMatch[2].padStart(2, '0');
+    day   = ymdMatch[3].padStart(2, '0');
+  } else {
+    // Thử lấy 8 chữ số liền nhau: DDMMYYYY
+    const compact = s.match(/(\d{8})/);
+    if (compact) {
+      day   = compact[1].slice(0, 2);
+      month = compact[1].slice(2, 4);
+      year  = compact[1].slice(4, 8);
+    }
+  }
+
+  const timePart  = hh && mm ? `${hh}:${mm}` : '';
+  const datePart  = day && month && year ? `${day}/${month}/${year}` : '';
+
+  if (timePart && datePart) return `${timePart} ${datePart}`;
+  if (timePart) return timePart;
+  if (datePart) return datePart;
+  return s; // giữ nguyên nếu không parse được
+};
+
 const parseTimeToMinutes = (timeStr: string): number => {
   if (!timeStr) return 0;
   let cleanTime = timeStr.toLowerCase()
@@ -150,7 +191,7 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
 
 Yêu cầu trích xuất chi tiết:
 1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
-2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc.
+2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
 3. Bảng chi tiết địa chất (layers):
    - layerNumber: Số thứ tự lớp (1, 2, 3...).
    - layerDesign: Mô tả địa chất theo thiết kế (ví dụ: Sét pha, cát hạt trung...).
@@ -244,7 +285,7 @@ Lưu ý quan trọng:
     };
   });
 
-  return { ...rawData, layers: processedLayers };
+  return { ...rawData, constructionStart: normalizeDateTime(rawData.constructionStart), constructionEnd: normalizeDateTime(rawData.constructionEnd), layers: processedLayers };
 };
 
 // --- Components ---
@@ -904,47 +945,47 @@ export default function App() {
       </aside>
 
       {/* Header */}
-      <header className="bg-blue-900 border-b border-blue-800 px-8 py-2 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[64px]">
+      <header className="bg-blue-900 border-b border-blue-800 px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[48px]">
         <div 
-          className="flex items-center gap-4 cursor-pointer group"
+          className="flex items-center gap-3 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
+          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                <Construction className="text-white w-6 h-6" />
+                <Construction className="text-white w-4 h-4" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-[20px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[10px] text-blue-300 font-bold uppercase tracking-[0.25em] mt-1">
+            <h1 className="text-[15px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
+            <p className="text-[8px] text-blue-300 font-bold uppercase tracking-[0.2em] mt-0.5">
               Construction Management
             </p>
           </div>
-          <div className="ml-2 p-2 bg-white/10 rounded-lg text-blue-300 group-hover:text-white transition-colors">
-            <Menu size={20} />
+          <div className="ml-1 p-1.5 bg-white/10 rounded-lg text-blue-300 group-hover:text-white transition-colors">
+            <Menu size={16} />
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3">
           {activeSheet === 'upload' && (
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="bg-orange-500 text-white px-8 py-3.5 rounded-2xl text-sm font-black hover:bg-orange-600 transition-all flex items-center gap-3 shadow-xl shadow-orange-900/40 uppercase tracking-widest border-2 border-orange-400/20"
+              className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-all flex items-center gap-2 shadow-md shadow-orange-900/30 uppercase tracking-wider border border-orange-400/20"
             >
-              <Upload size={20} />
-              Up Nhật ký thi công
+              <Upload size={14} />
+              Up File
             </button>
           )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="p-3 bg-white/10 border border-white/10 text-white rounded-2xl hover:bg-white/20 transition-all shadow-sm"
+            className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
           >
-            <Settings size={22} />
+            <Settings size={16} />
           </button>
         </div>
       </header>
