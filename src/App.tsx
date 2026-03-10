@@ -1638,6 +1638,32 @@ function EditSplitView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const positionRef = useRef({ x: 0, y: 0 });
+
+  // Global mouse events để pan không bị mất khi kéo ra ngoài container
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const newPos = { 
+        x: e.clientX - dragStartRef.current.x, 
+        y: e.clientY - dragStartRef.current.y 
+      };
+      positionRef.current = newPos;
+      setPosition(newPos);
+    };
+    const onUp = () => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   // Helper: chuyển GitHub download_url hoặc API URL sang raw URL để tránh CORS
   const toRawGithubUrl = (url: string): string => {
@@ -1679,36 +1705,34 @@ function EditSplitView({
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.2));
   const handleResetZoom = () => {
     setZoom(1);
+    positionRef.current = { x: 0, y: 0 };
     setPosition({ x: 0, y: 0 });
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: e.clientX - positionRef.current.x, y: e.clientY - positionRef.current.y };
     setIsDragging(true);
-    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-  };
-
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseMove = (e: React.MouseEvent) => {};
+  const handleMouseUp = () => {};
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const scaleFactor = e.deltaY > 0 ? 0.88 : 1.12;
     const rect = e.currentTarget.getBoundingClientRect();
-    // Vị trí con trỏ trong container
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     setZoom(prev => {
       const newZoom = Math.min(Math.max(prev * scaleFactor, 0.2), 8);
-      // Điều chỉnh position để zoom tại vị trí con trỏ
-      setPosition(pos => ({
-        x: mouseX - (mouseX - pos.x) * (newZoom / prev),
-        y: mouseY - (mouseY - pos.y) * (newZoom / prev),
-      }));
+      const newPos = {
+        x: mouseX - (mouseX - positionRef.current.x) * (newZoom / prev),
+        y: mouseY - (mouseY - positionRef.current.y) * (newZoom / prev),
+      };
+      positionRef.current = newPos;
+      setPosition(newPos);
       return newZoom;
     });
   };
@@ -1897,69 +1921,74 @@ function EditSplitView({
                   <tbody className="divide-y divide-slate-200">
                     {data.layers.map((layer, idx) => (
                       <tr key={idx} className="group hover:bg-slate-50 transition-colors">
-                        <td className="p-0 border-r border-slate-200 align-top" style={{width:'70px'}}>
+                        <td className="p-0 border-r border-slate-200 align-middle" style={{width:'70px'}}>
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-blue-700 font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[12px] text-blue-700 font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all"
                             placeholder="..."
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top" style={{minWidth:'220px'}}>
+                        <td className="p-0 border-r border-slate-200 align-middle" style={{minWidth:'220px'}}>
                           <textarea 
                             value={layer.layerDesign}
-                            onChange={(e) => updateLayer(idx, 'layerDesign', e.target.value)}
-                            rows={2}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none leading-relaxed transition-all resize-none"
+                            onChange={(e) => {
+                              updateLayer(idx, 'layerDesign', e.target.value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
+                            rows={1}
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none leading-normal transition-all resize-none overflow-hidden"
+                            style={{height: 'auto'}}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top">
+                        <td className="p-0 border-r border-slate-200 align-middle">
                           <input 
                             type="text"
                             value={layer.timeFrom} 
                             onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top">
+                        <td className="p-0 border-r border-slate-200 align-middle">
                           <input 
                             type="text"
                             value={layer.timeTo} 
                             onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 text-center outline-none transition-all whitespace-nowrap"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
                             value={layer.elevationFrom} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
                             value={layer.elevationTo} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="px-2 py-1.5 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
                           {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[12px] font-normal text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-center align-middle bg-slate-50 border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
                             "inline-flex items-center px-1 py-0.5 rounded-full text-[12px] font-normal",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
@@ -1967,7 +1996,7 @@ function EditSplitView({
                             {layer.speedMph.toFixed(2)}
                           </span>
                         </td>
-                        <td className="p-0 align-top text-center">
+                        <td className="p-0 align-middle text-center">
                           <button 
                             onClick={() => removeLayer(idx)}
                             className="mt-1.5 p-1 text-slate-300 hover:text-red-500 transition-colors"
