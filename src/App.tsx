@@ -74,6 +74,8 @@ interface DrillLayer {
   layerDesign: string;
   timeFrom: string;
   timeTo: string;
+  dateFrom: string;
+  dateTo: string;
   elevationFrom: number;
   elevationTo: number;
   actualGeology: string;
@@ -152,6 +154,8 @@ Yêu cầu trích xuất chi tiết:
    - layerDesign: Mô tả địa chất theo thiết kế (ví dụ: Sét pha, cát hạt trung...).
    - timeFrom: Giờ bắt đầu khoan lớp này (định dạng HH:mm).
    - timeTo: Giờ kết thúc khoan lớp này (định dạng HH:mm).
+   - dateFrom: Ngày bắt đầu khoan lớp này (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
+   - dateTo: Ngày kết thúc khoan lớp này (định dạng DD/MM/YYYY). Thường giống dateFrom, trừ khi qua đêm sang ngày hôm sau.
    - elevationFrom: Cao độ bắt đầu của lớp (mét).
    - elevationTo: Cao độ kết thúc của lớp (mét).
    - actualGeology: Ký hiệu địa chất thực tế (ví dụ: 1, 1a, 2...).
@@ -193,11 +197,13 @@ Lưu ý quan trọng:
                 layerDesign: { type: Type.STRING },
                 timeFrom: { type: Type.STRING },
                 timeTo: { type: Type.STRING },
+                dateFrom: { type: Type.STRING },
+                dateTo: { type: Type.STRING },
                 elevationFrom: { type: Type.NUMBER },
                 elevationTo: { type: Type.NUMBER },
                 actualGeology: { type: Type.STRING }
               },
-              required: ["layerNumber", "layerDesign", "timeFrom", "timeTo", "elevationFrom", "elevationTo", "actualGeology"]
+              required: ["layerNumber", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
           summary: { type: Type.STRING }
@@ -1375,8 +1381,14 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionEnd}</td>
                   <td className="text-blue-700 font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.actualGeology}</td>
                   <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.timeFrom}</td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.timeTo}</td>
+                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">
+                    <div>{layer.timeFrom}</div>
+                    {layer.dateFrom && <div className="text-[10px] text-slate-500">{layer.dateFrom}</div>}
+                  </td>
+                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">
+                    <div>{layer.timeTo}</div>
+                    {layer.dateTo && <div className="text-[10px] text-slate-500">{layer.dateTo}</div>}
+                  </td>
                   <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}h</td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationFrom}</td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
@@ -1876,6 +1888,9 @@ function EditSplitView({
                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-6">
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
               <input 
@@ -1977,24 +1992,40 @@ function EditSplitView({
                           />
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`}>
-                          <input 
-                            type="text"
-                            value={layer.timeFrom} 
-                            onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all whitespace-nowrap"
-                            placeholder="HH:mm"
-                            style={{ minWidth: '80px', width: '80px' }}
-                          />
+                          <div className="flex flex-col items-center px-1 py-1" style={{ minWidth: '80px', width: '80px' }}>
+                            <input 
+                              type="text"
+                              value={layer.timeFrom} 
+                              onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
+                              className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
+                              placeholder="HH:mm"
+                            />
+                            <input 
+                              type="text"
+                              value={layer.dateFrom || ''} 
+                              onChange={(e) => updateLayer(idx, 'dateFrom', e.target.value)}
+                              className="w-full bg-transparent border-none text-[10px] text-slate-500 font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
+                              placeholder="dd/mm/yyyy"
+                            />
+                          </div>
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`}>
-                          <input 
-                            type="text"
-                            value={layer.timeTo} 
-                            onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all whitespace-nowrap"
-                            placeholder="HH:mm"
-                            style={{ minWidth: '80px', width: '80px' }}
-                          />
+                          <div className="flex flex-col items-center px-1 py-1" style={{ minWidth: '80px', width: '80px' }}>
+                            <input 
+                              type="text"
+                              value={layer.timeTo} 
+                              onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
+                              className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
+                              placeholder="HH:mm"
+                            />
+                            <input 
+                              type="text"
+                              value={layer.dateTo || ''} 
+                              onChange={(e) => updateLayer(idx, 'dateTo', e.target.value)}
+                              className="w-full bg-transparent border-none text-[10px] text-slate-500 font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
+                              placeholder="dd/mm/yyyy"
+                            />
+                          </div>
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
