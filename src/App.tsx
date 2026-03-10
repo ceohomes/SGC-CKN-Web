@@ -123,7 +123,7 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary';
+type AppSheet = 'upload' | 'summary' | 'norms';
 
 // --- Helper Functions ---
 
@@ -222,17 +222,19 @@ Yêu cầu trích xuất chi tiết:
 1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
 2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
 
-3. Bảng chi tiết địa chất (layers):
-   QUAN TRỌNG: Mỗi dòng thời gian trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1.
+3. BƯỚC 1 - Tạo bảng tra cứu lớp thiết kế (designLayerMap):
+   Trước khi đọc từng dòng, hãy đọc TOÀN BỘ cột "Lớp thiết kế" và cột "Mô tả địa chất thiết kế" trong biên bản để xây dựng bảng tra cứu.
+   - Mỗi số lớp thiết kế (1, 2, 3, 4...) chỉ có DUY NHẤT MỘT mô tả địa chất thiết kế.
+   - Đây là mapping cố định: ví dụ lớp "3" → "Cát xám ghi, kết cấu chặt vừa".
+   - Trả về dưới dạng object: {"1": "Sét pha màu...", "2": "Sét màu...", "3": "Cát xám..."}
 
-   PHÂN BIỆT RÕ HAI KHÁI NIỆM:
-   A) "Lớp thiết kế" (designLayerCode): Là SỐ HIỆU LỚP trong cột "Lớp thiết kế" hoặc "Lớp" của biên bản, ví dụ: 1, 2, 3, 4, 5, 6... Nhiều dòng thời gian có thể thuộc CÙNG một lớp thiết kế.
-   B) "Mô tả địa chất thiết kế" (layerDesign): Là MÔ TẢ ĐỊA CHẤT của lớp thiết kế đó. QUY TẮC BẮT BUỘC: Tất cả các dòng có cùng designLayerCode PHẢI có cùng layerDesign. Ví dụ: tất cả dòng thuộc lớp 3 đều phải có layerDesign = "Cát xám ghi, kết cấu chặt vừa" — KHÔNG được ghi khác nhau cho cùng một lớp.
+4. BƯỚC 2 - Trích xuất từng dòng (layers):
+   QUAN TRỌNG: Mỗi dòng thời gian trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1.
 
    Các trường cần trích xuất cho mỗi dòng:
    - layerNumber: Số thứ tự dòng theo thứ tự xuất hiện trong bảng (1, 2, 3...). Đây là STT dòng, KHÔNG phải số lớp thiết kế.
    - designLayerCode: Số hiệu lớp thiết kế (lấy từ cột "Lớp thiết kế" hoặc "Lớp" trong biên bản, ví dụ: "1", "2", "3"). Nếu dòng không có giá trị mới thì lấy giá trị của dòng trước đó (vì nhiều dòng liên tiếp thuộc cùng 1 lớp).
-   - layerDesign: Mô tả địa chất của lớp thiết kế tương ứng với designLayerCode. Phải NHẤT QUÁN — cùng designLayerCode thì cùng layerDesign.
+   - layerDesign: Lấy từ bảng tra cứu designLayerMap theo designLayerCode. KHÔNG tự suy luận từ nội dung dòng. Cùng designLayerCode → LUÔN cùng layerDesign.
    - timeFrom: Giờ bắt đầu của dòng đó (định dạng HH:mm).
    - timeTo: Giờ kết thúc của dòng đó (định dạng HH:mm).
    - dateFrom: Ngày bắt đầu của dòng đó (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
@@ -241,7 +243,7 @@ Yêu cầu trích xuất chi tiết:
    - elevationTo: Cao độ kết thúc của dòng đó (mét, là số thực).
    - actualGeology: Ký hiệu địa chất thực tế của dòng đó. Chỉ lấy đúng ký hiệu số đơn như "1", "2", "3", "1a"... KHÔNG ghép nhiều ký hiệu. Mỗi dòng chỉ có 1 ký hiệu duy nhất.
 
-4. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
+5. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
 
 Lưu ý quan trọng: 
 - Nếu không tìm thấy dữ liệu, hãy để trống hoặc ước tính hợp lý dựa trên ngữ cảnh.
@@ -269,6 +271,10 @@ Lưu ý quan trọng:
           diameter: { type: Type.STRING },
           constructionStart: { type: Type.STRING },
           constructionEnd: { type: Type.STRING },
+          designLayerMap: {
+            type: Type.OBJECT,
+            description: "Bảng tra cứu: key = designLayerCode (\"1\",\"2\"...), value = mô tả địa chất thiết kế"
+          },
           layers: {
             type: Type.ARRAY,
             items: {
@@ -300,8 +306,17 @@ Lưu ý quan trọng:
   const rawData = JSON.parse(text);
 
   // Post-process: đảm bảo layerDesign nhất quán theo designLayerCode
-  // Lấy mô tả đầu tiên xuất hiện cho mỗi lớp thiết kế làm chuẩn
-  const layerDesignMap: Record<string, string> = {};
+  // Ưu tiên 1: designLayerMap do AI tạo ra (bảng tra cứu chính xác nhất)
+  // Ưu tiên 2: first-occurrence từ layers (fallback)
+  const aiLayerMap: Record<string, string> = {};
+  if (rawData.designLayerMap && typeof rawData.designLayerMap === 'object') {
+    Object.entries(rawData.designLayerMap).forEach(([code, desc]) => {
+      if (code && desc) aiLayerMap[code.toString().trim()] = desc as string;
+    });
+  }
+
+  // Fallback: lấy first-occurrence từ layers nếu AI map thiếu
+  const layerDesignMap: Record<string, string> = { ...aiLayerMap };
   rawData.layers.forEach((layer: any) => {
     const code = layer.designLayerCode?.toString().trim() || '';
     if (code && !layerDesignMap[code] && layer.layerDesign) {
@@ -975,6 +990,19 @@ export default function App() {
               <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Dashboard tổng hợp</span>
             </button>
+
+            <button 
+              onClick={() => { setActiveSheet('norms'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'norms' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <BarChart2 size={18} className={activeSheet === 'norms' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Định mức thi công</span>
+            </button>
           </nav>
 
           <div className="pt-6 border-t border-[#1e3a5f]">
@@ -987,7 +1015,7 @@ export default function App() {
       </aside>
 
       {/* Header */}
-      <header className="bg-blue-900 border-b border-blue-800 px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 shadow-lg backdrop-blur-md bg-blue-900/95 text-white min-h-[48px]">
+      <header className="border-b border-[#122d57] px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 shadow-lg text-white min-h-[48px]" style={{background: '#1a3a6b'}}>
         <div 
           className="flex items-center gap-3 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
@@ -1259,18 +1287,18 @@ export default function App() {
                             </td>
                             <td className="text-center text-slate-700">
                               {(() => {
-                                const h = calcConstructionDurationHours(item.constructionStart, item.constructionEnd);
+                                const h = item.layers.reduce((acc, l) => acc + l.durationHours, 0);
                                 return h > 0 ? h.toFixed(2) : '—';
                               })()}
                             </td>
                             <td className="text-center">
                               {(() => {
                                 const totalLen = item.layers.reduce((acc, l) => acc + l.lengthMeters, 0);
-                                const h = calcConstructionDurationHours(item.constructionStart, item.constructionEnd);
+                                const h = item.layers.reduce((acc, l) => acc + l.durationHours, 0);
                                 const v = h > 0 ? totalLen / h : 0;
                                 return (
                                   <span className={cn(
-                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold",
+                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold",
                                     v > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
                                   )}>
                                     {v > 0 ? v.toFixed(2) : '—'}
@@ -1322,6 +1350,8 @@ export default function App() {
           </div>
             )} {/* end else: không có file */}
           </div>
+        ) : activeSheet === 'norms' ? (
+          <NormsView history={history} />
         ) : (
           <SummaryView 
             history={history} 
@@ -1666,6 +1696,7 @@ function SummaryView({
   onDelete: (id: string) => void
 }) {
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
+  const totalPiles = history.length;
   const totalDepth = history.reduce((acc, r) => acc + r.layers.reduce((s, l) => s + l.lengthMeters, 0), 0);
   const avgSpeed = history.length > 0
     ? history.reduce((acc, r) => acc + (r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)), 0) / history.length
@@ -1847,6 +1878,245 @@ function SummaryView({
     </div>
   );
 }
+
+function NormsView({ history }: { history: ExtractionResult[] }) {
+  const [filterDiameter, setFilterDiameter] = useState('');
+  const [filterLayer, setFilterLayer] = useState('');
+
+  if (history.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
+      <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart2 className="text-slate-300 w-12 h-12" /></div>
+      <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
+      <p className="text-slate-400 mt-2 text-sm">Hãy upload biên bản để xem định mức</p>
+    </div>
+  );
+
+  // ── Thu thập theo (Đường kính × actualGeology) ──
+  interface NormRow {
+    diameter: string;
+    geoCode: string;
+    layerDesign: string;
+    speeds: number[];
+    pileCount: Set<string>;
+  }
+
+  const normMap: Record<string, NormRow> = {};
+
+  history.forEach(result => {
+    result.layers.forEach(layer => {
+      const diameter = result.diameter || layer.diameter || '—';
+      const geoCode = layer.actualGeology?.toString().trim() || '—';
+      const desc = layer.layerDesign || '—';
+      const key = `${diameter}__${geoCode}`;
+
+      if (!normMap[key]) {
+        normMap[key] = { diameter, geoCode, layerDesign: desc, speeds: [], pileCount: new Set() };
+      }
+      const row = normMap[key];
+      if (row.layerDesign === '—' && desc !== '—') row.layerDesign = desc;
+      if (layer.speedMph > 0) row.speeds.push(layer.speedMph);
+      row.pileCount.add(result.pileId || result.id);
+    });
+  });
+
+  const norms = Object.values(normMap).map(row => {
+    const speeds = row.speeds.filter(s => s > 0);
+    const avgSpeed = speeds.length > 0 ? speeds.reduce((a,b) => a+b, 0) / speeds.length : 0;
+    const minSpeed = speeds.length > 0 ? Math.min(...speeds) : 0;
+    const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
+    return { ...row, avgSpeed, minSpeed, maxSpeed, pileCountNum: row.pileCount.size, sampleCount: speeds.length };
+  }).sort((a, b) => {
+    if (a.diameter !== b.diameter) return a.diameter.localeCompare(b.diameter);
+    return parseInt(a.geoCode) - parseInt(b.geoCode) || a.geoCode.localeCompare(b.geoCode);
+  });
+
+  const filtered = norms.filter(r =>
+    (!filterDiameter || r.diameter.toLowerCase().includes(filterDiameter.toLowerCase())) &&
+    (!filterLayer || r.geoCode.includes(filterLayer) || r.layerDesign.toLowerCase().includes(filterLayer.toLowerCase()))
+  );
+
+  const allSpeeds = norms.flatMap(r => r.speeds).filter(s => s > 0);
+  const globalAvg = allSpeeds.length > 0 ? allSpeeds.reduce((a,b)=>a+b,0)/allSpeeds.length : 0;
+  const globalMin = allSpeeds.length > 0 ? Math.min(...allSpeeds) : 0;
+  const globalMax = allSpeeds.length > 0 ? Math.max(...allSpeeds) : 0;
+  const geoCodes  = [...new Set(norms.map(r => r.geoCode))].sort((a,b) => parseInt(a)-parseInt(b)||a.localeCompare(b));
+  const diameters = [...new Set(norms.map(r => r.diameter))];
+
+  const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b','#ef4444','#14b8a6','#a855f7','#fb923c'];
+
+  const chartByGeo = geoCodes.map(code => {
+    const rows = norms.filter(r => r.geoCode === code);
+    const allS  = rows.flatMap(r => r.speeds).filter(s => s > 0);
+    return {
+      name: `ĐC ${code}`,
+      'V.Min': allS.length > 0 ? parseFloat(Math.min(...allS).toFixed(2)) : 0,
+      'V.TB':  allS.length > 0 ? parseFloat((allS.reduce((a,b)=>a+b,0)/allS.length).toFixed(2)) : 0,
+      'V.Max': allS.length > 0 ? parseFloat(Math.max(...allS).toFixed(2)) : 0,
+    };
+  });
+
+  const chartByDiameter = diameters.map(d => {
+    const rows = norms.filter(r => r.diameter === d);
+    const allS  = rows.flatMap(r => r.speeds).filter(s => s > 0);
+    return {
+      name: d,
+      'V.TB (m/h)': allS.length > 0 ? parseFloat((allS.reduce((a,b)=>a+b,0)/allS.length).toFixed(2)) : 0,
+    };
+  });
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
+          <div>
+            <h3 className="text-[18px] font-black text-black uppercase tracking-tight">Định Mức Thi Công</h3>
+            <p className="text-xs text-slate-500 font-medium">Thống kê vận tốc theo đường kính & ký hiệu địa chất thực tế</p>
+          </div>
+        </div>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{history.length} cọc • {geoCodes.length} lớp địa chất</span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'V.TB toàn bộ',    value: `${globalAvg.toFixed(2)} m/h`, color: 'bg-blue-600',   icon: <TrendingUp className="w-5 h-5 text-white" /> },
+          { label: 'V.Min ghi nhận',  value: `${globalMin.toFixed(2)} m/h`, color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
+          { label: 'V.Max ghi nhận',  value: `${globalMax.toFixed(2)} m/h`, color: 'bg-emerald-500',icon: <Activity className="w-5 h-5 text-white" /> },
+          { label: 'Số lớp địa chất', value: `${geoCodes.length} lớp`,     color: 'bg-violet-500',  icon: <Layers className="w-5 h-5 text-white" /> },
+        ].map((kpi, i) => (
+          <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`p-2 rounded-xl ${kpi.color}`}>{kpi.icon}</div>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{kpi.label}</p>
+            <span className="text-2xl font-black text-slate-900">{kpi.value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Layers size={14} className="text-blue-600" /> V.Min / V.TB / V.Max theo lớp địa chất thực tế
+          </h4>
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartByGeo} barGap={2} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
+                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
+                <Bar dataKey="V.Min" fill="#94a3b8" radius={[3,3,0,0]} />
+                <Bar dataKey="V.TB"  fill="#2563eb" radius={[3,3,0,0]} />
+                <Bar dataKey="V.Max" fill="#f97316" radius={[3,3,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Activity size={14} className="text-orange-500" /> V.TB theo đường kính
+          </h4>
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartByDiameter}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+                <Bar dataKey="V.TB (m/h)" radius={[4,4,0,0]}>
+                  {chartByDiameter.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+            <BarChart2 size={14} className="text-blue-600" /> Bảng định mức chi tiết ({filtered.length} tổ hợp)
+          </h4>
+          <div className="flex gap-2">
+            <input value={filterDiameter} onChange={e => setFilterDiameter(e.target.value)}
+              placeholder="Lọc đường kính..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-36" />
+            <input value={filterLayer} onChange={e => setFilterLayer(e.target.value)}
+              placeholder="Lọc lớp ĐC / mô tả..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-44" />
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-[#1a3a6b] text-white text-[11px] font-black uppercase tracking-wider">
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-12">STT</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-28">Đường kính</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-24">Ký hiệu ĐC</th>
+                <th className="px-4 py-3 text-left border-r border-blue-700">Mô tả lớp thiết kế tương ứng</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-20">Số cọc</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-20">Số mẫu</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-32" style={{background:'#1e4080'}}>V.Min (m/h)</th>
+                <th className="px-4 py-3 text-center border-r border-blue-700 w-32" style={{background:'#1e4080'}}>V.Max (m/h)</th>
+                <th className="px-4 py-3 text-center w-36 bg-orange-500">V.TB (m/h)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((row, idx) => (
+                <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
+                  <td className="px-4 py-3 text-center text-[11px] font-bold text-blue-700 border-r border-slate-100">{idx + 1}</td>
+                  <td className="px-4 py-3 text-center text-[11px] font-bold text-slate-800 border-r border-slate-100">{row.diameter}</td>
+                  <td className="px-4 py-3 text-center border-r border-slate-100">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 text-blue-800 text-[13px] font-black">
+                      {row.geoCode}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-[11px] text-slate-700 border-r border-slate-100">{row.layerDesign}</td>
+                  <td className="px-4 py-3 text-center text-[11px] font-semibold text-slate-700 border-r border-slate-100">{row.pileCountNum}</td>
+                  <td className="px-4 py-3 text-center text-[11px] text-slate-500 border-r border-slate-100">{row.sampleCount}</td>
+                  <td className="px-4 py-3 text-center border-r border-slate-100">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                      {row.minSpeed.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center border-r border-slate-100">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                      {row.maxSpeed.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={cn(
+                      "inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black",
+                      row.avgSpeed > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
+                    )}>
+                      {row.avgSpeed.toFixed(2)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 border-t-2 border-slate-300 text-[11px] font-black">
+                <td colSpan={4} className="px-4 py-3 text-black uppercase border-r border-slate-200">Tổng hợp toàn bộ</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200 text-blue-700">{[...new Set(history.map(r => r.pileId))].length}</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200">{filtered.reduce((s,r)=>s+r.sampleCount,0)}</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200">{globalMin.toFixed(2)}</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200">{globalMax.toFixed(2)}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-black">
+                    {globalAvg.toFixed(2)}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
   return (
