@@ -98,6 +98,8 @@ interface ExtractionResult {
   summary: string;
   fileName?: string;
   fileUrl?: string;
+  _base64?: string;   // Tạm lưu để upload GitHub khi xác nhận
+  _mimeType?: string;
 }
 
 interface ProcessingFile {
@@ -582,81 +584,13 @@ export default function App() {
           ...rawResult,
           id: Math.random().toString(36).substring(7),
           timestamp: Date.now(),
-          fileName: file.name
+          fileName: file.name,
+          _base64: base64,      // Lưu tạm để upload GitHub sau khi xác nhận
+          _mimeType: mimeType,
         };
 
-        // Upload to GitHub if connected
-        if (isGithubConnected) {
-          try {
-            console.log("Attempting GitHub upload for:", file.name);
-            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
-            
-            let uploadData: any = null;
-            
-            // Try backend first
-            try {
-              const uploadRes = await fetch('/api/github/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileName: file.name, base64Data: base64 })
-              });
-              if (uploadRes.ok) {
-                uploadData = await uploadRes.json();
-              }
-            } catch (backendError) {
-              console.log("Backend upload failed, trying client-side fallback...");
-            }
-
-            // Client-side fallback if backend failed but we have credentials
-            if (!uploadData && githubCreds) {
-              const { token, username, repo } = githubCreds;
-              
-              // Add timestamp to filename to avoid "File already exists" error
-              const timestamp = new Date().getTime();
-              const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-              const path = `SGC-CKN/${timestamp}_${safeFileName}`;
-              const content = base64.split(',')[1];
-
-              console.log(`Client-side upload to: ${username}/${repo}/contents/${path}`);
-
-              const ghRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${token.trim()}`,
-                  'Accept': 'application/vnd.github.v3+json',
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  message: `Upload ${file.name} via SGC-CKN Web`,
-                  content: content,
-                })
-              });
-
-              if (ghRes.ok) {
-                const ghData = await ghRes.json();
-                // Dùng raw.githubusercontent.com để tránh CORS khi hiển thị trực tiếp
-                const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
-                uploadData = { fileUrl: rawUrl };
-                console.log("GitHub upload success:", uploadData.fileUrl);
-              } else {
-                const errorData = await ghRes.json();
-                console.error("GitHub API Error:", errorData);
-                alert(`Lỗi GitHub: ${errorData.message || 'Không thể upload file'}. Vui lòng kiểm tra quyền của Token hoặc tên Repo.`);
-              }
-            }
-
-            if (uploadData && uploadData.fileUrl) {
-              result.fileUrl = uploadData.fileUrl;
-              console.log("File URL assigned to result:", result.fileUrl);
-            } else {
-              console.warn("GitHub upload failed or no fileUrl returned");
-            }
-          } catch (e) {
-            console.error("GitHub upload failed", e);
-          }
-        } else {
-          console.log("GitHub not connected, skipping upload.");
-        }
+        // KHÔNG upload GitHub hay lưu Supabase ở đây
+        // Chờ người dùng xác nhận bấm "Lưu dữ liệu"
 
         setPendingResults(prev => [result, ...prev]);
         setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
@@ -685,43 +619,86 @@ export default function App() {
   };
 
   const saveResult = async (result: ExtractionResult) => {
-    console.log("Saving result to Supabase:", result);
-    
-    if (isGithubConnected && !result.fileUrl) {
-      const proceed = window.confirm("Cảnh báo: GitHub đã kết nối nhưng không tìm thấy link file. Bạn có muốn tiếp tục lưu mà không có file không?");
-      if (!proceed) return;
-    }
+    let finalResult = { ...result };
 
-    // Save to Supabase
-    if (supabase) {
+    // 1. Upload file lên GitHub (nếu chưa có fileUrl và có dữ liệu file)
+    if (isGithubConnected && !finalResult.fileUrl && finalResult._base64) {
       try {
-        // Prepare data for Supabase (remove client-side temporary ID to let DB generate UUID)
-        const { id, ...dataToSave } = result;
-        console.log("Data being sent to Supabase:", dataToSave);
-        const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
-        
-        if (supabaseError) {
-          console.error("Supabase error:", supabaseError);
-          alert("Lỗi khi lưu vào Supabase: " + supabaseError.message);
-          return;
+        const base64 = finalResult._base64;
+        let uploadData: any = null;
+
+        // Try backend first
+        try {
+          const uploadRes = await fetch('/api/github/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: finalResult.fileName, base64Data: base64 })
+          });
+          if (uploadRes.ok) uploadData = await uploadRes.json();
+        } catch (_) {}
+
+        // Client-side fallback
+        if (!uploadData && githubCreds) {
+          const { token, username, repo } = githubCreds;
+          const timestamp = new Date().getTime();
+          const safeFileName = (finalResult.fileName || 'file').replace(/[^a-zA-Z0-9.-]/g, '_');
+          const path = `SGC-CKN/${timestamp}_${safeFileName}`;
+          const content = base64.split(',')[1];
+
+          const ghRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token.trim()}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: `Upload ${finalResult.fileName} via SGC-CKN Web`, content })
+          });
+
+          if (ghRes.ok) {
+            const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
+            uploadData = { fileUrl: rawUrl };
+          } else {
+            const err = await ghRes.json();
+            alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload file'}. Dữ liệu vẫn sẽ được lưu vào Supabase.`);
+          }
+        }
+
+        if (uploadData?.fileUrl) {
+          finalResult.fileUrl = uploadData.fileUrl;
         }
       } catch (e) {
-        console.error("Failed to save to Supabase", e);
-        alert("Lỗi kết nối Supabase: " + (e as any).message);
+        console.error("GitHub upload failed", e);
+      }
+    }
+
+    // 2. Lưu vào Supabase
+    if (supabase) {
+      try {
+        const { id, _base64, _mimeType, ...dataToSave } = finalResult;
+        const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
+        if (supabaseError) {
+          alert("❌ Lỗi khi lưu vào Supabase: " + supabaseError.message);
+          return;
+        }
+      } catch (e: any) {
+        alert("❌ Lỗi kết nối Supabase: " + e.message);
         return;
       }
     } else {
-      console.warn("Supabase client not initialized.");
-      alert("Lỗi: Không thể kết nối với Supabase. Vui lòng kiểm tra lại mã nguồn.");
+      alert("❌ Không thể kết nối Supabase.");
+      return;
     }
 
-    setHistory(prev => [result, ...prev]);
+    // 3. Cập nhật UI
+    const { _base64: _b, _mimeType: _m, ...cleanResult } = finalResult;
+    setHistory(prev => [cleanResult, ...prev]);
     setPendingResults(prev => prev.filter(r => r.id !== result.id));
-    
-    // If it was the current result being viewed, we keep it there but it's now in history
-    if (currentResult?.id === result.id) {
-      setCurrentResult(result);
-    }
+    setCurrentResult(null);
+    // Cập nhật processing files nếu có
+    setProcessingFiles(prev => prev.map(f => 
+      f.result?.id === result.id ? { ...f, result: cleanResult } : f
+    ));
   };
 
   const cancelResult = (id: string) => {
@@ -957,160 +934,193 @@ export default function App() {
       <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
           <div className="w-full space-y-12">
-            {/* Processing Queue */}
-            {processingFiles.length > 0 && (
-              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
-                    <Loader2 className={cn("w-6 h-6 text-blue-600", isProcessing && "animate-spin")} />
-                    Tiến trình xử lý ({processingFiles.filter(f => f.status !== 'completed').length})
-                  </h3>
-                  <div className="flex gap-4">
-                    {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && (
-                      <button 
-                        onClick={() => setProcessingFiles([])}
-                        className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest transition-colors flex items-center gap-2"
+            {/* === SPLIT-SCREEN KHI CÓ FILE ĐANG XỬ LÝ HOẶC CHỜ DUYỆT === */}
+            {(processingFiles.length > 0 || pendingResults.length > 0) ? (
+              <div className="flex gap-0 h-[calc(100vh-160px)] rounded-3xl overflow-hidden border border-slate-200 shadow-xl">
+
+                {/* CỘT TRÁI: Danh sách file */}
+                <div className="w-72 flex-shrink-0 bg-slate-900 flex flex-col">
+                  <div className="px-5 py-4 border-b border-slate-700/50">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className={cn("w-4 h-4 text-blue-400", isProcessing && "animate-spin")} />
+                      <span className="text-[11px] font-black text-white uppercase tracking-widest">
+                        Tiến trình ({processingFiles.filter(f => f.status !== 'completed').length + pendingResults.length})
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                    {/* Files đang xử lý */}
+                    {processingFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        onClick={() => file.status === 'completed' && file.result && setCurrentResult(file.result)}
+                        className={cn(
+                          "p-3 rounded-xl transition-all group relative",
+                          file.status === 'completed' && file.result
+                            ? currentResult?.id === file.result?.id
+                              ? "bg-blue-600 cursor-pointer"
+                              : "bg-slate-800 hover:bg-slate-700 cursor-pointer"
+                            : "bg-slate-800/50 cursor-default"
+                        )}
                       >
-                        <Trash2 size={14} />
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            file.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" :
+                            file.status === 'error' ? "bg-red-500/20 text-red-400" :
+                            "bg-slate-700 text-slate-400"
+                          )}>
+                            {file.status === 'completed' ? <CheckCircle2 size={14} /> :
+                             file.status === 'error' ? <AlertCircle size={14} /> :
+                             file.status === 'processing' ? <Loader2 size={14} className="animate-spin" /> :
+                             <FileText size={14} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{file.fileName}</p>
+                            <p className={cn(
+                              "text-[10px] font-medium mt-0.5",
+                              file.status === 'completed' ? "text-emerald-400" :
+                              file.status === 'error' ? "text-red-400" :
+                              file.status === 'processing' ? "text-orange-400" : "text-slate-500"
+                            )}>
+                              {file.status === 'pending' ? 'Đang chờ...' :
+                               file.status === 'processing' ? `Phân tích... ${file.progress}%` :
+                               file.status === 'completed' ? 'Hoàn thành ✓' : 'Lỗi xử lý'}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeProcessingFile(file.id); }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        {(file.status === 'processing' || file.status === 'pending') && (
+                          <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${file.progress}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Pending results chưa lưu */}
+                    {pendingResults.map((result) => (
+                      <div
+                        key={result.id}
+                        onClick={() => setCurrentResult(result)}
+                        className={cn(
+                          "p-3 rounded-xl cursor-pointer transition-all group relative",
+                          currentResult?.id === result.id
+                            ? "bg-orange-500"
+                            : "bg-slate-800 hover:bg-slate-700"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center flex-shrink-0">
+                            <AlertCircle size={14} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{result.pileId || result.fileName}</p>
+                            <p className="text-[10px] text-orange-300 font-medium mt-0.5">Chờ kiểm duyệt</p>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); cancelResult(result.id); }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer cột trái */}
+                  <div className="p-3 border-t border-slate-700/50 space-y-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                    >
+                      <Upload size={12} />
+                      Thêm file
+                    </button>
+                    {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && (
+                      <button
+                        onClick={() => setProcessingFiles([])}
+                        className="w-full py-2 text-slate-500 hover:text-red-400 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                      >
                         Xóa danh sách
                       </button>
                     )}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {processingFiles.map((file) => (
-                    <div key={file.id} className="modern-card p-6 relative overflow-hidden group">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className={cn(
-                          "p-2.5 rounded-xl",
-                          file.status === 'completed' ? "bg-emerald-50 text-emerald-600" : 
-                          file.status === 'error' ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-600"
-                        )}>
-                          {file.status === 'completed' ? <CheckCircle2 size={20} /> : 
-                           file.status === 'error' ? <AlertCircle size={20} /> : <FileText size={20} />}
-                        </div>
-                        <button 
-                          onClick={() => removeProcessingFile(file.id)}
-                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <div className="space-y-3">
-                        <h4 className="font-bold text-slate-900 truncate pr-4 text-sm" title={file.fileName}>{file.fileName}</h4>
-                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest">
-                          <span className={cn(
-                            file.status === 'completed' ? "text-emerald-600" : 
-                            file.status === 'error' ? "text-red-600" : "text-slate-500"
-                          )}>
-                            {file.status === 'pending' ? 'Đang chờ...' : 
-                             file.status === 'processing' ? 'Đang phân tích...' : 
-                             file.status === 'completed' ? 'Hoàn thành' : 'Lỗi xử lý'}
-                          </span>
-                          <span className="text-slate-400">{file.progress}%</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div 
-                            className={cn(
-                              "h-full transition-all duration-500",
-                              file.status === 'completed' ? "bg-emerald-500" : 
-                              file.status === 'error' ? "bg-red-500" : "bg-orange-500"
-                            )}
-                            style={{ width: `${file.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                      {file.status === 'completed' && file.result && (
-                        <button 
-                          onClick={() => setCurrentResult(file.result!)}
-                          className="mt-5 w-full py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-100"
-                        >
-                          <ExternalLink size={14} />
-                          Kiểm tra & Lưu
-                        </button>
-                      )}
-                      {file.status === 'error' && (
-                        <div className="mt-3 p-3 bg-red-50 rounded-xl border border-red-100">
-                          <p className="text-[10px] text-red-600 font-bold italic leading-tight">{file.error}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {/* Current Selected Result */}
-            {currentResult && (
-              <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 space-y-6">
-                <div className="flex items-center justify-between bg-blue-600 p-8 rounded-3xl text-white shadow-xl">
-                  <div className="flex items-center gap-5">
-                    <div className="bg-white/10 p-3 rounded-2xl backdrop-blur-sm border border-white/10">
-                      <FileText size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold uppercase tracking-tight">
-                        {currentResult.fileName || currentResult.pileId}
-                      </h3>
-                      <p className="text-xs text-blue-100 font-bold uppercase tracking-widest mt-1">
-                        {pendingResults.some(r => r.id === currentResult.id) ? "Đang chờ kiểm duyệt" : "Dữ liệu trích xuất thành công"}
-                      </p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => setCurrentResult(null)}
-                    className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10 backdrop-blur-sm"
-                  >
-                    Đóng kết quả
-                  </button>
-                </div>
-                <ResultDisplay 
-                  result={currentResult} 
-                  onSave={pendingResults.some(r => r.id === currentResult.id) ? saveResult : undefined}
-                  onCancel={pendingResults.some(r => r.id === currentResult.id) ? cancelResult : undefined}
-                />
-              </div>
-            )}
+                {/* CỘT PHẢI: Chi tiết + chỉnh sửa */}
+                <div className="flex-1 bg-white overflow-y-auto">
+                  {currentResult ? (
+                    <div className="h-full flex flex-col">
+                      {/* Header chi tiết */}
+                      <div className="flex items-center justify-between bg-blue-600 px-8 py-5 flex-shrink-0">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-white/10 p-2.5 rounded-xl">
+                            <FileText size={20} className="text-white" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white uppercase tracking-tight">
+                              {currentResult.fileName || currentResult.pileId}
+                            </h3>
+                            <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mt-0.5">
+                              {pendingResults.some(r => r.id === currentResult.id) ? "Đang chờ kiểm duyệt — Xem và chỉnh sửa trước khi lưu" : "Dữ liệu đã lưu"}
+                            </p>
+                          </div>
+                        </div>
+                        {pendingResults.some(r => r.id === currentResult.id) && (
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => { cancelResult(currentResult.id); setCurrentResult(null); }}
+                              className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/10 flex items-center gap-2"
+                            >
+                              <X size={14} />
+                              Hủy bỏ
+                            </button>
+                            <button
+                              onClick={() => saveResult(currentResult)}
+                              className="px-6 py-2.5 bg-white text-blue-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
+                            >
+                              <Save size={14} />
+                              Lưu dữ liệu
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
-            {/* Pending Review Section */}
-            {pendingResults.length > 0 && !currentResult && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-orange-500" />
-                    Đang chờ kiểm duyệt ({pendingResults.length})
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {pendingResults.map((result) => (
-                    <div 
-                      key={result.id} 
-                      className="modern-card p-6 relative group overflow-hidden"
-                    >
-                      <div className="absolute top-0 right-0 w-12 h-12 bg-orange-50 rounded-bl-2xl flex items-center justify-center text-orange-500">
-                        <AlertCircle size={18} />
-                      </div>
-                      <h4 className="font-bold text-slate-900 uppercase tracking-tight text-sm mb-1 truncate pr-8">{result.pileId}</h4>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">{result.project}</p>
-                      <div className="mt-6 flex gap-2">
-                        <button 
-                          onClick={() => cancelResult(result.id)}
-                          className="flex-1 py-2 bg-slate-50 text-slate-400 rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-all"
-                        >
-                          Hủy
-                        </button>
-                        <button 
-                          onClick={() => setCurrentResult(result)}
-                          className="flex-[2] py-2 bg-blue-600 text-white rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                        >
-                          Xem & Lưu
-                        </button>
+                      {/* Nội dung chi tiết = EditSplitView embedded */}
+                      <div className="flex-1 overflow-hidden">
+                        <EditSplitView
+                          result={currentResult}
+                          embedded={true}
+                          onClose={() => setCurrentResult(null)}
+                          onSave={(updated) => {
+                            setCurrentResult(updated);
+                            setPendingResults(prev => prev.map(r => r.id === updated.id ? updated : r));
+                          }}
+                        />
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-12">
+                      <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center mb-6">
+                        <FileText size={32} className="text-slate-300" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-400 uppercase tracking-tight mb-2">Chọn file để xem chi tiết</h3>
+                      <p className="text-sm text-slate-300 font-medium">Bấm vào một file bên trái để xem<br/>và chỉnh sửa dữ liệu trước khi lưu</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            ) : (
+              /* Khi không có file nào đang xử lý */
+              <div className="w-full space-y-12">
 
             {/* Main Data Table on Sheet 1 */}
             {history.length > 0 && !currentResult && (
@@ -1208,6 +1218,8 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+            )} {/* end else: không có file */}
           </div>
         ) : (
           <SummaryView 
@@ -1727,11 +1739,13 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
 function EditSplitView({ 
   result, 
   onClose, 
-  onSave 
+  onSave,
+  embedded = false
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
-  onSave: (res: ExtractionResult) => void 
+  onSave: (res: ExtractionResult) => void;
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   const [zoom, setZoom] = useState(1);
@@ -1915,8 +1929,9 @@ function EditSplitView({
   };
 
   return (
-    <div className="fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300">
-      {/* Header */}
+    <div className={embedded ? "flex flex-col h-full" : "fixed inset-0 bg-white z-[200] flex flex-col animate-in fade-in duration-300"}>
+      {/* Header - chỉ hiện khi không embedded (vì embedded có header riêng ở cột phải) */}
+      {!embedded && (
       <div className="h-16 bg-blue-900 border-b border-blue-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <div className="bg-white/20 p-2 rounded-lg text-white">
@@ -1943,6 +1958,7 @@ function EditSplitView({
           </button>
         </div>
       </div>
+      )} {/* end !embedded header */}
 
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
