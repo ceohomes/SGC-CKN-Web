@@ -98,6 +98,7 @@ interface ExtractionResult {
   summary: string;
   fileName?: string;
   fileUrl?: string;
+  stt?: number;       // Số thứ tự từ Supabase
   _base64?: string;   // Tạm lưu để upload GitHub khi xác nhận
   _mimeType?: string;
 }
@@ -865,15 +866,16 @@ export default function App() {
       <aside 
         ref={sidebarRef}
         className={cn(
-          "fixed top-0 left-0 h-full w-72 bg-blue-950 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-blue-900",
+          "fixed top-0 left-0 h-full w-72 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-[#1e3a5f]",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{ background: "linear-gradient(160deg, #0f2a4a 0%, #112d52 50%, #0d2540 100%)" }}
         onMouseLeave={() => setIsSidebarOpen(false)}
       >
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-blue-800">
+              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-[#1e4070]">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
@@ -884,26 +886,26 @@ export default function App() {
               </div>
               <div>
                 <span className="font-bold text-white uppercase tracking-tight block text-lg">SGC - CKN</span>
-                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
+                <span className="text-[10px] font-bold text-blue-300 uppercase tracking-[0.2em]">Hệ thống quản lý</span>
               </div>
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-blue-900 rounded-lg transition-colors text-blue-400">
+            <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-300">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <nav className="space-y-1 flex-1">
-            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
+            <p className="text-[10px] font-bold text-blue-300/70 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'upload' 
                   ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-blue-900 text-blue-300"
+                  : "hover:bg-white/10 text-blue-200"
               )}
             >
-              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-blue-400 group-hover:text-white"} />
+              <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Xử lý biên bản</span>
             </button>
 
@@ -913,18 +915,18 @@ export default function App() {
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
                 activeSheet === 'summary' 
                   ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-blue-900 text-blue-300"
+                  : "hover:bg-white/10 text-blue-200"
               )}
             >
-              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-blue-400 group-hover:text-white"} />
+              <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
             </button>
           </nav>
 
-          <div className="pt-6 border-t border-blue-900">
-            <div className="bg-blue-900/60 rounded-xl p-4">
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
-              <p className="text-xs font-medium text-blue-200">v2.1.0 Professional</p>
+          <div className="pt-6 border-t border-[#1e3a5f]">
+            <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.05)" }}>
+              <p className="text-[10px] font-bold text-blue-300/70 uppercase tracking-widest mb-1">Phiên bản hiện tại</p>
+              <p className="text-xs font-medium text-blue-100">v2.1.0 Professional</p>
             </div>
           </div>
         </div>
@@ -1172,6 +1174,7 @@ export default function App() {
                     <table className="pro-table">
                       <thead>
                         <tr>
+                          <th className="text-center w-12">STT</th>
                           <th>Dự án</th>
                           <th>Hạng mục</th>
                           <th>Tên bộ phận</th>
@@ -1184,8 +1187,9 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="">
-                        {history.slice(0, 10).map((item) => (
+                        {history.slice(0, 10).map((item, index) => (
                           <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
+                            <td className="text-center font-bold text-blue-700 text-xs">{item.stt ?? (history.length - index)}</td>
                             <td className="font-normal text-blue-900">{item.project}</td>
                             <td className="text-slate-900 font-normal">{item.item}</td>
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
@@ -1477,7 +1481,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           <table className="w-full border-collapse table-fixed min-w-[1500px]">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300">
-                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
+                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[60px]">STT</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Hạng mục</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[150px]">Tên bộ phận</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Số hiệu</th>
@@ -1498,7 +1503,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
-                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
+                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">{idx + 1}</td>
+                  <td className="sticky left-[60px] bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.item}</td>
                   <td className="text-black font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.componentName}</td>
                   <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.pileId}</td>
