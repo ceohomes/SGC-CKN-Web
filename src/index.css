@@ -39,10 +39,11 @@
     @apply w-full border-collapse border border-slate-300;
   }
   .pro-table thead tr {
-    @apply bg-slate-100 border-b border-slate-300;
+    @apply border-b border-blue-800;
+    background: linear-gradient(135deg, #1e3a6e 0%, #1a3460 100%);
   }
   .pro-table th {
-    @apply px-6 py-5 text-[13px] font-black uppercase tracking-widest text-blue-900 text-center border-r border-slate-300 last:border-r-0;
+    @apply px-6 py-5 text-[13px] font-black uppercase tracking-widest text-white text-center border-r border-blue-700/50 last:border-r-0;
   }
   .pro-table td {
     @apply px-6 py-4 text-[13px] text-black border-b border-slate-300 border-r border-slate-300 last:border-r-0;

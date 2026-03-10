@@ -33,7 +33,10 @@ import {
   Minimize2,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
-  BarChart2
+  BarChart2,
+  Building2,
+  TrendingUp,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -43,7 +46,14 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  Cell
+  Cell,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Legend,
+  AreaChart,
+  Area
 } from 'recharts';
 import { GoogleGenAI, Type } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
@@ -194,15 +204,16 @@ Yêu cầu trích xuất chi tiết:
 1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
 2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
 3. Bảng chi tiết địa chất (layers):
-   - layerNumber: Số thứ tự lớp (1, 2, 3...).
-   - layerDesign: Mô tả địa chất theo thiết kế (ví dụ: Sét pha, cát hạt trung...).
-   - timeFrom: Giờ bắt đầu khoan lớp này (định dạng HH:mm).
-   - timeTo: Giờ kết thúc khoan lớp này (định dạng HH:mm).
-   - dateFrom: Ngày bắt đầu khoan lớp này (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
-   - dateTo: Ngày kết thúc khoan lớp này (định dạng DD/MM/YYYY). Thường giống dateFrom, trừ khi qua đêm sang ngày hôm sau.
-   - elevationFrom: Cao độ bắt đầu của lớp (mét).
-   - elevationTo: Cao độ kết thúc của lớp (mét).
-   - actualGeology: Ký hiệu địa chất thực tế (ví dụ: 1, 1a, 2...).
+   QUAN TRỌNG: Mỗi dòng trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1. Nếu file có 20 dòng thì phải có đúng 20 layer.
+   - layerNumber: Số thứ tự dòng theo thứ tự xuất hiện trong bảng (1, 2, 3...). Mỗi dòng có 1 số riêng.
+   - layerDesign: Mô tả địa chất theo thiết kế của dòng đó (ví dụ: Sét pha, cát hạt trung...).
+   - timeFrom: Giờ bắt đầu của dòng đó (định dạng HH:mm).
+   - timeTo: Giờ kết thúc của dòng đó (định dạng HH:mm).
+   - dateFrom: Ngày bắt đầu của dòng đó (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
+   - dateTo: Ngày kết thúc của dòng đó (định dạng DD/MM/YYYY). Thường giống dateFrom, trừ khi qua đêm sang ngày hôm sau.
+   - elevationFrom: Cao độ bắt đầu của dòng đó (mét, là số thực).
+   - elevationTo: Cao độ kết thúc của dòng đó (mét, là số thực).
+   - actualGeology: Ký hiệu địa chất thực tế của dòng đó. Chỉ lấy đúng ký hiệu số đơn như "1", "2", "3", "1a"... KHÔNG ghép nhiều ký hiệu như "1(1), 2(2)" hay "1,2,3". Mỗi dòng chỉ có 1 ký hiệu duy nhất.
 
 4. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
 
@@ -869,7 +880,7 @@ export default function App() {
           "fixed top-0 left-0 h-full w-72 z-50 shadow-2xl transition-transform duration-500 ease-out transform border-r border-[#1e3a5f]",
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
-        style={{ background: "linear-gradient(160deg, #0f2a4a 0%, #112d52 50%, #0d2540 100%)" }}
+        style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}
         onMouseLeave={() => setIsSidebarOpen(false)}
       >
         <div className="p-8 h-full flex flex-col">
@@ -906,7 +917,7 @@ export default function App() {
               )}
             >
               <Upload size={18} className={activeSheet === 'upload' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Xử lý biên bản</span>
+              <span className="font-medium text-sm">Dữ liệu Biên bản</span>
             </button>
 
             <button 
@@ -919,7 +930,7 @@ export default function App() {
               )}
             >
               <Database size={18} className={activeSheet === 'summary' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Kho dữ liệu tổng hợp</span>
+              <span className="font-medium text-sm">Dashboard tổng hợp</span>
             </button>
           </nav>
 
@@ -1195,8 +1206,8 @@ export default function App() {
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
                             <td className="font-normal text-blue-900">{item.pileId}</td>
                             <td className="font-normal text-slate-900">{item.diameter}</td>
-                            <td className="text-slate-900 font-normal">{item.constructionStart}</td>
-                            <td className="text-slate-900 font-normal">{item.constructionEnd}</td>
+                            <td className="text-slate-900 font-normal text-center">{item.constructionStart}</td>
+                            <td className="text-slate-900 font-normal text-center">{item.constructionEnd}</td>
                             <td>
                               {item.fileUrl ? (
                                 <a 
@@ -1584,157 +1595,255 @@ function SummaryView({
   onEdit: (res: ExtractionResult) => void,
   onDelete: (id: string) => void
 }) {
+  const [filterProject, setFilterProject] = useState('');
+  const [filterPile, setFilterPile] = useState('');
+
+  // --- Tính toán số liệu tổng hợp ---
+  const totalPiles = history.length;
+  const totalDepth = history.reduce((acc, r) => acc + r.layers.reduce((s, l) => s + l.lengthMeters, 0), 0);
+  const avgSpeed = history.length > 0
+    ? history.reduce((acc, r) => acc + (r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)), 0) / history.length
+    : 0;
+  const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
+
+  // Phân bố theo dự án (Pie)
+  const projectDist = projects.map(p => ({
+    name: p.length > 20 ? p.slice(0, 20) + '…' : p,
+    value: history.filter(r => r.project === p).length,
+  }));
+
+  // Tốc độ khoan từng cọc (Bar)
+  const speedData = history.slice().reverse().map(r => ({
+    name: r.pileId || '—',
+    'Tốc độ TB (m/h)': parseFloat((r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)).toFixed(2)),
+    'Chiều sâu (m)': parseFloat(r.layers.reduce((s, l) => s + l.lengthMeters, 0).toFixed(2)),
+  }));
+
+  // Tiến độ theo thời gian (Area)
+  const timelineData = history.slice().reverse().map((r, i) => ({
+    name: r.pileId || `#${i+1}`,
+    'Số cọc tích lũy': i + 1,
+    'Chiều sâu tích lũy': parseFloat(history.slice(0, i + 1).reduce((acc, x) => acc + x.layers.reduce((s, l) => s + l.lengthMeters, 0), 0).toFixed(1)),
+  }));
+
+  // Phân bố địa tầng
+  const geologyMap: Record<string, number> = {};
+  history.forEach(r => r.layers.forEach(l => {
+    const key = l.actualGeology || 'Khác';
+    geologyMap[key] = (geologyMap[key] || 0) + 1;
+  }));
+  const geologyData = Object.entries(geologyMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, value]) => ({ name, value }));
+
+  const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b'];
+
+  // Lọc bảng
+  const filtered = history.filter(r =>
+    (!filterProject || r.project?.toLowerCase().includes(filterProject.toLowerCase())) &&
+    (!filterPile || r.pileId?.toLowerCase().includes(filterPile.toLowerCase()))
+  );
+
+  if (history.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
+      <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
+      <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
+      <p className="text-slate-400 mt-2 text-sm">Hãy upload biên bản để xem Dashboard</p>
+    </div>
+  );
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+
+      {/* ── Tiêu đề ── */}
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h3 className="text-[18px] font-black text-black tracking-tight flex items-center gap-3 uppercase">
-            <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
-            Tổng hợp dữ liệu thi công
-          </h3>
-          <p className="text-xs text-slate-900 font-medium ml-4">Quản lý và theo dõi lịch sử trích xuất dữ liệu</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
-            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng số cọc</p>
-            <p className="text-xl font-bold text-black">{history.length}</p>
-          </div>
-          <div className="bg-white border border-slate-300 rounded-2xl px-5 py-2.5 shadow-sm">
-            <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest mb-0.5">Tổng chiều sâu</p>
-            <p className="text-xl font-bold text-black">
-              {history.reduce((acc, res) => acc + res.layers.reduce((lAcc, l) => lAcc + l.lengthMeters, 0), 0).toFixed(1)} m
-            </p>
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
+          <div>
+            <h3 className="text-[18px] font-black text-black uppercase tracking-tight">Dashboard Tổng Hợp</h3>
+            <p className="text-xs text-slate-500 font-medium">Tổng quan dữ liệu thi công cọc khoan nhồi</p>
           </div>
         </div>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cập nhật tự động</span>
       </div>
 
-      {history.length > 0 && (
-        <div className="modern-card p-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-              <BarChart3 size={16} className="text-blue-600" />
-              Biểu đồ tốc độ khoan trung bình (m/h)
-            </h4>
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Tổng số cọc', value: totalPiles, unit: 'cọc', color: 'bg-blue-600', icon: <Layers className="w-5 h-5 text-white" /> },
+          { label: 'Tổng chiều sâu', value: totalDepth.toFixed(1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
+          { label: 'Tốc độ khoan TB', value: avgSpeed.toFixed(2), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-5 h-5 text-white" /> },
+          { label: 'Số dự án', value: projects.length, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-5 h-5 text-white" /> },
+        ].map((kpi, i) => (
+          <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <div className={`p-2 rounded-xl ${kpi.color}`}>{kpi.icon}</div>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{kpi.label}</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900">{kpi.value}</span>
+              <span className="text-xs font-bold text-slate-400">{kpi.unit}</span>
+            </div>
           </div>
-          <div className="h-[300px] w-full">
+        ))}
+      </div>
+
+      {/* ── Biểu đồ hàng 1 ── */}
+      <div className="grid grid-cols-3 gap-4">
+
+        {/* Tốc độ & chiều sâu từng cọc */}
+        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <BarChart3 size={14} className="text-blue-600" /> Tốc độ khoan & Chiều sâu từng cọc
+          </h4>
+          <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={history.slice().reverse().map(item => ({
-                name: item.pileId,
-                speed: parseFloat((item.layers.reduce((acc, l) => acc + l.speedMph, 0) / item.layers.length).toFixed(2))
-              }))}>
+              <BarChart data={speedData} barGap={2}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
-                />
-                <Tooltip 
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}
-                />
-                <Bar dataKey="speed" radius={[6, 6, 0, 0]}>
-                  {history.slice().reverse().map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#2563eb' : '#f97316'} />
-                  ))}
-                </Bar>
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
+                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
+                <Bar dataKey="Tốc độ TB (m/h)" fill="#2563eb" radius={[4,4,0,0]} />
+                <Bar dataKey="Chiều sâu (m)" fill="#f97316" radius={[4,4,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-      )}
 
-      {history.length === 0 ? (
-        <div className="bg-white border border-sky-200 border-dashed rounded-3xl py-32 flex flex-col items-center justify-center text-center shadow-sm">
-          <div className="bg-slate-50 p-6 rounded-full mb-6">
-            <History className="text-slate-300 w-10 h-10" />
-          </div>
-          <h4 className="text-lg font-bold text-slate-400 uppercase tracking-widest">Chưa có dữ liệu lịch sử</h4>
-          <p className="text-slate-400 mt-2 text-sm">Hãy bắt đầu bằng cách quét biên bản đầu tiên</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6">
-          <div className="modern-card overflow-hidden">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="pro-table">
-                <thead>
-                  <tr>
-                    <th>Dự án</th>
-                    <th>Hạng mục</th>
-                    <th>Tên bộ phận</th>
-                    <th>Số hiệu</th>
-                    <th>Đường kính</th>
-                    <th>Chiều sâu (m)</th>
-                    <th>Bắt đầu</th>
-                    <th>Kết thúc</th>
-                    <th>Tập tin</th>
-                    <th className="text-center">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="">
-                  {history.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="font-normal text-black">{item.project}</td>
-                      <td className="text-black">{item.item}</td>
-                      <td className="text-black">{item.componentName}</td>
-                      <td className="font-normal text-black">{item.pileId}</td>
-                      <td className="font-normal text-black">{item.diameter}</td>
-                      <td className="font-normal text-orange-600">{item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}</td>
-                      <td className="text-black">{item.constructionStart}</td>
-                      <td className="text-black">{item.constructionEnd}</td>
-                      <td>
-                        {item.fileUrl ? (
-                          <a 
-                            href={item.fileUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-blue-700 hover:text-blue-900 font-bold text-[10px] uppercase tracking-widest transition-colors"
-                          >
-                            <ExternalLink size={12} />
-                            Xem
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button 
-                            onClick={() => onEdit(item)}
-                            className="p-2 bg-slate-50 text-black rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-slate-300"
-                            title="Chỉnh sửa"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            onClick={() => onDelete(item.id)}
-                            className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-200"
-                            title="Xóa"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {/* Phân bố theo dự án */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <PieChartIcon size={14} className="text-violet-600" /> Phân bố theo dự án
+          </h4>
+          <div className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={projectDist} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${(percent*100).toFixed(0)}%`} labelLine={false}>
+                  {projectDist.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* ── Biểu đồ hàng 2 ── */}
+      <div className="grid grid-cols-3 gap-4">
+
+        {/* Tiến độ tích lũy */}
+        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <TrendingUp size={14} className="text-emerald-600" /> Tiến độ tích lũy
+          </h4>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={timelineData}>
+                <defs>
+                  <linearGradient id="gradDepth" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="gradPile" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
+                <Area type="monotone" dataKey="Chiều sâu tích lũy" stroke="#2563eb" strokeWidth={2} fill="url(#gradDepth)" />
+                <Area type="monotone" dataKey="Số cọc tích lũy" stroke="#f97316" strokeWidth={2} fill="url(#gradPile)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Phân bố địa tầng */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Layers size={14} className="text-orange-500" /> Phân bố địa tầng
+          </h4>
+          <div className="space-y-2 overflow-y-auto max-h-[200px] custom-scrollbar pr-1">
+            {geologyData.map((g, i) => {
+              const max = geologyData[0]?.value || 1;
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-600 w-8 text-right shrink-0">{g.name}</span>
+                  <div className="flex-1 h-4 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(g.value/max)*100}%`, background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-500 w-8 shrink-0">{g.value}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bảng dữ liệu có filter ── */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+            <Database size={14} className="text-blue-600" /> Danh sách cọc ({filtered.length}/{totalPiles})
+          </h4>
+          <div className="flex gap-2">
+            <input value={filterProject} onChange={e => setFilterProject(e.target.value)} placeholder="Lọc dự án..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-36" />
+            <input value={filterPile} onChange={e => setFilterPile(e.target.value)} placeholder="Lọc số hiệu..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-32" />
+          </div>
+        </div>
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="pro-table">
+            <thead>
+              <tr>
+                <th className="w-12">STT</th>
+                <th>Dự án</th>
+                <th>Hạng mục</th>
+                <th>Tên bộ phận</th>
+                <th>Số hiệu</th>
+                <th>Đường kính</th>
+                <th className="text-center">Chiều sâu (m)</th>
+                <th className="text-center">Bắt đầu</th>
+                <th className="text-center">Kết thúc</th>
+                <th>Tập tin</th>
+                <th className="text-center">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item, index) => (
+                <tr key={item.id} className="hover:bg-sky-50/60 transition-colors group cursor-pointer" onClick={() => onSelectResult(item)}>
+                  <td className="text-center font-bold text-blue-700 text-xs">{item.stt ?? (history.length - history.indexOf(item))}</td>
+                  <td className="font-normal text-blue-900">{item.project}</td>
+                  <td className="text-slate-700">{item.item}</td>
+                  <td className="text-slate-700">{item.componentName}</td>
+                  <td className="font-bold text-blue-700">{item.pileId}</td>
+                  <td className="text-center text-slate-700">{item.diameter}</td>
+                  <td className="text-center font-bold text-orange-600">{item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}</td>
+                  <td className="text-center text-slate-700">{item.constructionStart}</td>
+                  <td className="text-center text-slate-700">{item.constructionEnd}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    {item.fileUrl ? (
+                      <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest">
+                        <ExternalLink size={11} /> Xem
+                      </a>
+                    ) : <span className="text-slate-300 text-[10px] italic">Chưa có</span>}
+                  </td>
+                  <td className="text-center" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button onClick={() => onEdit(item)} className="p-1.5 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Sửa"><Edit2 size={13} /></button>
+                      <button onClick={() => onDelete(item.id)} className="p-1.5 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-100" title="Xóa"><Trash2 size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2105,17 +2214,20 @@ function EditSplitView({
                         return (
                       <tr key={idx} className={`group transition-colors hover:opacity-90`}>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'70px'}}>
-                          <input 
-                            value={layer.actualGeology} 
-                            onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-2 py-1 text-center outline-none transition-all`}
-                            placeholder="..."
-                          />
+                          <div className="flex flex-col items-center px-1 py-1">
+                            <input 
+                              value={layer.actualGeology} 
+                              onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
+                              className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-1 py-0 text-center outline-none transition-all`}
+                              placeholder="..."
+                            />
+                            <span className="text-[10px] text-slate-500 font-normal">({layer.layerNumber})</span>
+                          </div>
                         </td>
                         <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
                           {data.diameter}
                         </td>
-                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'220px'}}>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'160px'}}>
                           <textarea 
                             value={layer.layerDesign}
                             onChange={(e) => {
@@ -2359,8 +2471,8 @@ function EditSplitView({
         </div>
 
         {/* Right: File Viewer */}
-        {/* Right: File Viewer - 1/3 màn hình */}
-        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '28%' }}>
+        {/* Right: File Viewer - 38% màn hình */}
+        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '38%' }}>
           {/* Toolbar for Viewer - luôn hiển thị */}
           {displayUrl && (
             <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 z-20">
