@@ -1641,6 +1641,8 @@ function EditSplitView({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
+  const PDF_RENDER_WIDTH = 2400;
+  const PDF_DISPLAY_WIDTH = 600;
 
   // Global mouse events để pan không bị mất khi kéo ra ngoài container
   useEffect(() => {
@@ -1801,6 +1803,9 @@ function EditSplitView({
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setPageNumber(1);
+    positionRef.current = { x: 0, y: 0 };
+    setPosition({ x: 0, y: 0 });
+    setZoom(PDF_DISPLAY_WIDTH / PDF_RENDER_WIDTH);
   };
 
   return (
@@ -2125,9 +2130,10 @@ function EditSplitView({
                   >
                     <Page 
                       pageNumber={pageNumber}
-                      width={600}
+                      width={PDF_RENDER_WIDTH}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
+                      canvasBackground="white"
                     />
                   </Document>
                 </div>
