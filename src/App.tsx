@@ -1858,29 +1858,22 @@ function EditSplitView({
                 <Layers size={14} />
                 Chi tiết các lớp địa chất
               </h4>
-              <button 
-                onClick={addLayer}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center gap-2"
-              >
-                <Plus size={12} />
-                Thêm lớp
-              </button>
             </div>
             <div className="overflow-hidden border border-slate-300 rounded-xl shadow-sm bg-white">
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full border-collapse table-fixed min-w-[1100px]">
+                <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="w-[10%] px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Địa chất</th>
-                      <th className="w-[20%] px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
-                      <th className="w-[10%] px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Từ (h)</th>
-                      <th className="w-[10%] px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Đến (h)</th>
-                      <th className="w-[10%] px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ từ</th>
-                      <th className="w-[10%] px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Cao độ đến</th>
-                      <th className="w-[8%] px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">T.Gian</th>
-                      <th className="w-[8%] px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Dài (m)</th>
-                      <th className="w-[10%] px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">V (m/h)</th>
-                      <th className="w-[4%] px-1 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider"></th>
+                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Địa chất</th>
+                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300">Lớp thiết kế</th>
+                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Từ (h)</th>
+                      <th className="px-2 py-2 text-left text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Đến (h)</th>
+                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ từ</th>
+                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Cao độ đến</th>
+                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">T.Gian</th>
+                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">Dài (m)</th>
+                      <th className="px-2 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap">V (m/h)</th>
+                      <th className="px-1 py-2 text-center text-[9px] font-black text-black uppercase tracking-wider"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1907,8 +1900,9 @@ function EditSplitView({
                             type="text"
                             value={layer.timeFrom} 
                             onChange={(e) => updateLayer(idx, 'timeFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
+                            style={{ minWidth: '50px' }}
                           />
                         </td>
                         <td className="p-0 border-r border-slate-200 align-top">
@@ -1916,35 +1910,38 @@ function EditSplitView({
                             type="text"
                             value={layer.timeTo} 
                             onChange={(e) => updateLayer(idx, 'timeTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all"
+                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none transition-all whitespace-nowrap"
                             placeholder="HH:mm"
+                            style={{ minWidth: '50px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top">
+                        <td className="p-0 border-r border-slate-200 align-top whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
                             value={layer.elevationFrom} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            style={{ minWidth: '60px', width: '60px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-top">
+                        <td className="p-0 border-r border-slate-200 align-top whitespace-nowrap">
                           <input 
                             type="number"
                             step="0.1"
                             value={layer.elevationTo} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
-                            className="w-full bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[8px] text-black font-bold focus:bg-white px-2 py-1.5 outline-none text-center transition-all"
+                            style={{ minWidth: '60px', width: '60px' }}
                           />
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top">
+                        <td className="px-2 py-1.5 text-[8px] font-bold text-black text-center bg-slate-50 border-r border-slate-200 align-top whitespace-nowrap">
                           {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1.5 text-[8px] font-black text-center align-top bg-slate-50 border-r border-slate-200">
+                        <td className="px-2 py-1.5 text-[8px] font-black text-center align-top bg-slate-50 border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
                             "inline-flex items-center px-1 py-0.5 rounded-full text-[7px] font-bold",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
@@ -1980,8 +1977,8 @@ function EditSplitView({
         </div>
 
         {/* Right: File Viewer */}
-        {/* Right: File Viewer - cố định chiều rộng A4, scroll dọc */}
-        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '420px' }}>
+        {/* Right: File Viewer - 1/3 màn hình */}
+        <div className="bg-slate-100 relative group flex flex-col shrink-0" style={{ width: '33.333%' }}>
           {/* Toolbar for Viewer - luôn hiển thị */}
           {displayUrl && (
             <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 z-20">
@@ -2066,9 +2063,10 @@ function EditSplitView({
                   >
                     <Page 
                       pageNumber={pageNumber}
-                      width={420}
+                      width={undefined}
                       renderTextLayer={true}
                       renderAnnotationLayer={true}
+                      className="w-full"
                     />
                   </Document>
                 </div>
