@@ -81,6 +81,7 @@ interface DrillLayer {
   constructionStart: string;
   constructionEnd: string;
   layerNumber: number;
+  designLayerCode: string;
   layerDesign: string;
   timeFrom: string;
   timeTo: string;
@@ -220,17 +221,25 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
 Yêu cầu trích xuất chi tiết:
 1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
 2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
+
 3. Bảng chi tiết địa chất (layers):
-   QUAN TRỌNG: Mỗi dòng trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1. Nếu file có 20 dòng thì phải có đúng 20 layer.
-   - layerNumber: Số thứ tự dòng theo thứ tự xuất hiện trong bảng (1, 2, 3...). Mỗi dòng có 1 số riêng.
-   - layerDesign: Mô tả địa chất theo thiết kế của dòng đó (ví dụ: Sét pha, cát hạt trung...).
+   QUAN TRỌNG: Mỗi dòng thời gian trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1.
+
+   PHÂN BIỆT RÕ HAI KHÁI NIỆM:
+   A) "Lớp thiết kế" (designLayerCode): Là SỐ HIỆU LỚP trong cột "Lớp thiết kế" hoặc "Lớp" của biên bản, ví dụ: 1, 2, 3, 4, 5, 6... Nhiều dòng thời gian có thể thuộc CÙNG một lớp thiết kế.
+   B) "Mô tả địa chất thiết kế" (layerDesign): Là MÔ TẢ ĐỊA CHẤT của lớp thiết kế đó. QUY TẮC BẮT BUỘC: Tất cả các dòng có cùng designLayerCode PHẢI có cùng layerDesign. Ví dụ: tất cả dòng thuộc lớp 3 đều phải có layerDesign = "Cát xám ghi, kết cấu chặt vừa" — KHÔNG được ghi khác nhau cho cùng một lớp.
+
+   Các trường cần trích xuất cho mỗi dòng:
+   - layerNumber: Số thứ tự dòng theo thứ tự xuất hiện trong bảng (1, 2, 3...). Đây là STT dòng, KHÔNG phải số lớp thiết kế.
+   - designLayerCode: Số hiệu lớp thiết kế (lấy từ cột "Lớp thiết kế" hoặc "Lớp" trong biên bản, ví dụ: "1", "2", "3"). Nếu dòng không có giá trị mới thì lấy giá trị của dòng trước đó (vì nhiều dòng liên tiếp thuộc cùng 1 lớp).
+   - layerDesign: Mô tả địa chất của lớp thiết kế tương ứng với designLayerCode. Phải NHẤT QUÁN — cùng designLayerCode thì cùng layerDesign.
    - timeFrom: Giờ bắt đầu của dòng đó (định dạng HH:mm).
    - timeTo: Giờ kết thúc của dòng đó (định dạng HH:mm).
    - dateFrom: Ngày bắt đầu của dòng đó (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
    - dateTo: Ngày kết thúc của dòng đó (định dạng DD/MM/YYYY). Thường giống dateFrom, trừ khi qua đêm sang ngày hôm sau.
    - elevationFrom: Cao độ bắt đầu của dòng đó (mét, là số thực).
    - elevationTo: Cao độ kết thúc của dòng đó (mét, là số thực).
-   - actualGeology: Ký hiệu địa chất thực tế của dòng đó. Chỉ lấy đúng ký hiệu số đơn như "1", "2", "3", "1a"... KHÔNG ghép nhiều ký hiệu như "1(1), 2(2)" hay "1,2,3". Mỗi dòng chỉ có 1 ký hiệu duy nhất.
+   - actualGeology: Ký hiệu địa chất thực tế của dòng đó. Chỉ lấy đúng ký hiệu số đơn như "1", "2", "3", "1a"... KHÔNG ghép nhiều ký hiệu. Mỗi dòng chỉ có 1 ký hiệu duy nhất.
 
 4. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
 
@@ -266,6 +275,7 @@ Lưu ý quan trọng:
               type: Type.OBJECT,
               properties: {
                 layerNumber: { type: Type.INTEGER },
+                designLayerCode: { type: Type.STRING },
                 layerDesign: { type: Type.STRING },
                 timeFrom: { type: Type.STRING },
                 timeTo: { type: Type.STRING },
@@ -275,7 +285,7 @@ Lưu ý quan trọng:
                 elevationTo: { type: Type.NUMBER },
                 actualGeology: { type: Type.STRING }
               },
-              required: ["layerNumber", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
+              required: ["layerNumber", "designLayerCode", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
           summary: { type: Type.STRING }
@@ -289,6 +299,16 @@ Lưu ý quan trọng:
   if (!text) throw new Error("Không có phản hồi từ AI");
   const rawData = JSON.parse(text);
 
+  // Post-process: đảm bảo layerDesign nhất quán theo designLayerCode
+  // Lấy mô tả đầu tiên xuất hiện cho mỗi lớp thiết kế làm chuẩn
+  const layerDesignMap: Record<string, string> = {};
+  rawData.layers.forEach((layer: any) => {
+    const code = layer.designLayerCode?.toString().trim() || '';
+    if (code && !layerDesignMap[code] && layer.layerDesign) {
+      layerDesignMap[code] = layer.layerDesign;
+    }
+  });
+
   const processedLayers = rawData.layers.map((layer: any) => {
     const startMinutes = parseTimeToMinutes(layer.timeFrom);
     const endMinutes = parseTimeToMinutes(layer.timeTo);
@@ -299,8 +319,14 @@ Lưu ý quan trọng:
     const length = Math.abs(layer.elevationTo - layer.elevationFrom);
     const speed = durationHours > 0 ? length / durationHours : 0;
 
+    const code = layer.designLayerCode?.toString().trim() || '';
+    // Gán lại layerDesign nhất quán theo designLayerCode
+    const consistentLayerDesign = (code && layerDesignMap[code]) ? layerDesignMap[code] : layer.layerDesign;
+
     return {
       ...layer,
+      designLayerCode: code,
+      layerDesign: consistentLayerDesign,
       project: rawData.project,
       item: rawData.item,
       componentName: rawData.componentName,
@@ -2145,9 +2171,10 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>Địa chất</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>Lớp TK</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>ĐC TT</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
-                      <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Lớp thiết kế</th>
+                      <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
@@ -2155,7 +2182,6 @@ function EditSplitView({
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
-                      
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -2187,16 +2213,24 @@ function EditSplitView({
                         const { row: rowBg, text: rowText } = groupColors[rowColorIdx[idx]];
                         return (
                       <tr key={idx} className={`group transition-colors hover:opacity-90`}>
-                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'70px'}}>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'60px'}}>
                           <div className="flex flex-col items-center px-1 py-1">
                             <input 
-                              value={layer.actualGeology} 
-                              onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                              className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-1 py-0 text-center outline-none transition-all`}
+                              value={layer.designLayerCode ?? ''} 
+                              onChange={(e) => updateLayer(idx, 'designLayerCode', e.target.value)}
+                              className={`w-full bg-transparent border-none text-[13px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
                               placeholder="..."
                             />
-                            <span className="text-[10px] text-slate-500 font-normal">({layer.layerNumber})</span>
+                            <span className="text-[10px] text-slate-400 font-normal">({layer.layerNumber})</span>
                           </div>
+                        </td>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'70px'}}>
+                          <input 
+                            value={layer.actualGeology} 
+                            onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
+                            className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-1 py-1 text-center outline-none transition-all`}
+                            placeholder="..."
+                          />
                         </td>
                         <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
                           {data.diameter}
