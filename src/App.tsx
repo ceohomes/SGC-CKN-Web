@@ -1927,36 +1927,42 @@ function EditSplitView({
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {(() => {
-                      // Tính màu nền theo nhóm layerDesign (Lớp Thiết Kế)
+                      // Màu xen kẽ tương phản tối đa — mỗi 2 màu liền kề phải khác hẳn nhau về tông
                       const groupColors = [
-                        'bg-white',
-                        'bg-blue-50',
-                        'bg-amber-50',
-                        'bg-green-50',
-                        'bg-purple-50',
-                        'bg-rose-50',
-                        'bg-cyan-50',
-                        'bg-orange-50',
-                        'bg-teal-50',
-                        'bg-indigo-50',
+                        { row: 'bg-sky-200',     text: 'text-sky-900' },
+                        { row: 'bg-amber-200',   text: 'text-amber-900' },
+                        { row: 'bg-emerald-200', text: 'text-emerald-900' },
+                        { row: 'bg-rose-200',    text: 'text-rose-900' },
+                        { row: 'bg-violet-200',  text: 'text-violet-900' },
+                        { row: 'bg-lime-200',    text: 'text-lime-900' },
+                        { row: 'bg-orange-200',  text: 'text-orange-900' },
+                        { row: 'bg-cyan-200',    text: 'text-cyan-900' },
+                        { row: 'bg-pink-200',    text: 'text-pink-900' },
+                        { row: 'bg-teal-200',    text: 'text-teal-900' },
+                        { row: 'bg-red-200',     text: 'text-red-900' },
+                        { row: 'bg-indigo-200',  text: 'text-indigo-900' },
                       ];
-                      const groupMap: Record<string, number> = {};
+                      // Nhóm theo khối liên tiếp: mỗi lần layerDesign thay đổi so với dòng trước → đổi màu
                       let groupCount = 0;
-                      return data.layers.map((layer, idx) => {
+                      let prevKey = '';
+                      const rowColorIdx: number[] = data.layers.map((layer) => {
                         const key = layer.layerDesign?.trim() || '__empty__';
-                        if (!(key in groupMap)) { groupMap[key] = groupCount % groupColors.length; groupCount++; }
-                        const rowBg = groupColors[groupMap[key]];
+                        if (key !== prevKey) { groupCount++; prevKey = key; }
+                        return (groupCount - 1) % groupColors.length;
+                      });
+                      return data.layers.map((layer, idx) => {
+                        const { row: rowBg, text: rowText } = groupColors[rowColorIdx[idx]];
                         return (
-                      <tr key={idx} className={`group transition-colors ${rowBg} hover:opacity-90`}>
-                        <td className="p-0 border-r border-slate-200 align-middle" style={{width:'70px'}}>
+                      <tr key={idx} className={`group transition-colors hover:opacity-90`}>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'70px'}}>
                           <input 
                             value={layer.actualGeology} 
                             onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-blue-700 font-normal focus:bg-white px-2 py-1 text-center outline-none transition-all"
+                            className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-2 py-1 text-center outline-none transition-all`}
                             placeholder="..."
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle" style={{minWidth:'220px'}}>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'220px'}}>
                           <textarea 
                             value={layer.layerDesign}
                             onChange={(e) => {
@@ -1965,11 +1971,11 @@ function EditSplitView({
                               e.target.style.height = e.target.scrollHeight + 'px';
                             }}
                             rows={1}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-left outline-none leading-normal transition-all resize-none overflow-hidden"
+                            className={`w-full bg-transparent border-none text-[12px] ${rowText} font-normal focus:bg-white px-2 py-1 text-left outline-none leading-normal transition-all resize-none overflow-hidden`}
                             style={{height: 'auto'}}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle">
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`}>
                           <input 
                             type="text"
                             value={layer.timeFrom} 
@@ -1979,7 +1985,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle">
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`}>
                           <input 
                             type="text"
                             value={layer.timeTo} 
@@ -1989,7 +1995,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
                             value={layer.elevationFrom} 
@@ -1998,7 +2004,7 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="p-0 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
                             value={layer.elevationTo} 
@@ -2007,13 +2013,13 @@ function EditSplitView({
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {layer.durationHours.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-black text-center bg-slate-50 border-r border-slate-200 align-middle whitespace-nowrap">
+                        <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {layer.lengthMeters.toFixed(2)}
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-center align-middle bg-slate-50 border-r border-slate-200 whitespace-nowrap">
+                        <td className="px-2 py-1 text-[12px] font-normal text-center bg-white align-middle border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
                             "inline-flex items-center px-1 py-0.5 rounded-full text-[12px] font-normal",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
