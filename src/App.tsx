@@ -218,28 +218,28 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
           {
             text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi".
             
-Yêu cầu trích xuất:
-1. Thông tin chung: 
-   - project: Tên dự án.
-   - item: Hạng mục. CHỈ lấy phần văn bản sau chữ "Hạng mục:" hoặc "Hạng mục". Loại bỏ tên dự án nếu bị lặp lại ở đây.
-   - componentName: Tên bộ phận.
-   - pileId: Số hiệu cọc.
-   - diameter: Đường kính cọc.
-2. Thời gian tổng thể: constructionStart, constructionEnd. Định dạng: "HH:mm DD/MM/YYYY".
+QUY TẮC TRÍCH XUẤT ĐỊA TẦNG (CỰC KỲ QUAN TRỌNG):
+1. Tìm bảng tra cứu "Lớp thiết kế" ở phần đầu biên bản. Bảng này quy định: Số lớp (1, 2, 3...) tương ứng với Mô tả địa chất nào. Lưu vào "designLayerMap".
+2. Trong bảng dữ liệu chính, cột "Địa chất thực tế" có dạng "X (Y)":
+   - X là "Mã lớp thiết kế" (designLayerCode).
+   - Y là "Số thứ tự đoạn" (layerNumber).
+3. Với mỗi dòng, "layerDesign" PHẢI là mô tả trích xuất từ "designLayerMap" tương ứng với Mã lớp X. 
+   Ví dụ: Nếu dòng ghi "3 (7)" thì layerDesign PHẢI là mô tả của lớp số 3 trong bảng tra cứu, KHÔNG được lấy mô tả của lớp khác.
 
-3. Bảng địa chất (layers):
-   - designLayerCode: Số lớp thiết kế (thường 1-6).
-   - actualGeology: Giá trị đầy đủ từ cột "Địa chất thực tế" (ví dụ: "1 (1)").
-   - layerNumber: Số trong ngoặc từ "Địa chất thực tế" (ví dụ: "1 (1)" -> 1).
-   - layerDesign: Mô tả địa chất thiết kế tương ứng với designLayerCode (tra từ bảng tra cứu trong biên bản).
-   - timeFrom, timeTo: Giờ (HH:mm).
-   - dateFrom, dateTo: Ngày (DD/MM/YYYY).
-   - elevationFrom, elevationTo: Cao độ (số thực).
-
-4. designLayerMap: Bảng tra cứu { "mã lớp": "mô tả" }.
-5. summary: Nhận xét ngắn gọn.
-
-Trả về JSON chuẩn.`
+Yêu cầu trích xuất JSON:
+- project, item, componentName, pileId, diameter.
+- constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
+- layers: [
+    {
+      designLayerCode: "Số X ngoài ngoặc",
+      actualGeology: "Giá trị X (Y) đầy đủ",
+      layerNumber: "Số Y trong ngoặc",
+      layerDesign: "Mô tả từ bảng tra cứu ứng với số X",
+      timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo
+    }
+  ]
+- designLayerMap: { "1": "mô tả 1", "2": "mô tả 2", ... }
+- summary: Nhận xét ngắn gọn.`
           },
           {
             inlineData: {
