@@ -216,39 +216,38 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
       {
         parts: [
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng chuyên nghiệp. Hãy trích xuất dữ liệu từ hình ảnh hoặc PDF của "Biên bản theo dõi địa chất" hoặc "Nhật ký thi công cọc".
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng chuyên nghiệp. Hãy trích xuất dữ liệu từ hình ảnh hoặc PDF của "Biên bản theo dõi địa chất trong quá trình khoan cọc khoan nhồi".
 
 Yêu cầu trích xuất chi tiết:
 1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
 2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
 
-3. BƯỚC 1 - Tạo bảng tra cứu lớp thiết kế (designLayerMap):
-   Trước khi đọc từng dòng, hãy đọc TOÀN BỘ cột "Lớp thiết kế" và cột "Mô tả địa chất thiết kế" trong biên bản để xây dựng bảng tra cứu.
-   - Mỗi số lớp thiết kế (1, 2, 3, 4...) chỉ có DUY NHẤT MỘT mô tả địa chất thiết kế.
-   - Đây là mapping cố định: ví dụ lớp "3" → "Cát xám ghi, kết cấu chặt vừa".
-   - Trả về dưới dạng object: {"1": "Sét pha màu...", "2": "Sét màu...", "3": "Cát xám..."}
+3. CẤU TRÚC BẢNG - ĐỌC KỸ TRƯỚC KHI XỬ LÝ:
+   Bảng có CỘT "ĐỊA CHẤT" gồm 2 sub-cột tách biệt:
+   - Sub-cột TRÁI = "Lớp thiết kế" (STK hoặc Lớp TK): Là số lớp trong HỒ SƠ THIẾT KẾ, thường có ít giá trị (ví dụ: 1→6). Đây là designLayerCode.
+   - Sub-cột PHẢI = "Địa chất thực tế" (ĐC TT hoặc Xác nhận): Là ký hiệu địa chất THỰC TẾ quan sát được khi khoan, có thể khác với lớp thiết kế. Đây là actualGeology.
+   ⚠️ TUYỆT ĐỐI KHÔNG nhầm lẫn 2 sub-cột này. Nếu thấy ô "địa chất" có 2 số chồng lên nhau, số TRÊN/TRÁI = designLayerCode, số DƯỚI/PHẢI = actualGeology.
 
-4. BƯỚC 2 - Trích xuất từng dòng (layers):
-   QUAN TRỌNG: Mỗi dòng thời gian trong bảng gốc = 1 phần tử layer riêng biệt. TUYỆT ĐỐI KHÔNG gộp, nhóm hay kết hợp nhiều dòng thành 1.
+4. BƯỚC 1 - Xây dựng designLayerMap (bảng tra cứu lớp thiết kế):
+   Nhìn vào phần HEADER của biên bản (thường ở góc trên bên phải hoặc cạnh bảng chính) để tìm bảng liệt kê các lớp thiết kế và mô tả tương ứng.
+   - Mỗi số lớp TK (1, 2, 3, 4, 5, 6...) có MỘT mô tả địa chất thiết kế cố định.
+   - Trả về: {"1": "Sét pha màu xám đen, trạng thái dẻo mềm", "2": "Sét màu xám ghi...", ...}
+   - Số lớp TK thường là 1→6 hoặc 1→8, KHÔNG thể là "3" cho tất cả các dòng.
 
-   Các trường cần trích xuất cho mỗi dòng:
-   - layerNumber: Số thứ tự dòng theo thứ tự xuất hiện trong bảng (1, 2, 3...). Đây là STT dòng, KHÔNG phải số lớp thiết kế.
-   - designLayerCode: Số hiệu lớp thiết kế (lấy từ cột "Lớp thiết kế" hoặc "Lớp" trong biên bản, ví dụ: "1", "2", "3"). Nếu dòng không có giá trị mới thì lấy giá trị của dòng trước đó (vì nhiều dòng liên tiếp thuộc cùng 1 lớp).
-   - layerDesign: Lấy từ bảng tra cứu designLayerMap theo designLayerCode. KHÔNG tự suy luận từ nội dung dòng. Cùng designLayerCode → LUÔN cùng layerDesign.
-   - timeFrom: Giờ bắt đầu của dòng đó (định dạng HH:mm).
-   - timeTo: Giờ kết thúc của dòng đó (định dạng HH:mm).
-   - dateFrom: Ngày bắt đầu của dòng đó (định dạng DD/MM/YYYY). Nếu không ghi rõ thì suy luận từ ngày thi công hoặc ngày của dòng gần nhất có ghi ngày.
-   - dateTo: Ngày kết thúc của dòng đó (định dạng DD/MM/YYYY). Thường giống dateFrom, trừ khi qua đêm sang ngày hôm sau.
-   - elevationFrom: Cao độ bắt đầu của dòng đó (mét, là số thực).
-   - elevationTo: Cao độ kết thúc của dòng đó (mét, là số thực).
-   - actualGeology: Ký hiệu địa chất thực tế của dòng đó. Chỉ lấy đúng ký hiệu số đơn như "1", "2", "3", "1a"... KHÔNG ghép nhiều ký hiệu. Mỗi dòng chỉ có 1 ký hiệu duy nhất.
+5. BƯỚC 2 - Trích xuất từng dòng (layers):
+   QUAN TRỌNG: Mỗi dòng thời gian = 1 layer riêng biệt. KHÔNG gộp dòng.
 
-5. Tóm tắt (summary): Viết một đoạn ngắn (2-3 câu) nhận xét về tiến độ và địa chất thực tế so với thiết kế.
+   - layerNumber: STT dòng (1, 2, 3...) theo thứ tự xuất hiện.
+   - designLayerCode: Số từ sub-cột TRÁI "Lớp TK". Nếu ô trống thì kế thừa từ dòng trước. Giá trị thay đổi dần từ 1 lên 6 (hoặc tương tự) theo độ sâu khoan.
+   - layerDesign: Tra từ designLayerMap theo designLayerCode. KHÔNG tự điền.
+   - actualGeology: Số từ sub-cột PHẢI "ĐC TT". Có thể KHÁC designLayerCode — đây là điều bình thường khi địa chất thực tế lệch so với thiết kế.
+   - timeFrom / timeTo: Giờ bắt đầu / kết thúc (HH:mm).
+   - dateFrom / dateTo: Ngày tương ứng (DD/MM/YYYY). Suy luận từ ngày gần nhất nếu không ghi.
+   - elevationFrom / elevationTo: Cao độ (mét, số thực âm thường là -6.72, -10.88...).
 
-Lưu ý quan trọng: 
-- Nếu không tìm thấy dữ liệu, hãy để trống hoặc ước tính hợp lý dựa trên ngữ cảnh.
-- Đảm bảo các con số cao độ là số thực.
-- Trả về kết quả dưới dạng JSON chuẩn.`
+6. Tóm tắt (summary): 2-3 câu nhận xét tiến độ và địa chất thực tế so với thiết kế.
+
+Lưu ý: Đảm bảo cao độ là số thực. Trả về JSON chuẩn.`
           },
           {
             inlineData: {
