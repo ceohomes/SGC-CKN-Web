@@ -81,6 +81,7 @@ interface DrillLayer {
   item: string;
   componentName: string;
   pileId: string;
+  reportNumber: string;
   diameter: string;
   constructionStart: string;
   constructionEnd: string;
@@ -107,6 +108,7 @@ interface ExtractionResult {
   item: string;
   componentName: string;
   pileId: string;
+  reportNumber: string;
   diameter: string;
   constructionStart: string;
   constructionEnd: string;
@@ -173,15 +175,17 @@ const normalizeDateTime = (raw: string): string => {
   return s; // giữ nguyên nếu không parse được
 };
 
-// Định dạng số theo kiểu Việt Nam: thập phân là dấu phẩy, hàng nghìn là dấu chấm
+// Định dạng số: thập phân là dấu phẩy, hàng nghìn là dấu chấm (kiểu Việt Nam)
 const formatNumber = (num: number | string | undefined | null, decimals: number = 2): string => {
   if (num === undefined || num === null) return '—';
-  const val = typeof num === 'string' ? parseFloat(num) : num;
+  const val = typeof num === 'string' ? parseFloat(num.replace(',', '.')) : num;
   if (isNaN(val)) return '—';
-  return val.toLocaleString('vi-VN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  
+  // Manually format to ensure comma decimal separator and dot thousands separator
+  const fixed = val.toFixed(decimals);
+  const [intPart, decPart] = fixed.split('.');
+  const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return decPart ? `${formattedInt},${decPart}` : formattedInt;
 };
 
 // Tính thời gian thi công (giờ) từ constructionStart đến constructionEnd
@@ -218,6 +222,35 @@ const parseTimeToMinutes = (timeStr: string): number => {
   return hours * 60 + minutes;
 };
 
+// Component Textarea tự động giãn dòng
+const AutoResizeTextarea = ({ value, onChange, className, placeholder, style, ...props }: any) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => {
+        onChange(e);
+        e.target.style.height = 'auto';
+        e.target.style.height = e.target.scrollHeight + 'px';
+      }}
+      className={className}
+      placeholder={placeholder}
+      rows={1}
+      style={{ ...style, height: 'auto' }}
+      {...props}
+    />
+  );
+};
+
 // --- Gemini Service ---
 
 const extractDataFromFile = async (base64Data: string, mimeType: string, userApiKey?: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
@@ -226,6 +259,10 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
   
   const ai = new GoogleGenAI({ apiKey });
   
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentFormattedDate = `${currentDate.getDate().toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}/${currentYear}`;
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [
@@ -234,12 +271,18 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
           {
             text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi" với độ chính xác tuyệt đối 100%.
             
+THÔNG TIN NGỮ CẢNH:
+- Ngày hiện tại: ${currentFormattedDate}
+- Năm hiện tại: ${currentYear}
+- LƯU Ý QUAN TRỌNG: Nếu năm trong văn bản trông giống "2024" nhưng hiện tại là năm ${currentYear}, hãy kiểm tra kỹ xem có phải đó là số "${currentYear.toString().slice(-1)}" viết tay không. Ưu tiên tính logic của thời gian thực tế.
+
 QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
 1. THÔNG TIN CHUNG (HEADER):
    - "project" (Dự án): Trích xuất từ dòng "Dự án: ...".
    - "item" (Hạng mục): Trích xuất CHÍNH XÁC từ dòng "Hạng mục: ...". LƯU Ý: Trong văn bản có cả dòng "Công trình" và "Hạng mục", bạn PHẢI lấy dữ liệu từ dòng "Hạng mục". Ví dụ: Nếu thấy "Hạng mục: Thi công cầu vượt...", hãy lấy "Thi công cầu vượt...".
    - "componentName" (Tên bộ phận): Trích xuất từ dòng "Tên bộ phận: ...". Phải bao gồm cả phần chữ viết tay (ví dụ: "Cọc khoan nhồi - Trụ HN P479").
    - "pileId" (Số hiệu cọc): Trích xuất từ dòng "Cọc: ...". Đây thường là phần chữ viết tay (ví dụ: "C9").
+   - "reportNumber" (Biên bản số): Trích xuất từ dòng "Biên bản số: ...". (ví dụ: "01/BB-TDC").
    - "diameter" (Đường kính): Trích xuất từ dòng "Đường kính: ...". (ví dụ: "D2000").
 
 2. ĐỊA TẦNG:
@@ -247,9 +290,11 @@ QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
    - Cột "Địa chất thực tế" có dạng "X (Y)": X là designLayerCode, Y là layerNumber.
    - "layerDesign" PHẢI khớp với mô tả của lớp X trong bảng tra cứu.
 
-3. TRÍCH XUẤT THỜI GIAN (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
+3. TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
    - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55).
-   - CẢNH BÁO: Chữ viết tay số "1" và "2" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
+   - Ngày tháng (dateFrom, dateTo, constructionStart, constructionEnd): Trích xuất CHÍNH XÁC ngày, tháng, năm. 
+   - CẢNH BÁO NĂM: Nếu năm viết tay trông mập mờ, hãy đối chiếu với năm hiện tại (${currentYear}). Nếu văn bản ghi "2026" thì PHẢI trích xuất là "2026", KHÔNG ĐƯỢC tự ý đổi thành "2024".
+   - CẢNH BÁO CHỮ VIẾT TAY: Chữ viết tay số "1" và "2", hoặc "4" và "6" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
    - KHÔNG ĐƯỢC tự ý làm tròn hoặc tự ý gán thời gian bắt đầu của dòng sau bằng thời gian kết thúc của dòng trước nếu hình ảnh không ghi như vậy. Nếu có khoảng nghỉ (ví dụ từ 11h26 đến 12h55), hãy trích xuất đúng các mốc thời gian ghi trên giấy.
    - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại xem có phải bạn đọc nhầm số "1" thành "0" hoặc ngược lại không.
 
@@ -258,7 +303,7 @@ QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
    - Tuyệt đối không bỏ sót dấu phẩy/chấm thập phân. Kiểm tra kỹ từng chữ số.
 
 Yêu cầu JSON:
-- project, item, componentName, pileId, diameter.
+- project, item, componentName, pileId, reportNumber, diameter.
 - constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
 - layers: [
     {
@@ -291,6 +336,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
           item: { type: Type.STRING },
           componentName: { type: Type.STRING },
           pileId: { type: Type.STRING },
+          reportNumber: { type: Type.STRING },
           diameter: { type: Type.STRING },
           constructionStart: { type: Type.STRING },
           constructionEnd: { type: Type.STRING },
@@ -320,7 +366,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
           },
           notes: { type: Type.STRING, description: "Ghi chú tổng hợp cho toàn bộ biên bản" }
         },
-        required: ["project", "item", "componentName", "pileId", "diameter", "constructionStart", "constructionEnd", "layers"]
+        required: ["project", "item", "componentName", "pileId", "reportNumber", "diameter", "constructionStart", "constructionEnd", "layers"]
       }
     }
   });
@@ -374,6 +420,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
       item: rawData.item,
       componentName: rawData.componentName,
       pileId: rawData.pileId,
+      reportNumber: rawData.reportNumber,
       diameter: rawData.diameter,
       constructionStart: rawData.constructionStart,
       constructionEnd: rawData.constructionEnd,
@@ -1347,6 +1394,7 @@ export default function App() {
                           <th>Hạng mục</th>
                           <th>Tên bộ phận</th>
                           <th>Số hiệu</th>
+                          <th>Biên bản số</th>
                           <th>Đường kính</th>
                           <th>Bắt đầu</th>
                           <th>Kết thúc</th>
@@ -1364,6 +1412,7 @@ export default function App() {
                             <td className="text-slate-900 font-normal">{item.item}</td>
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
                             <td className="font-normal text-blue-900">{item.pileId}</td>
+                            <td className="font-normal text-slate-900">{item.reportNumber}</td>
                             <td className="font-normal text-slate-900">{item.diameter}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionStart}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionEnd}</td>
@@ -1635,6 +1684,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
+        <StatCard title="Biên bản số" value={result.reportNumber} icon={<FileText className="text-blue-600" />} />
         <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
         <StatCard title="Tổng chiều sâu" value={`${formatNumber(result.layers.reduce((acc, l) => acc + l.lengthMeters, 0))} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
         <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
@@ -1665,6 +1715,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300">
                 <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">ĐỊA CHẤT <br/> THỰC TẾ</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Biên bản số</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
                 <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[350px]">Mô tả lớp thiết kế</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Từ (h)</th>
@@ -1680,25 +1731,26 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
-                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">
+                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[12px] border-r border-slate-200">
                     <div className="text-sm">{layer.actualGeology}</div>
                   </td>
-                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">{layer.diameter}</td>
-                  <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">
+                  <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{result.reportNumber}</td>
+                  <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{layer.diameter}</td>
+                  <td className="text-black italic text-[12px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
+                  <td className="font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">
                     <div>{layer.timeFrom}</div>
                     {layer.dateFrom && <div className="text-[9px] text-slate-500">{layer.dateFrom}</div>}
                   </td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">
+                  <td className="font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">
                     <div>{layer.timeTo}</div>
                     {layer.dateTo && <div className="text-[9px] text-slate-500">{layer.dateTo}</div>}
                   </td>
-                  <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationFrom}</td>
-                  <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
-                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{formatNumber(layer.durationHours)}</td>
-                  <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{formatNumber(layer.lengthMeters)}</td>
-                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30 border-r border-slate-200">{formatNumber(layer.speedMph)}</td>
-                  <td className="text-center text-slate-600 px-4 py-3 text-[11px] italic whitespace-normal leading-relaxed">{layer.notes}</td>
+                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.elevationFrom)}</td>
+                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.elevationTo)}</td>
+                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.durationHours)}</td>
+                  <td className="text-center font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.lengthMeters)}</td>
+                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[12px] bg-orange-50/30 border-r border-slate-200">{formatNumber(layer.speedMph)}</td>
+                  <td className="text-center text-slate-600 px-4 py-3 text-[12px] italic whitespace-normal leading-relaxed">{layer.notes}</td>
                 </tr>
               ))}
             </tbody>
@@ -1997,7 +2049,7 @@ function SummaryView({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
+                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
                 <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
                 <Bar dataKey="Tốc độ TB (m/h)" fill="#2563eb" radius={[4,4,0,0]} />
                 <Bar dataKey="Chiều sâu (m)" fill="#f97316" radius={[4,4,0,0]} />
@@ -2017,7 +2069,7 @@ function SummaryView({
                 <Pie data={projectDist} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${(percent*100).toFixed(0)}%`} labelLine={false}>
                   {projectDist.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -2048,7 +2100,7 @@ function SummaryView({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
                 <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
                 <Area type="monotone" dataKey="Chiều sâu tích lũy" stroke="#2563eb" strokeWidth={2} fill="url(#gradDepth)" />
                 <Area type="monotone" dataKey="Số cọc tích lũy" stroke="#f97316" strokeWidth={2} fill="url(#gradPile)" />
@@ -2209,7 +2261,7 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
+                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
                 <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
                 <Bar dataKey="V.Min" fill="#94a3b8" radius={[3,3,0,0]} />
                 <Bar dataKey="V.TB"  fill="#2563eb" radius={[3,3,0,0]} />
@@ -2229,7 +2281,7 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
-                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
+                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
                 <Bar dataKey="V.TB (m/h)" radius={[4,4,0,0]}>
                   {chartByDiameter.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Bar>
@@ -2254,7 +2306,7 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
-              <tr className="bg-[#1a3a6b] text-white text-[11px] font-black uppercase tracking-wider">
+              <tr className="bg-[#1a3a6b] text-white text-[12px] font-black uppercase tracking-wider">
                 <th className="px-4 py-3 text-center border-r border-blue-700 w-12">STT</th>
                 <th className="px-4 py-3 text-center border-r border-blue-700 w-28">Đường kính</th>
                 <th className="px-4 py-3 text-center border-r border-blue-700 w-24">Ký hiệu ĐC</th>
@@ -2269,29 +2321,29 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
             <tbody className="divide-y divide-slate-100">
               {filtered.map((row, idx) => (
                 <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                  <td className="px-4 py-3 text-center text-[11px] font-bold text-blue-700 border-r border-slate-100">{idx + 1}</td>
-                  <td className="px-4 py-3 text-center text-[11px] font-bold text-slate-800 border-r border-slate-100">{row.diameter}</td>
+                  <td className="px-4 py-3 text-center text-[12px] font-bold text-blue-700 border-r border-slate-100">{idx + 1}</td>
+                  <td className="px-4 py-3 text-center text-[12px] font-bold text-slate-800 border-r border-slate-100">{row.diameter}</td>
                   <td className="px-4 py-3 text-center border-r border-slate-100">
                     <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 text-blue-800 text-[13px] font-black">
                       {row.geoCode}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[11px] text-slate-700 border-r border-slate-100">{row.layerDesign}</td>
-                  <td className="px-4 py-3 text-center text-[11px] font-semibold text-slate-700 border-r border-slate-100">{row.pileCountNum}</td>
-                  <td className="px-4 py-3 text-center text-[11px] text-slate-500 border-r border-slate-100">{row.sampleCount}</td>
+                  <td className="px-4 py-3 text-[12px] text-slate-700 border-r border-slate-100 whitespace-pre-wrap break-words">{row.layerDesign}</td>
+                  <td className="px-4 py-3 text-center text-[12px] font-semibold text-slate-700 border-r border-slate-100">{row.pileCountNum}</td>
+                  <td className="px-4 py-3 text-center text-[12px] text-slate-500 border-r border-slate-100">{row.sampleCount}</td>
                   <td className="px-4 py-3 text-center border-r border-slate-100">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold bg-slate-100 text-slate-700">
                       {formatNumber(row.minSpeed)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center border-r border-slate-100">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold bg-slate-100 text-slate-700">
                       {formatNumber(row.maxSpeed)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={cn(
-                      "inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black",
+                      "inline-flex items-center px-3 py-1 rounded-full text-[12px] font-black",
                       row.avgSpeed > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
                     )}>
                       {formatNumber(row.avgSpeed)}
@@ -2301,14 +2353,14 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-50 border-t-2 border-slate-300 text-[11px] font-black">
+              <tr className="bg-slate-50 border-t-2 border-slate-300 text-[12px] font-black">
                 <td colSpan={4} className="px-4 py-3 text-black uppercase border-r border-slate-200">Tổng hợp toàn bộ</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200 text-blue-700">{[...new Set(history.map(r => r.pileId))].length}</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200">{filtered.reduce((s,r)=>s+r.sampleCount,0)}</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMin)}</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMax)}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-black">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[12px] font-black">
                     {formatNumber(globalAvg)}
                   </span>
                 </td>
@@ -2514,8 +2566,8 @@ function EditSplitView({
         layer.durationHours = durationMinutes / 60;
       }
       
-      const elevStart = parseFloat(layer.elevationFrom.toString());
-      const elevEnd = parseFloat(layer.elevationTo.toString());
+      const elevStart = parseFloat(layer.elevationFrom.toString().replace(',', '.'));
+      const elevEnd = parseFloat(layer.elevationTo.toString().replace(',', '.'));
       if (!isNaN(elevStart) && !isNaN(elevEnd)) {
         layer.lengthMeters = Math.abs(elevEnd - elevStart);
         if (layer.durationHours > 0) {
@@ -2627,6 +2679,14 @@ function EditSplitView({
                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Biên bản số</label>
+              <input 
+                value={data.reportNumber} 
+                onChange={(e) => updateField('reportNumber', e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
@@ -2661,6 +2721,7 @@ function EditSplitView({
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT <br/> THỰC TẾ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Biên bản số</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
@@ -2707,23 +2768,23 @@ function EditSplitView({
                             <input 
                               value={layer.actualGeology ?? ''} 
                               onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                              className={`w-full bg-transparent border-none text-[13px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
+                              className={`w-full bg-transparent border-none text-[12px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
                               placeholder="..."
                             />
                           </div>
                         </td>
                         <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
+                          {data.reportNumber}
+                        </td>
+                        <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
                           {data.diameter}
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'160px'}}>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={layer.layerDesign}
-                            onChange={(e) => {
+                            onChange={(e: any) => {
                               updateLayer(idx, 'layerDesign', e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = e.target.scrollHeight + 'px';
                             }}
-                            rows={1}
                             className={`w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-left outline-none leading-normal transition-all resize-none overflow-hidden`}
                             style={{height: 'auto'}}
                           />
@@ -2767,8 +2828,8 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
-                            value={layer.elevationFrom} 
-                            onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value)}
+                            value={layer.elevationFrom.toString().replace('.', ',')} 
+                            onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value.replace(',', '.'))}
                             className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
@@ -2776,8 +2837,8 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
-                            value={layer.elevationTo} 
-                            onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value)}
+                            value={layer.elevationTo.toString().replace('.', ',')} 
+                            onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value.replace(',', '.'))}
                             className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
@@ -2797,14 +2858,11 @@ function EditSplitView({
                           </span>
                         </td>
                         <td className={`p-0 align-middle ${rowBg}`}>
-                          <textarea 
+                          <AutoResizeTextarea 
                             value={layer.notes} 
-                            onChange={(e) => {
+                            onChange={(e: any) => {
                               updateLayer(idx, 'notes', e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = e.target.scrollHeight + 'px';
                             }}
-                            rows={1}
                             className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none leading-normal transition-all resize-none overflow-hidden"
                             style={{height: 'auto'}}
                             placeholder="..."
@@ -2833,15 +2891,15 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-blue-900 text-white">
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">STT</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Đường kính</th>
-                      <th className="px-3 py-2 text-left text-[11px] font-black uppercase tracking-wider border-r border-blue-700" style={{minWidth:'220px'}}>Lớp Thiết Kế</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Số đoạn</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ từ (m)</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ đến (m)</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng T.Gian (h)</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng Dài (m)</th>
-                      <th className="px-3 py-2 text-center text-[11px] font-black uppercase tracking-wider whitespace-nowrap">V TB (m/h)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">STT</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Đường kính</th>
+                      <th className="px-3 py-2 text-left text-[12px] font-black uppercase tracking-wider border-r border-blue-700" style={{minWidth:'220px'}}>Lớp Thiết Kế</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Số đoạn</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ từ (m)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ đến (m)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng T.Gian (h)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng Dài (m)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider whitespace-nowrap">V TB (m/h)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -2907,17 +2965,17 @@ function EditSplitView({
                         const { row: rowBg } = groupColors[g.colorIdx];
                         return (
                           <tr key={i} className="hover:opacity-90 transition-colors">
-                            <td className={`px-3 py-2 text-[11px] font-bold text-center border-r border-slate-200 ${rowBg}`}>{i + 1}</td>
-                            <td className={`px-3 py-2 text-[11px] text-black text-center border-r border-slate-200 ${rowBg}`}>{data.diameter}</td>
-                            <td className={`px-3 py-2 text-[11px] font-medium border-r border-slate-200 ${rowBg} text-black`}>{g.layerDesign}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationFrom}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationTo}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalDuration)}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalLength)}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center ${rowBg}`}>
+                            <td className={`px-3 py-2 text-[12px] font-bold text-center border-r border-slate-200 ${rowBg}`}>{i + 1}</td>
+                            <td className={`px-3 py-2 text-[12px] text-black text-center border-r border-slate-200 ${rowBg}`}>{data.diameter}</td>
+                            <td className={`px-3 py-2 text-[12px] font-medium border-r border-slate-200 ${rowBg} text-black whitespace-pre-wrap break-words`}>{g.layerDesign}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationFrom)}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationTo)}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalDuration)}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalLength)}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center ${rowBg}`}>
                               <span className={cn(
-                                "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
+                                "inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold",
                                 g.avgSpeed > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                               )}>
                                 {formatNumber(g.avgSpeed)}
@@ -2930,23 +2988,23 @@ function EditSplitView({
                   </tbody>
                   <tfoot>
                     <tr className="bg-slate-100 border-t-2 border-slate-400">
-                      <td colSpan={3} className="px-3 py-2 text-[11px] font-black text-black uppercase border-r border-slate-300">Tổng cộng</td>
-                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                      <td colSpan={3} className="px-3 py-2 text-[12px] font-black text-black uppercase border-r border-slate-300">Tổng cộng</td>
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {data.layers.length}
                       </td>
-                      <td className="px-3 py-2 text-[11px] text-center border-r border-slate-300">
+                      <td className="px-3 py-2 text-[12px] text-center border-r border-slate-300">
                         {data.layers.length > 0 ? data.layers[0].elevationFrom : '—'}
                       </td>
-                      <td className="px-3 py-2 text-[11px] text-center border-r border-slate-300">
+                      <td className="px-3 py-2 text-[12px] text-center border-r border-slate-300">
                         {data.layers.length > 0 ? data.layers[data.layers.length - 1].elevationTo : '—'}
                       </td>
-                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {formatNumber(data.layers.reduce((s, l) => s + l.durationHours, 0))}
                       </td>
-                      <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {formatNumber(data.layers.reduce((s, l) => s + l.lengthMeters, 0))}
                       </td>
-                      <td className="px-3 py-2 text-[11px] font-black text-center text-black">
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black">
                         {(() => {
                           const totalLen = data.layers.reduce((s, l) => s + l.lengthMeters, 0);
                           const totalDur = data.layers.reduce((s, l) => s + l.durationHours, 0);
