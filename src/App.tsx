@@ -1069,50 +1069,68 @@ export default function App() {
           <div className="w-full space-y-12">
             {/* === SPLIT-SCREEN KHI CÓ FILE ĐANG XỬ LÝ HOẶC CHỜ DUYỆT === */}
             {(processingFiles.length > 0 || pendingResults.length > 0) ? (
-              <div className="flex gap-0 h-[calc(100vh-160px)] rounded-3xl overflow-hidden border border-slate-200 shadow-xl">
+              <div className={cn(
+                "flex gap-0 h-[calc(100vh-160px)] rounded-3xl overflow-hidden border border-slate-200 shadow-xl transition-all duration-500",
+                !currentResult ? "justify-center bg-slate-50/50" : ""
+              )}>
 
                 {/* CỘT TRÁI: Danh sách file - thu gọn */}
-                <div className="w-52 flex-shrink-0 flex flex-col" style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}>
-                  <div className="px-5 py-4 border-b border-[#1e3a5f]">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className={cn("w-4 h-4 text-blue-400", isProcessing && "animate-spin")} />
-                      <span className="text-[11px] font-black text-white uppercase tracking-widest">
-                        Tiến trình ({processingFiles.filter(f => f.status !== 'completed').length})
-                      </span>
+                <div className={cn(
+                  "flex flex-col transition-all duration-500",
+                  currentResult ? "w-64 flex-shrink-0" : "w-full max-w-3xl shadow-2xl"
+                )} style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}>
+                  <div className="px-6 py-5 border-b border-[#1e3a5f]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Loader2 className={cn("w-5 h-5 text-blue-400", isProcessing && "animate-spin")} />
+                        <span className="text-[13px] font-black text-white uppercase tracking-widest">
+                          Tiến trình ({processingFiles.filter(f => f.status !== 'completed').length})
+                        </span>
+                      </div>
+                      {!currentResult && processingFiles.length > 0 && (
+                        <span className="text-[10px] font-bold text-blue-300/60 uppercase tracking-widest">
+                          Tự động lưu vào hệ thống
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
                     {/* Files đang xử lý */}
                     {processingFiles.map((file) => (
                       <div
                         key={file.id}
                         onClick={() => file.status === 'completed' && file.result && setCurrentResult(file.result)}
                         className={cn(
-                          "p-3 rounded-xl transition-all group relative",
+                          "p-4 rounded-2xl transition-all group relative border border-transparent",
                           file.status === 'completed' && file.result
                             ? currentResult?.id === file.result?.id
-                              ? "bg-blue-600 cursor-pointer"
-                              : "bg-blue-900/60 hover:bg-blue-900 cursor-pointer"
+                              ? "bg-blue-600 border-blue-400/30 cursor-pointer shadow-lg"
+                              : "bg-blue-900/60 hover:bg-blue-900/80 cursor-pointer"
                             : "bg-blue-900/30 cursor-default"
                         )}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-4">
                           <div className={cn(
-                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
                             file.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" :
                             file.status === 'error' ? "bg-red-500/20 text-red-400" :
                             "bg-blue-800 text-blue-300"
                           )}>
-                            {file.status === 'completed' ? <CheckCircle2 size={14} /> :
-                             file.status === 'error' ? <AlertCircle size={14} /> :
-                             file.status === 'processing' ? <Loader2 size={14} className="animate-spin" /> :
-                             <FileText size={14} />}
+                            {file.status === 'completed' ? <CheckCircle2 size={18} /> :
+                             file.status === 'error' ? <AlertCircle size={18} /> :
+                             file.status === 'processing' ? <Loader2 size={18} className="animate-spin" /> :
+                             <FileText size={18} />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-white truncate">{file.fileName}</p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-bold text-white truncate">{file.fileName}</p>
+                              {file.status === 'completed' && !currentResult && (
+                                <span className="text-[9px] font-black text-emerald-400/80 uppercase tracking-tighter bg-emerald-500/10 px-1.5 py-0.5 rounded">Đã lưu</span>
+                              )}
+                            </div>
                             <p className={cn(
-                              "text-[10px] font-medium mt-0.5",
+                              "text-[11px] font-medium mt-1",
                               file.status === 'completed' ? "text-emerald-400" :
                               file.status === 'error' ? "text-red-400" :
                               file.status === 'processing' ? "text-orange-400" : "text-blue-400"
@@ -1124,48 +1142,45 @@ export default function App() {
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); removeProcessingFile(file.id); }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-blue-500 hover:text-red-400 transition-all"
+                            className="opacity-0 group-hover:opacity-100 p-2 text-blue-400 hover:text-red-400 transition-all"
                           >
-                            <Trash2 size={12} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                         {(file.status === 'processing' || file.status === 'pending') && (
-                          <div className="mt-2 h-1 bg-blue-900 rounded-full overflow-hidden">
-                            <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${file.progress}%` }} />
+                          <div className="mt-3 h-1.5 bg-blue-950 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 transition-all duration-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]" style={{ width: `${file.progress}%` }} />
                           </div>
                         )}
                       </div>
                     ))}
-
-                    {/* Pending results chưa lưu */}
-                    {/* Pending results đã được tự động lưu, không cần hiển thị */}
-
                   </div>
 
                   {/* Footer cột trái */}
-                  <div className="p-3 border-t border-[#1e3a5f] space-y-2">
-                    {/* Nút Lưu tất cả đã bị thay bằng auto-save */}
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                    >
-                      <Upload size={12} />
-                      Thêm file
-                    </button>
-                    {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && pendingResults.length === 0 && (
+                  <div className="p-6 border-t border-[#1e3a5f] bg-blue-950/20">
+                    <div className="flex gap-3">
                       <button
-                        onClick={() => setProcessingFiles([])}
-                        className="w-full py-2 text-slate-500 hover:text-red-400 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40"
                       >
-                        Xóa danh sách
+                        <Upload size={14} />
+                        Thêm file
                       </button>
-                    )}
+                      {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && pendingResults.length === 0 && (
+                        <button
+                          onClick={() => setProcessingFiles([])}
+                          className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                        >
+                          Xóa hết
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* CỘT PHẢI: Chi tiết + chỉnh sửa */}
-                <div className="flex-1 bg-white overflow-y-auto">
-                  {currentResult ? (
+                {currentResult && (
+                  <div className="flex-1 bg-white overflow-y-auto">
                     <div className="h-full flex flex-col">
                       {/* Header chi tiết */}
                       <div className="flex items-center justify-between bg-blue-600 px-8 py-5 flex-shrink-0">
@@ -1177,23 +1192,13 @@ export default function App() {
                             {currentResult.fileName || currentResult.pileId}
                           </h3>
                         </div>
-                        {pendingResults.some(r => r.id === currentResult.id) ? (
-                          <button
-                            onClick={() => saveResult(currentResult)}
-                            className="px-6 py-2.5 bg-white text-blue-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg flex items-center gap-2"
-                          >
-                            <Save size={14} />
-                            Lưu dữ liệu
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setCurrentResult(null)}
-                            className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/20 flex items-center gap-2"
-                          >
-                            <X size={14} />
-                            Thoát
-                          </button>
-                        )}
+                        <button
+                          onClick={() => setCurrentResult(null)}
+                          className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-white/20 flex items-center gap-2"
+                        >
+                          <X size={14} />
+                          Thoát
+                        </button>
                       </div>
 
                       {/* Nội dung chi tiết = EditSplitView embedded */}
@@ -1209,16 +1214,8 @@ export default function App() {
                         />
                       </div>
                     </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-12">
-                      <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center mb-6">
-                        <FileText size={32} className="text-slate-300" />
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-400 uppercase tracking-tight mb-2">Chọn file để xem chi tiết</h3>
-                      <p className="text-sm text-slate-300 font-medium">Bấm vào một file bên trái để xem<br/>và chỉnh sửa dữ liệu trước khi lưu</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             ) : (
               /* Khi không có file nào đang xử lý */
@@ -1269,14 +1266,13 @@ export default function App() {
                           <th className="text-center">Chiều dài (m)</th>
                           <th className="text-center">T.Gian TC (h)</th>
                           <th className="text-center">Vận tốc TB (m/h)</th>
-                          <th>Tập tin</th>
                           <th className="text-center">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody className="">
                         {history.slice(0, 10).map((item, index) => (
                           <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
-                            <td className="text-center font-bold text-blue-700 text-xs">{item.stt ?? (history.length - index)}</td>
+                            <td className="text-center font-bold text-blue-700 text-xs">{history.length - index}</td>
                             <td className="font-normal text-blue-900">{item.project}</td>
                             <td className="text-slate-900 font-normal">{item.item}</td>
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
@@ -1307,21 +1303,6 @@ export default function App() {
                                   </span>
                                 );
                               })()}
-                            </td>
-                            <td>
-                              {item.fileUrl ? (
-                                <a 
-                                  href={item.fileUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-bold text-[10px] uppercase tracking-widest transition-colors"
-                                >
-                                  <ExternalLink size={12} />
-                                  Xem
-                                </a>
-                              ) : (
-                                <span className="text-sky-200 text-[10px] font-bold uppercase tracking-widest italic">Chưa có</span>
-                              )}
                             </td>
                             <td className="text-center">
                               <div className="flex items-center justify-end gap-1.5">
