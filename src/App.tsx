@@ -55,7 +55,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabase';
@@ -216,41 +216,30 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
       {
         parts: [
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng chuyên nghiệp. Hãy trích xuất dữ liệu từ hình ảnh hoặc PDF của "Biên bản theo dõi địa chất trong quá trình khoan cọc khoan nhồi".
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi".
+            
+Yêu cầu trích xuất:
+1. Thông tin chung: 
+   - project: Tên dự án.
+   - item: Hạng mục. CHỈ lấy phần văn bản sau chữ "Hạng mục:" hoặc "Hạng mục". Loại bỏ tên dự án nếu bị lặp lại ở đây.
+   - componentName: Tên bộ phận.
+   - pileId: Số hiệu cọc.
+   - diameter: Đường kính cọc.
+2. Thời gian tổng thể: constructionStart, constructionEnd. Định dạng: "HH:mm DD/MM/YYYY".
 
-Yêu cầu trích xuất chi tiết:
-1. Thông tin chung: Dự án (project), Hạng mục (item), Tên bộ phận (componentName), Số hiệu cọc (pileId), Đường kính cọc (diameter).
-2. Thời gian tổng thể: Ngày/giờ bắt đầu (constructionStart) và kết thúc (constructionEnd) thi công cọc. Định dạng BẮT BUỘC: "HH:mm DD/MM/YYYY" (ví dụ: "10:30 03/03/2026"). Không thêm chữ "ngày", "h", hay bất kỳ ký tự thừa nào.
+3. Bảng địa chất (layers):
+   - designLayerCode: Số lớp thiết kế (thường 1-6).
+   - actualGeology: Giá trị đầy đủ từ cột "Địa chất thực tế" (ví dụ: "1 (1)").
+   - layerNumber: Số trong ngoặc từ "Địa chất thực tế" (ví dụ: "1 (1)" -> 1).
+   - layerDesign: Mô tả địa chất thiết kế tương ứng với designLayerCode (tra từ bảng tra cứu trong biên bản).
+   - timeFrom, timeTo: Giờ (HH:mm).
+   - dateFrom, dateTo: Ngày (DD/MM/YYYY).
+   - elevationFrom, elevationTo: Cao độ (số thực).
 
-3. CẤU TRÚC BẢNG - ĐỌC KỸ TRƯỚC KHI XỬ LÝ:
-   Bảng có CỘT "ĐỊA CHẤT" gồm 2 sub-cột tách biệt:
-   - Sub-cột TRÁI = "Lớp thiết kế" (STK hoặc Lớp TK): Là số lớp trong HỒ SƠ THIẾT KẾ, thường có ít giá trị (ví dụ: 1→6). Đây là designLayerCode.
-   - Sub-cột PHẢI = "Địa chất thực tế" (ĐC TT hoặc Xác nhận): Là ký hiệu địa chất THỰC TẾ quan sát được khi khoan, có thể khác với lớp thiết kế. Đây là actualGeology.
-   ⚠️ TUYỆT ĐỐI KHÔNG nhầm lẫn 2 sub-cột này. Nếu thấy ô "địa chất" có 2 số chồng lên nhau, số TRÊN/TRÁI = designLayerCode, số DƯỚI/PHẢI = actualGeology.
+4. designLayerMap: Bảng tra cứu { "mã lớp": "mô tả" }.
+5. summary: Nhận xét ngắn gọn.
 
-4. BƯỚC 1 - Xây dựng designLayerMap (bảng tra cứu lớp thiết kế):
-   Nhìn vào phần HEADER của biên bản (thường ở góc trên bên phải hoặc cạnh bảng chính) để tìm bảng liệt kê các lớp thiết kế và mô tả tương ứng.
-   - Mỗi số lớp TK (1, 2, 3, 4, 5, 6...) có MỘT mô tả địa chất thiết kế cố định.
-   - Trả về: {"1": "Sét pha màu xám đen, trạng thái dẻo mềm", "2": "Sét màu xám ghi...", ...}
-   - Số lớp TK thường là 1→6 hoặc 1→8, KHÔNG thể là "3" cho tất cả các dòng.
-
-5. BƯỚC 2 - Trích xuất từng dòng (layers):
-   QUAN TRỌNG: Mỗi dòng thời gian = 1 layer riêng biệt. KHÔNG gộp dòng.
-
-   - layerNumber: STT dòng (1, 2, 3...) theo thứ tự xuất hiện.
-   - designLayerCode: Số từ sub-cột TRÁI "Lớp TK". Nếu ô trống thì kế thừa từ dòng trước. Giá trị thay đổi dần từ 1 lên 6 (hoặc tương tự) theo độ sâu khoan.
-   - layerDesign: Tra từ designLayerMap theo designLayerCode. KHÔNG tự điền.
-   - actualGeology: Số từ sub-cột PHẢI "ĐC TT". Có thể KHÁC designLayerCode — đây là điều bình thường khi địa chất thực tế lệch so với thiết kế.
-     ⚠️ ĐỊNH DẠNG ĐẶC BIỆT: Ô "Địa chất thực tế" thường ghi dạng "X (Y)" trong đó X = ký hiệu địa chất, Y = số thứ tự đoạn (trong ngoặc).
-     Ví dụ: "1 (1)" → actualGeology = "1"; "2 (3)" → actualGeology = "2"; "3 (12)" → actualGeology = "3".
-     CHỈ lấy số X TRƯỚC dấu ngoặc. KHÔNG lấy số trong ngoặc. KHÔNG giữ dấu ngoặc.
-   - timeFrom / timeTo: Giờ bắt đầu / kết thúc (HH:mm).
-   - dateFrom / dateTo: Ngày tương ứng (DD/MM/YYYY). Suy luận từ ngày gần nhất nếu không ghi.
-   - elevationFrom / elevationTo: Cao độ (mét, số thực âm thường là -6.72, -10.88...).
-
-6. Tóm tắt (summary): 2-3 câu nhận xét tiến độ và địa chất thực tế so với thiết kế.
-
-Lưu ý: Đảm bảo cao độ là số thực. Trả về JSON chuẩn.`
+Trả về JSON chuẩn.`
           },
           {
             inlineData: {
@@ -262,6 +251,7 @@ Lưu ý: Đảm bảo cao độ là số thực. Trả về JSON chuẩn.`
       }
     ],
     config: {
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -340,9 +330,8 @@ Lưu ý: Đảm bảo cao độ là số thực. Trả về JSON chuẩn.`
     // Gán lại layerDesign nhất quán theo designLayerCode
     const consistentLayerDesign = (code && layerDesignMap[code]) ? layerDesignMap[code] : layer.layerDesign;
 
-    // Làm sạch actualGeology: "X (Y)" → "X", chỉ lấy phần trước dấu ngoặc
-    const rawGeo = (layer.actualGeology || '').toString().trim();
-    const cleanGeo = rawGeo.replace(/\s*\(.*\).*$/, '').trim() || rawGeo;
+    // Giữ nguyên actualGeology từ AI (đã yêu cầu lấy full "1 (1)")
+    const cleanGeo = (layer.actualGeology || '').toString().trim();
 
     return {
       ...layer,
@@ -1605,59 +1594,44 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           <table className="w-full border-collapse table-fixed min-w-[1500px]">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300">
-                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">ĐỊA CHẤT THỰC TẾ</th>
-                <th className="sticky left-[80px] bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Hạng mục</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[150px]">Tên bộ phận</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Số hiệu</th>
+                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">ĐỊA CHẤT <br/> THỰC TẾ</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Bắt đầu thi công</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Kết thúc thi công</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[300px]">Lớp thiết kế</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Bắt đầu khoan</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Kết thúc khoan</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Thời gian</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đầu</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ cuối</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Chiều dài</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[120px]">Tốc độ (m/h)</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[350px]">Mô tả lớp thiết kế</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Từ (h)</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Đến (h)</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ từ</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đến</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">T.Gian</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">Dài (m)</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[120px]">V (m/h)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">
-                    <div className="text-sm">{layer.actualGeology}</div>
-                    <div className="text-[9px] text-slate-400">({layer.layerNumber})</div>
+                    <div className="text-sm">{(layer.actualGeology || '').split(' ')[0]}</div>
+                    <div className="text-[9px] text-slate-400">
+                      {(layer.actualGeology || '').includes('(') 
+                        ? (layer.actualGeology || '').match(/\((.*)\)/)?.[0] 
+                        : `(${layer.layerNumber})`}
+                    </div>
                   </td>
-                  <td className="sticky left-[80px] bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
-                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.item}</td>
-                  <td className="text-black font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.componentName}</td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.pileId}</td>
-                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.diameter}</td>
-                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionStart}</td>
-                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionEnd}</td>
+                  <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">{layer.diameter}</td>
                   <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">
+                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">
                     <div>{layer.timeFrom}</div>
-                    {layer.dateFrom && <div className="text-[10px] text-slate-500">{layer.dateFrom}</div>}
+                    {layer.dateFrom && <div className="text-[9px] text-slate-500">{layer.dateFrom}</div>}
                   </td>
-                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">
+                  <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">
                     <div>{layer.timeTo}</div>
-                    {layer.dateTo && <div className="text-[10px] text-slate-500">{layer.dateTo}</div>}
+                    {layer.dateTo && <div className="text-[9px] text-slate-500">{layer.dateTo}</div>}
                   </td>
-                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}h</td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationFrom}</td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
-                  <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.lengthMeters.toFixed(2)}m</td>
-                  <td className="text-center px-4 py-3">
-                    <span className={cn(
-                      "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-normal",
-                      layer.speedMph > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
-                    )}>
-                      {layer.speedMph.toFixed(2)}
-                    </span>
-                  </td>
+                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}</td>
+                  <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.lengthMeters.toFixed(2)}</td>
+                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30">{layer.speedMph.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -2294,6 +2268,21 @@ function EditSplitView({
     const newLayers = [...data.layers];
     newLayers[idx] = { ...newLayers[idx], [field]: value };
     
+    // Nếu thay đổi actualGeology dạng "1 (1)", tự động cập nhật designLayerCode và layerDesign
+    if (field === 'actualGeology') {
+      const val = value.toString().trim();
+      const match = val.match(/^(\d+)\s*\((.*)\)$/);
+      if (match) {
+        const code = match[1];
+        newLayers[idx].designLayerCode = code;
+        // Cập nhật mô tả từ designLayerMap nếu có
+        const designMap = (data as any).designLayerMap;
+        if (designMap && designMap[code]) {
+          newLayers[idx].layerDesign = designMap[code];
+        }
+      }
+    }
+    
     // Recalculate duration and speed if times or elevations change
     if (['timeFrom', 'timeTo', 'elevationFrom', 'elevationTo'].includes(field as string)) {
       const layer = newLayers[idx];
@@ -2455,7 +2444,7 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT THỰC TẾ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT <br/> THỰC TẾ</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
