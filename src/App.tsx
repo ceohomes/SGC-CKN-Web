@@ -173,6 +173,17 @@ const normalizeDateTime = (raw: string): string => {
   return s; // giữ nguyên nếu không parse được
 };
 
+// Định dạng số theo kiểu Việt Nam: thập phân là dấu phẩy, hàng nghìn là dấu chấm
+const formatNumber = (num: number | string | undefined | null, decimals: number = 2): string => {
+  if (num === undefined || num === null) return '—';
+  const val = typeof num === 'string' ? parseFloat(num) : num;
+  if (isNaN(val)) return '—';
+  return val.toLocaleString('vi-VN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+};
+
 // Tính thời gian thi công (giờ) từ constructionStart đến constructionEnd
 // Định dạng: "HH:mm DD/MM/YYYY"
 const calcConstructionDurationHours = (start: string, end: string): number => {
@@ -1357,12 +1368,12 @@ export default function App() {
                             <td className="text-slate-900 font-normal text-center">{item.constructionStart}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionEnd}</td>
                             <td className="text-center font-bold text-orange-600">
-                              {item.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)}
+                              {formatNumber(item.layers.reduce((acc, l) => acc + l.lengthMeters, 0))}
                             </td>
                             <td className="text-center text-slate-700">
                               {(() => {
                                 const h = item.layers.reduce((acc, l) => acc + l.durationHours, 0);
-                                return h > 0 ? h.toFixed(2) : '—';
+                                return h > 0 ? formatNumber(h) : '—';
                               })()}
                             </td>
                             <td className="text-center">
@@ -1375,7 +1386,7 @@ export default function App() {
                                     "inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold",
                                     v > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
                                   )}>
-                                    {v > 0 ? v.toFixed(2) : '—'}
+                                    {v > 0 ? formatNumber(v) : '—'}
                                   </span>
                                 );
                               })()}
@@ -1625,7 +1636,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
         <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
-        <StatCard title="Tổng chiều sâu" value={`${result.layers.reduce((acc, l) => acc + l.lengthMeters, 0).toFixed(2)} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
+        <StatCard title="Tổng chiều sâu" value={`${formatNumber(result.layers.reduce((acc, l) => acc + l.lengthMeters, 0))} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
         <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
         <StatCard title="Kết thúc" value={result.constructionEnd} icon={<Calendar className="text-blue-600" />} />
       </div>
@@ -1643,7 +1654,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             {result.layers.length} Lớp
           </div>
           <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
-            TB: {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)} m/h
+            TB: {formatNumber(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length)} m/h
           </div>
         </div>
       </div>
@@ -1663,7 +1674,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">T.Gian</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">Dài (m)</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">V (m/h)</th>
-                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider w-[200px]">Ghi chú</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[200px]">Ghi chú</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -1673,7 +1684,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                     <div className="text-sm">{layer.actualGeology}</div>
                   </td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">{layer.diameter}</td>
-                  <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
+                  <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
                   <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">
                     <div>{layer.timeFrom}</div>
                     {layer.dateFrom && <div className="text-[9px] text-slate-500">{layer.dateFrom}</div>}
@@ -1684,10 +1695,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   </td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationFrom}</td>
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
-                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}</td>
-                  <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.lengthMeters.toFixed(2)}</td>
-                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30 border-r border-slate-200">{layer.speedMph.toFixed(2)}</td>
-                  <td className="text-left text-slate-600 px-4 py-3 text-[11px] italic">{layer.notes}</td>
+                  <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{formatNumber(layer.durationHours)}</td>
+                  <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{formatNumber(layer.lengthMeters)}</td>
+                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30 border-r border-slate-200">{formatNumber(layer.speedMph)}</td>
+                  <td className="text-center text-slate-600 px-4 py-3 text-[11px] italic whitespace-normal leading-relaxed">{layer.notes}</td>
                 </tr>
               ))}
             </tbody>
@@ -1695,18 +1706,12 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="modern-card p-10 md:col-span-2 flex flex-col justify-center">
-          <h4 className="text-slate-900 font-bold uppercase tracking-widest text-[10px] mb-4">Ghi chú tổng hợp</h4>
-          <p className="text-slate-600 text-lg leading-relaxed italic">
-            {result.notes || "Dữ liệu được trích xuất tự động từ biên bản hiện trường. Vui lòng kiểm tra kỹ các thông số trước khi lưu trữ."}
-          </p>
-        </div>
+      <div className="grid grid-cols-1 gap-8">
         <div className="modern-card p-10 flex flex-col justify-center items-center text-center">
           <h4 className="text-slate-900 font-bold uppercase tracking-widest text-[10px] mb-4">Tốc độ khoan trung bình</h4>
           <div className="flex items-baseline gap-2">
             <span className="text-6xl font-bold text-black tracking-tighter">
-              {(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length).toFixed(2)}
+              {formatNumber(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length)}
             </span>
             <span className="text-slate-900 font-bold uppercase tracking-widest text-xs">m/h</span>
           </div>
@@ -1961,8 +1966,8 @@ function SummaryView({
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Tổng số cọc', value: totalPiles, unit: 'cọc', color: 'bg-blue-600', icon: <Layers className="w-5 h-5 text-white" /> },
-          { label: 'Tổng chiều sâu', value: totalDepth.toFixed(1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
-          { label: 'Tốc độ khoan TB', value: avgSpeed.toFixed(2), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-5 h-5 text-white" /> },
+          { label: 'Tổng chiều sâu', value: formatNumber(totalDepth, 1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="text-white w-5 h-5" /> },
+          { label: 'Tốc độ khoan TB', value: formatNumber(avgSpeed), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-5 h-5 text-white" /> },
           { label: 'Số dự án', value: projects.length, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-5 h-5 text-white" /> },
         ].map((kpi, i) => (
           <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -2178,9 +2183,9 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'V.TB toàn bộ',    value: `${globalAvg.toFixed(2)} m/h`, color: 'bg-blue-600',   icon: <TrendingUp className="w-5 h-5 text-white" /> },
-          { label: 'V.Min ghi nhận',  value: `${globalMin.toFixed(2)} m/h`, color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
-          { label: 'V.Max ghi nhận',  value: `${globalMax.toFixed(2)} m/h`, color: 'bg-emerald-500',icon: <Activity className="w-5 h-5 text-white" /> },
+          { label: 'V.TB toàn bộ',    value: `${formatNumber(globalAvg)} m/h`, color: 'bg-blue-600',   icon: <TrendingUp className="w-5 h-5 text-white" /> },
+          { label: 'V.Min ghi nhận',  value: `${formatNumber(globalMin)} m/h`, color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
+          { label: 'V.Max ghi nhận',  value: `${formatNumber(globalMax)} m/h`, color: 'bg-emerald-500',icon: <Activity className="w-5 h-5 text-white" /> },
           { label: 'Số lớp địa chất', value: `${geoCodes.length} lớp`,     color: 'bg-violet-500',  icon: <Layers className="w-5 h-5 text-white" /> },
         ].map((kpi, i) => (
           <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -2276,12 +2281,12 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
                   <td className="px-4 py-3 text-center text-[11px] text-slate-500 border-r border-slate-100">{row.sampleCount}</td>
                   <td className="px-4 py-3 text-center border-r border-slate-100">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
-                      {row.minSpeed.toFixed(2)}
+                      {formatNumber(row.minSpeed)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center border-r border-slate-100">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
-                      {row.maxSpeed.toFixed(2)}
+                      {formatNumber(row.maxSpeed)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -2289,7 +2294,7 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
                       "inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black",
                       row.avgSpeed > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
                     )}>
-                      {row.avgSpeed.toFixed(2)}
+                      {formatNumber(row.avgSpeed)}
                     </span>
                   </td>
                 </tr>
@@ -2300,11 +2305,11 @@ function NormsView({ history }: { history: ExtractionResult[] }) {
                 <td colSpan={4} className="px-4 py-3 text-black uppercase border-r border-slate-200">Tổng hợp toàn bộ</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200 text-blue-700">{[...new Set(history.map(r => r.pileId))].length}</td>
                 <td className="px-4 py-3 text-center border-r border-slate-200">{filtered.reduce((s,r)=>s+r.sampleCount,0)}</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200">{globalMin.toFixed(2)}</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200">{globalMax.toFixed(2)}</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMin)}</td>
+                <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMax)}</td>
                 <td className="px-4 py-3 text-center">
                   <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[11px] font-black">
-                    {globalAvg.toFixed(2)}
+                    {formatNumber(globalAvg)}
                   </span>
                 </td>
               </tr>
@@ -2665,7 +2670,7 @@ function EditSplitView({
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
-                      <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider whitespace-nowrap" style={{width:'150px'}}>Ghi chú</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider whitespace-nowrap" style={{width:'150px'}}>Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -2778,25 +2783,30 @@ function EditSplitView({
                           />
                         </td>
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
-                          {layer.durationHours.toFixed(2)}
+                          {formatNumber(layer.durationHours)}
                         </td>
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
-                          {layer.lengthMeters.toFixed(2)}
+                          {formatNumber(layer.lengthMeters)}
                         </td>
                         <td className="px-2 py-1 text-[12px] font-normal text-center bg-white align-middle border-r border-slate-200 whitespace-nowrap">
                           <span className={cn(
                             "inline-flex items-center px-1 py-0.5 rounded-full text-[12px] font-normal",
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                           )}>
-                            {layer.speedMph.toFixed(2)}
+                            {formatNumber(layer.speedMph)}
                           </span>
                         </td>
                         <td className={`p-0 align-middle ${rowBg}`}>
-                          <input 
-                            type="text"
+                          <textarea 
                             value={layer.notes} 
-                            onChange={(e) => updateLayer(idx, 'notes', e.target.value)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none transition-all"
+                            onChange={(e) => {
+                              updateLayer(idx, 'notes', e.target.value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
+                            rows={1}
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 text-center outline-none leading-normal transition-all resize-none overflow-hidden"
+                            style={{height: 'auto'}}
                             placeholder="..."
                           />
                         </td>
@@ -2903,14 +2913,14 @@ function EditSplitView({
                             <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
                             <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationFrom}</td>
                             <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.elevationTo}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{g.totalDuration.toFixed(2)}</td>
-                            <td className={`px-3 py-2 text-[11px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{g.totalLength.toFixed(2)}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalDuration)}</td>
+                            <td className={`px-3 py-2 text-[11px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalLength)}</td>
                             <td className={`px-3 py-2 text-[11px] text-center ${rowBg}`}>
                               <span className={cn(
                                 "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
                                 g.avgSpeed > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                               )}>
-                                {g.avgSpeed.toFixed(2)}
+                                {formatNumber(g.avgSpeed)}
                               </span>
                             </td>
                           </tr>
@@ -2931,16 +2941,16 @@ function EditSplitView({
                         {data.layers.length > 0 ? data.layers[data.layers.length - 1].elevationTo : '—'}
                       </td>
                       <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
-                        {data.layers.reduce((s, l) => s + l.durationHours, 0).toFixed(2)}
+                        {formatNumber(data.layers.reduce((s, l) => s + l.durationHours, 0))}
                       </td>
                       <td className="px-3 py-2 text-[11px] font-black text-center text-black border-r border-slate-300">
-                        {data.layers.reduce((s, l) => s + l.lengthMeters, 0).toFixed(2)}
+                        {formatNumber(data.layers.reduce((s, l) => s + l.lengthMeters, 0))}
                       </td>
                       <td className="px-3 py-2 text-[11px] font-black text-center text-black">
                         {(() => {
                           const totalLen = data.layers.reduce((s, l) => s + l.lengthMeters, 0);
                           const totalDur = data.layers.reduce((s, l) => s + l.durationHours, 0);
-                          return totalDur > 0 ? (totalLen / totalDur).toFixed(2) : '—';
+                          return totalDur > 0 ? formatNumber(totalLen / totalDur) : '—';
                         })()}
                       </td>
                     </tr>
@@ -2948,17 +2958,6 @@ function EditSplitView({
                 </table>
               </div>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[12px] font-black text-slate-900 uppercase tracking-widest">Ghi chú tổng hợp</label>
-            <textarea 
-              value={data.notes} 
-              onChange={(e) => updateField('notes', e.target.value)}
-              rows={4}
-              className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all resize-none shadow-sm"
-              placeholder="Nhập ghi chú chung cho biên bản..."
-            />
           </div>
         </div>
 
