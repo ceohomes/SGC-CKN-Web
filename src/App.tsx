@@ -224,7 +224,9 @@ QUY TẮC TRÍCH XUẤT ĐỊA TẦNG (CỰC KỲ QUAN TRỌNG):
    - X là "Mã lớp thiết kế" (designLayerCode).
    - Y là "Số thứ tự đoạn" (layerNumber).
 3. Với mỗi dòng, "layerDesign" PHẢI là mô tả trích xuất từ "designLayerMap" tương ứng với Mã lớp X. 
-   Ví dụ: Nếu dòng ghi "3 (7)" thì layerDesign PHẢI là mô tả của lớp số 3 trong bảng tra cứu, KHÔNG được lấy mô tả của lớp khác.
+4. TRÍCH XUẤT SỐ LIỆU (CAO ĐỘ & THỜI GIAN):
+   - Cao độ (elevationFrom, elevationTo): PHẢI trích xuất ĐẦY ĐỦ các chữ số thập phân (ví dụ: -22.56 KHÔNG được ghi là -22). Kiểm tra kỹ từng chữ số viết tay.
+   - Thời gian (timeFrom, timeTo): Trích xuất chính xác giờ phút (ví dụ: 15h20).
 
 Yêu cầu trích xuất JSON:
 - project, item, componentName, pileId, diameter.
@@ -870,23 +872,58 @@ export default function App() {
       // 2. Xóa file GitHub
       if (itemToDelete?.fileUrl) {
         try {
+          // Thử xóa qua backend trước (nếu có)
+          try {
+            const delRes = await fetch('/api/github/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileUrl: itemToDelete.fileUrl })
+            });
+            if (delRes.ok) {
+              console.log("Đã xóa file GitHub qua backend");
+              return;
+            }
+          } catch (_) {}
+
+          // Fallback xóa trực tiếp từ client nếu backend thất bại hoặc không cấu hình
           const creds = githubCreds;
           if (creds?.token && creds?.username) {
             const { token, username, repo } = creds;
-            const decodedUrl = decodeURIComponent(itemToDelete.fileUrl);
-            const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)/);
-            const path = match?.[1];
+            // Loại bỏ query string nếu có
+            const cleanUrl = itemToDelete.fileUrl.split('?')[0];
+            const decodedUrl = decodeURIComponent(cleanUrl);
+            
+            let path = "";
+            if (decodedUrl.includes('raw.githubusercontent.com')) {
+              const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
+              if (match) path = match[1];
+            } else if (decodedUrl.includes('github.com')) {
+              const match = decodedUrl.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/blob\/[^\/]+\/(.+)/);
+              if (match) path = match[1];
+            }
+
             if (path) {
               const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+                headers: { 
+                  'Authorization': `token ${token.trim()}`, 
+                  'Accept': 'application/vnd.github.v3+json' 
+                }
               });
               if (getRes.ok) {
                 const fileData = await getRes.json();
                 await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
                   method: 'DELETE',
-                  headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ message: `Delete construction report: ${path}`, sha: fileData.sha })
+                  headers: { 
+                    'Authorization': `token ${token.trim()}`, 
+                    'Accept': 'application/vnd.github.v3+json', 
+                    'Content-Type': 'application/json' 
+                  },
+                  body: JSON.stringify({ 
+                    message: `Delete construction report: ${path}`, 
+                    sha: fileData.sha 
+                  })
                 });
+                console.log("Đã xóa file GitHub qua client");
               }
             }
           }
