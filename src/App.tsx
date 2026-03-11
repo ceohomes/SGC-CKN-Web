@@ -241,6 +241,9 @@ Yêu cầu trích xuất chi tiết:
    - designLayerCode: Số từ sub-cột TRÁI "Lớp TK". Nếu ô trống thì kế thừa từ dòng trước. Giá trị thay đổi dần từ 1 lên 6 (hoặc tương tự) theo độ sâu khoan.
    - layerDesign: Tra từ designLayerMap theo designLayerCode. KHÔNG tự điền.
    - actualGeology: Số từ sub-cột PHẢI "ĐC TT". Có thể KHÁC designLayerCode — đây là điều bình thường khi địa chất thực tế lệch so với thiết kế.
+     ⚠️ ĐỊNH DẠNG ĐẶC BIỆT: Ô "Địa chất thực tế" thường ghi dạng "X (Y)" trong đó X = ký hiệu địa chất, Y = số thứ tự đoạn (trong ngoặc).
+     Ví dụ: "1 (1)" → actualGeology = "1"; "2 (3)" → actualGeology = "2"; "3 (12)" → actualGeology = "3".
+     CHỈ lấy số X TRƯỚC dấu ngoặc. KHÔNG lấy số trong ngoặc. KHÔNG giữ dấu ngoặc.
    - timeFrom / timeTo: Giờ bắt đầu / kết thúc (HH:mm).
    - dateFrom / dateTo: Ngày tương ứng (DD/MM/YYYY). Suy luận từ ngày gần nhất nếu không ghi.
    - elevationFrom / elevationTo: Cao độ (mét, số thực âm thường là -6.72, -10.88...).
@@ -337,8 +340,13 @@ Lưu ý: Đảm bảo cao độ là số thực. Trả về JSON chuẩn.`
     // Gán lại layerDesign nhất quán theo designLayerCode
     const consistentLayerDesign = (code && layerDesignMap[code]) ? layerDesignMap[code] : layer.layerDesign;
 
+    // Làm sạch actualGeology: "X (Y)" → "X", chỉ lấy phần trước dấu ngoặc
+    const rawGeo = (layer.actualGeology || '').toString().trim();
+    const cleanGeo = rawGeo.replace(/\s*\(.*\).*$/, '').trim() || rawGeo;
+
     return {
       ...layer,
+      actualGeology: cleanGeo,
       designLayerCode: code,
       layerDesign: consistentLayerDesign,
       project: rawData.project,
@@ -1600,7 +1608,6 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Bắt đầu thi công</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[140px]">Kết thúc thi công</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Địa chất thực tế</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[300px]">Lớp thiết kế</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Bắt đầu khoan</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Kết thúc khoan</th>
@@ -1622,7 +1629,6 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.diameter}</td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionStart}</td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.constructionEnd}</td>
-                  <td className="text-blue-700 font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.actualGeology}</td>
                   <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
                   <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">
                     <div>{layer.timeFrom}</div>
@@ -2442,7 +2448,6 @@ function EditSplitView({
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>Lớp TK</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'70px'}}>ĐC TT</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
@@ -2493,14 +2498,6 @@ function EditSplitView({
                             />
                             <span className="text-[10px] text-slate-400 font-normal">({layer.layerNumber})</span>
                           </div>
-                        </td>
-                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'70px'}}>
-                          <input 
-                            value={layer.actualGeology} 
-                            onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
-                            className={`w-full bg-transparent border-none text-[12px] text-blue-700 font-bold focus:bg-white px-1 py-1 text-center outline-none transition-all`}
-                            placeholder="..."
-                          />
                         </td>
                         <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
                           {data.diameter}
