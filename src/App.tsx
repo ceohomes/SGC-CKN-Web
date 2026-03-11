@@ -817,7 +817,7 @@ export default function App() {
     // 2. Lưu vào Supabase
     if (supabase) {
       try {
-        const { id, _base64, _mimeType, ...dataToSave } = finalResult;
+        const { id, _base64, _mimeType, designLayerMap, ...dataToSave } = finalResult as any;
         const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
         if (supabaseError) {
           alert("❌ Lỗi khi lưu vào Supabase: " + supabaseError.message);
@@ -914,7 +914,8 @@ export default function App() {
 
     // Gọi API ngầm (không chặn UI)
     if (supabase) {
-      supabase.from('drill_extractions').update(updatedResult).eq('id', updatedResult.id)
+      const { designLayerMap: _dlm, ...updateData } = updatedResult as any;
+      supabase.from('drill_extractions').update(updateData).eq('id', updatedResult.id)
         .then(({ error }) => { if (error) console.error("Lỗi cập nhật Supabase:", error.message); })
         .catch(e => console.error("Lỗi kết nối Supabase:", e?.message));
     }
