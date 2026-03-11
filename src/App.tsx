@@ -36,7 +36,8 @@ import {
   BarChart2,
   Building2,
   TrendingUp,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Scissors
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -60,6 +61,9 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabase';
 import { Document, Page, pdfjs } from 'react-pdf';
+import { PDFDocument } from 'pdf-lib';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 
@@ -123,7 +127,7 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary' | 'norms';
+type AppSheet = 'upload' | 'summary' | 'norms' | 'pdf-splitter';
 
 // --- Helper Functions ---
 
@@ -216,31 +220,34 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
       {
         parts: [
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi".
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi" với độ chính xác tuyệt đối 100%.
             
-QUY TẮC TRÍCH XUẤT ĐỊA TẦNG (CỰC KỲ QUAN TRỌNG):
-1. Tìm bảng tra cứu "Lớp thiết kế" ở phần đầu biên bản. Bảng này quy định: Số lớp (1, 2, 3...) tương ứng với Mô tả địa chất nào. Lưu vào "designLayerMap".
-2. Trong bảng dữ liệu chính, cột "Địa chất thực tế" có dạng "X (Y)":
-   - X là "Mã lớp thiết kế" (designLayerCode).
-   - Y là "Số thứ tự đoạn" (layerNumber).
-3. Với mỗi dòng, "layerDesign" PHẢI là mô tả trích xuất từ "designLayerMap" tương ứng với Mã lớp X. 
-4. TRÍCH XUẤT SỐ LIỆU (CAO ĐỘ & THỜI GIAN):
-   - Cao độ (elevationFrom, elevationTo): PHẢI trích xuất ĐẦY ĐỦ các chữ số thập phân (ví dụ: -22.56 KHÔNG được ghi là -22). Kiểm tra kỹ từng chữ số viết tay.
-   - Thời gian (timeFrom, timeTo): Trích xuất chính xác giờ phút (ví dụ: 15h20).
+QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
+1. ĐỊA TẦNG:
+   - Tìm bảng "Lớp thiết kế" để lấy mô tả cho "designLayerMap".
+   - Cột "Địa chất thực tế" có dạng "X (Y)": X là designLayerCode, Y là layerNumber.
+   - "layerDesign" PHẢI khớp với mô tả của lớp X trong bảng tra cứu.
 
-Yêu cầu trích xuất JSON:
+2. TRÍCH XUẤT THỜI GIAN (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
+   - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55).
+   - CẢNH BÁO: Chữ viết tay số "1" và "2" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
+   - KHÔNG ĐƯỢC tự ý làm tròn hoặc tự ý gán thời gian bắt đầu của dòng sau bằng thời gian kết thúc của dòng trước nếu hình ảnh không ghi như vậy. Nếu có khoảng nghỉ (ví dụ từ 11h26 đến 12h55), hãy trích xuất đúng các mốc thời gian ghi trên giấy.
+   - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại xem có phải bạn đọc nhầm số "1" thành "0" hoặc ngược lại không.
+
+3. TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN TỪNG CHỮ SỐ THẬP PHÂN):
+   - Cao độ (elevationFrom, elevationTo): Trích xuất ĐẦY ĐỦ số thập phân (ví dụ: -8.81, -10.88, -12.94). 
+   - Tuyệt đối không bỏ sót dấu phẩy/chấm thập phân. Kiểm tra kỹ từng chữ số.
+
+Yêu cầu JSON:
 - project, item, componentName, pileId, diameter.
 - constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
 - layers: [
     {
-      designLayerCode: "Số X ngoài ngoặc",
-      actualGeology: "Giá trị X (Y) đầy đủ",
-      layerNumber: "Số Y trong ngoặc",
-      layerDesign: "Mô tả từ bảng tra cứu ứng với số X",
+      designLayerCode, actualGeology, layerNumber, layerDesign,
       timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo
     }
   ]
-- designLayerMap: { "1": "mô tả 1", "2": "mô tả 2", ... }
+- designLayerMap: { "1": "mô tả 1", ... }
 - summary: Nhận xét ngắn gọn.`
           },
           {
@@ -253,7 +260,7 @@ Yêu cầu trích xuất JSON:
       }
     ],
     config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -1042,6 +1049,19 @@ export default function App() {
               <BarChart2 size={18} className={activeSheet === 'norms' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Định mức thi công</span>
             </button>
+
+            <button 
+              onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'pdf-splitter' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <Scissors size={18} className={activeSheet === 'pdf-splitter' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Tách file PDF</span>
+            </button>
           </nav>
 
           <div className="pt-6 border-t border-[#1e3a5f]">
@@ -1372,6 +1392,8 @@ export default function App() {
           </div>
         ) : activeSheet === 'norms' ? (
           <NormsView history={history} />
+        ) : activeSheet === 'pdf-splitter' ? (
+          <PdfSplitterView />
         ) : (
           <SummaryView 
             history={history} 
@@ -1628,12 +1650,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">
-                    <div className="text-sm">{(layer.actualGeology || '').split(' ')[0]}</div>
-                    <div className="text-[9px] text-slate-400">
-                      {(layer.actualGeology || '').includes('(') 
-                        ? (layer.actualGeology || '').match(/\((.*)\)/)?.[0] 
-                        : `(${layer.layerNumber})`}
-                    </div>
+                    <div className="text-sm">{layer.actualGeology}</div>
                   </td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200 text-center">{layer.diameter}</td>
                   <td className="text-black italic text-[11px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-normal">{layer.layerDesign}</td>
@@ -1685,6 +1702,165 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
       </div>
       </div>
+      )}
+    </div>
+  );
+}
+
+function PdfSplitterView() {
+  const [file, setFile] = useState<File | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [pages, setPages] = useState<{ name: string; blob: Blob; url: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      setFile(selectedFile);
+      setPages([]);
+    } else {
+      alert('Vui lòng chọn file PDF.');
+    }
+  };
+
+  const splitPdf = async () => {
+    if (!file) return;
+    setIsProcessing(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const pageCount = pdfDoc.getPageCount();
+      const newPages = [];
+
+      for (let i = 0; i < pageCount; i++) {
+        const newPdf = await PDFDocument.create();
+        const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+        newPdf.addPage(copiedPage);
+        const pdfBytes = await newPdf.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const name = `${file.name.replace('.pdf', '')}_Trang_${i + 1}.pdf`;
+        newPages.push({ name, blob, url });
+      }
+      setPages(newPages);
+    } catch (error) {
+      console.error('Error splitting PDF:', error);
+      alert('Có lỗi xảy ra khi tách file PDF.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const downloadAll = async () => {
+    if (pages.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const zip = new JSZip();
+      for (const page of pages) {
+        zip.file(page.name, page.blob);
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const zipName = `${file?.name.replace('.pdf', '')}_Tach_File.zip`;
+      saveAs(content, zipName);
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      alert('Có lỗi xảy ra khi tạo file nén.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
+          <div>
+            <h3 className="text-[18px] font-black text-black uppercase tracking-tight">Tách file PDF</h3>
+            <p className="text-xs text-slate-500 font-medium">Tự động tách PDF nhiều trang thành các file đơn lẻ</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-3xl p-10 shadow-sm flex flex-col items-center text-center space-y-6">
+        <div className="w-20 h-20 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+          <Scissors size={40} />
+        </div>
+        
+        <div className="max-w-md">
+          <h4 className="text-lg font-bold text-slate-900">Chọn file PDF cần tách</h4>
+          <p className="text-sm text-slate-500 mt-2">Hệ thống sẽ tách mỗi trang thành một file PDF riêng biệt để bạn dễ dàng quản lý.</p>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 w-full max-w-sm">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            accept="application/pdf" 
+            className="hidden" 
+          />
+          
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-4 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 border-2 border-dashed border-slate-300"
+          >
+            {file ? <FileText size={20} /> : <Upload size={20} />}
+            {file ? file.name : 'Chọn file từ máy tính'}
+          </button>
+
+          {file && !isProcessing && pages.length === 0 && (
+            <button 
+              onClick={splitPdf}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2"
+            >
+              Bắt đầu tách file
+            </button>
+          )}
+
+          {isProcessing && (
+            <div className="flex items-center gap-3 text-blue-600 font-bold">
+              <Loader2 className="animate-spin" />
+              Đang xử lý...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {pages.length > 0 && (
+        <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Kết quả tách file ({pages.length} trang)</h4>
+            <button 
+              onClick={downloadAll}
+              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest flex items-center gap-1.5"
+            >
+              <ArrowDownToLine size={14} />
+              Tải xuống tất cả
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pages.map((page, i) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between hover:shadow-md transition-all group">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-red-50 p-2 rounded-lg text-red-500 shrink-0">
+                    <FileText size={18} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-700 truncate">{page.name}</span>
+                </div>
+                <a 
+                  href={page.url} 
+                  download={page.name}
+                  className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                  title="Tải xuống"
+                >
+                  <ArrowDownToLine size={18} />
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -2511,7 +2687,6 @@ function EditSplitView({
                               className={`w-full bg-transparent border-none text-[13px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
                               placeholder="..."
                             />
-                            <span className="text-[10px] text-slate-400 font-normal">({layer.layerNumber})</span>
                           </div>
                         </td>
                         <td className={`px-2 py-1 text-[12px] text-black text-center border-r border-slate-200 align-middle ${rowBg}`} style={{width:'80px'}}>
