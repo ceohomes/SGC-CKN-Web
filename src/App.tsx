@@ -921,10 +921,15 @@ export default function App() {
 
     // Gọi API ngầm (không chặn UI)
     if (supabase) {
-      const { designLayerMap: _dlm, ...updateData } = updatedResult as any;
-      supabase.from('drill_extractions').update(updateData).eq('id', updatedResult.id)
-        .then(({ error }) => { if (error) console.error("Lỗi cập nhật Supabase:", error.message); })
-        .catch(e => console.error("Lỗi kết nối Supabase:", e?.message));
+      (async () => {
+        try {
+          const { designLayerMap: _dlm, ...updateData } = updatedResult as any;
+          const { error } = await supabase.from('drill_extractions').update(updateData).eq('id', updatedResult.id);
+          if (error) console.error("Lỗi cập nhật Supabase:", error.message);
+        } catch (e: any) {
+          console.error("Lỗi kết nối Supabase:", e?.message);
+        }
+      })();
     }
   };
 
@@ -1023,7 +1028,7 @@ export default function App() {
       </aside>
 
       {/* Header */}
-      <header className="border-b border-[#122d57] px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 shadow-lg text-white min-h-[48px]" style={{background: '#1a3a6b'}}>
+      <header className="border-b border-[#1e3a5f] px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 text-white min-h-[48px]" style={{ background: "#1a3a6b" }}>
         <div 
           className="flex items-center gap-3 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
@@ -1078,8 +1083,8 @@ export default function App() {
               <div className="flex gap-0 h-[calc(100vh-160px)] rounded-3xl overflow-hidden border border-slate-200 shadow-xl">
 
                 {/* CỘT TRÁI: Danh sách file - thu gọn */}
-                <div className="w-52 flex-shrink-0 bg-blue-950 flex flex-col">
-                  <div className="px-5 py-4 border-b border-blue-900/70">
+                <div className="w-52 flex-shrink-0 flex flex-col" style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}>
+                  <div className="px-5 py-4 border-b border-[#1e3a5f]">
                     <div className="flex items-center gap-2">
                       <Loader2 className={cn("w-4 h-4 text-blue-400", isProcessing && "animate-spin")} />
                       <span className="text-[11px] font-black text-white uppercase tracking-widest">
@@ -1149,7 +1154,7 @@ export default function App() {
                   </div>
 
                   {/* Footer cột trái */}
-                  <div className="p-3 border-t border-blue-900/70 space-y-2">
+                  <div className="p-3 border-t border-[#1e3a5f] space-y-2">
                     {/* Nút Lưu tất cả đã bị thay bằng auto-save */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -1600,8 +1605,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           <table className="w-full border-collapse table-fixed min-w-[1500px]">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300">
-                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[60px]">STT</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
+                <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">ĐỊA CHẤT THỰC TẾ</th>
+                <th className="sticky left-[80px] bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Dự án</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Hạng mục</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[150px]">Tên bộ phận</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Số hiệu</th>
@@ -1621,8 +1626,11 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             <tbody className="divide-y divide-slate-200">
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
-                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">{idx + 1}</td>
-                  <td className="sticky left-[60px] bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
+                  <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[11px] border-r border-slate-200">
+                    <div className="text-sm">{layer.actualGeology}</div>
+                    <div className="text-[9px] text-slate-400">({layer.layerNumber})</div>
+                  </td>
+                  <td className="sticky left-[80px] bg-white group-hover:bg-slate-50 z-10 font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.project}</td>
                   <td className="text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.item}</td>
                   <td className="text-black font-normal px-4 py-3 text-[11px] border-r border-slate-200">{layer.componentName}</td>
                   <td className="font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.pileId}</td>
@@ -2447,7 +2455,7 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>Lớp TK</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT THỰC TẾ</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
@@ -2491,8 +2499,8 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'60px'}}>
                           <div className="flex flex-col items-center px-1 py-1">
                             <input 
-                              value={layer.designLayerCode ?? ''} 
-                              onChange={(e) => updateLayer(idx, 'designLayerCode', e.target.value)}
+                              value={layer.actualGeology ?? ''} 
+                              onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
                               className={`w-full bg-transparent border-none text-[13px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
                               placeholder="..."
                             />
