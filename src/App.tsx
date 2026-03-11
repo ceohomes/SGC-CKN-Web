@@ -94,6 +94,7 @@ interface DrillLayer {
   elevationFrom: number;
   elevationTo: number;
   actualGeology: string;
+  notes: string;
   durationHours: number;
   lengthMeters: number;
   speedMph: number;
@@ -110,7 +111,7 @@ interface ExtractionResult {
   constructionStart: string;
   constructionEnd: string;
   layers: DrillLayer[];
-  summary: string;
+  notes: string;
   fileName?: string;
   fileUrl?: string;
   stt?: number;       // Số thứ tự từ Supabase
@@ -223,18 +224,25 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
             text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi" với độ chính xác tuyệt đối 100%.
             
 QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
-1. ĐỊA TẦNG:
+1. THÔNG TIN CHUNG (HEADER):
+   - "project" (Dự án): Trích xuất từ dòng "Dự án: ...".
+   - "item" (Hạng mục): Trích xuất CHÍNH XÁC từ dòng "Hạng mục: ...". LƯU Ý: Trong văn bản có cả dòng "Công trình" và "Hạng mục", bạn PHẢI lấy dữ liệu từ dòng "Hạng mục". Ví dụ: Nếu thấy "Hạng mục: Thi công cầu vượt...", hãy lấy "Thi công cầu vượt...".
+   - "componentName" (Tên bộ phận): Trích xuất từ dòng "Tên bộ phận: ...". Phải bao gồm cả phần chữ viết tay (ví dụ: "Cọc khoan nhồi - Trụ HN P479").
+   - "pileId" (Số hiệu cọc): Trích xuất từ dòng "Cọc: ...". Đây thường là phần chữ viết tay (ví dụ: "C9").
+   - "diameter" (Đường kính): Trích xuất từ dòng "Đường kính: ...". (ví dụ: "D2000").
+
+2. ĐỊA TẦNG:
    - Tìm bảng "Lớp thiết kế" để lấy mô tả cho "designLayerMap".
    - Cột "Địa chất thực tế" có dạng "X (Y)": X là designLayerCode, Y là layerNumber.
    - "layerDesign" PHẢI khớp với mô tả của lớp X trong bảng tra cứu.
 
-2. TRÍCH XUẤT THỜI GIAN (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
+3. TRÍCH XUẤT THỜI GIAN (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
    - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55).
    - CẢNH BÁO: Chữ viết tay số "1" và "2" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
    - KHÔNG ĐƯỢC tự ý làm tròn hoặc tự ý gán thời gian bắt đầu của dòng sau bằng thời gian kết thúc của dòng trước nếu hình ảnh không ghi như vậy. Nếu có khoảng nghỉ (ví dụ từ 11h26 đến 12h55), hãy trích xuất đúng các mốc thời gian ghi trên giấy.
    - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại xem có phải bạn đọc nhầm số "1" thành "0" hoặc ngược lại không.
 
-3. TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN TỪNG CHỮ SỐ THẬP PHÂN):
+4. TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN TỪNG CHỮ SỐ THẬP PHÂN):
    - Cao độ (elevationFrom, elevationTo): Trích xuất ĐẦY ĐỦ số thập phân (ví dụ: -8.81, -10.88, -12.94). 
    - Tuyệt đối không bỏ sót dấu phẩy/chấm thập phân. Kiểm tra kỹ từng chữ số.
 
@@ -244,11 +252,14 @@ Yêu cầu JSON:
 - layers: [
     {
       designLayerCode, actualGeology, layerNumber, layerDesign,
-      timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo
+      timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo,
+      notes
     }
   ]
 - designLayerMap: { "1": "mô tả 1", ... }
-- summary: Nhận xét ngắn gọn.`
+- notes: Ghi chú tổng hợp cho toàn bộ biên bản (nếu có).
+
+LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại xem "item" có đúng là lấy từ dòng "Hạng mục" không, và "componentName" có đúng là lấy từ dòng "Tên bộ phận" không. Đừng nhầm lẫn giữa Dự án, Công trình, Hạng mục và Tên bộ phận.`
           },
           {
             inlineData: {
@@ -290,12 +301,13 @@ Yêu cầu JSON:
                 dateTo: { type: Type.STRING },
                 elevationFrom: { type: Type.NUMBER },
                 elevationTo: { type: Type.NUMBER },
-                actualGeology: { type: Type.STRING }
+                actualGeology: { type: Type.STRING },
+                notes: { type: Type.STRING, description: "Ghi chú cho lớp địa chất này (nếu có)" }
               },
               required: ["layerNumber", "designLayerCode", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
-          summary: { type: Type.STRING }
+          notes: { type: Type.STRING, description: "Ghi chú tổng hợp cho toàn bộ biên bản" }
         },
         required: ["project", "item", "componentName", "pileId", "diameter", "constructionStart", "constructionEnd", "layers"]
       }
@@ -354,13 +366,20 @@ Yêu cầu JSON:
       diameter: rawData.diameter,
       constructionStart: rawData.constructionStart,
       constructionEnd: rawData.constructionEnd,
+      notes: layer.notes || '',
       durationHours: durationHours,
       lengthMeters: length,
       speedMph: speed
     };
   });
 
-  return { ...rawData, constructionStart: normalizeDateTime(rawData.constructionStart), constructionEnd: normalizeDateTime(rawData.constructionEnd), layers: processedLayers };
+  return { 
+    ...rawData, 
+    constructionStart: normalizeDateTime(rawData.constructionStart), 
+    constructionEnd: normalizeDateTime(rawData.constructionEnd), 
+    layers: processedLayers,
+    notes: rawData.notes || ''
+  };
 };
 
 // --- Components ---
@@ -1643,7 +1662,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đến</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">T.Gian</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">Dài (m)</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider w-[120px]">V (m/h)</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">V (m/h)</th>
+                <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider w-[200px]">Ghi chú</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -1666,7 +1686,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-center text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.elevationTo}</td>
                   <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[11px] border-r border-slate-200">{layer.durationHours.toFixed(2)}</td>
                   <td className="text-center font-normal text-black px-4 py-3 text-[11px] border-r border-slate-200">{layer.lengthMeters.toFixed(2)}</td>
-                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30">{layer.speedMph.toFixed(2)}</td>
+                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[11px] bg-orange-50/30 border-r border-slate-200">{layer.speedMph.toFixed(2)}</td>
+                  <td className="text-left text-slate-600 px-4 py-3 text-[11px] italic">{layer.notes}</td>
                 </tr>
               ))}
             </tbody>
@@ -1675,14 +1696,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="modern-card p-10 md:col-span-2 bg-blue-900 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32" />
-          <h4 className="text-sky-300 font-bold uppercase tracking-[0.3em] text-[10px] mb-6 flex items-center gap-2">
-            <Activity size={14} />
-            Phân tích năng suất địa chất
-          </h4>
-          <p className="text-white text-lg leading-relaxed font-medium italic relative z-10">
-            "{result.summary}"
+        <div className="modern-card p-10 md:col-span-2 flex flex-col justify-center">
+          <h4 className="text-slate-900 font-bold uppercase tracking-widest text-[10px] mb-4">Ghi chú tổng hợp</h4>
+          <p className="text-slate-600 text-lg leading-relaxed italic">
+            {result.notes || "Dữ liệu được trích xuất tự động từ biên bản hiện trường. Vui lòng kiểm tra kỹ các thông số trước khi lưu trữ."}
           </p>
         </div>
         <div className="modern-card p-10 flex flex-col justify-center items-center text-center">
@@ -2648,6 +2665,7 @@ function EditSplitView({
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
+                      <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider whitespace-nowrap" style={{width:'150px'}}>Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -2773,7 +2791,15 @@ function EditSplitView({
                             {layer.speedMph.toFixed(2)}
                           </span>
                         </td>
-
+                        <td className={`p-0 align-middle ${rowBg}`}>
+                          <input 
+                            type="text"
+                            value={layer.notes} 
+                            onChange={(e) => updateLayer(idx, 'notes', e.target.value)}
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none transition-all"
+                            placeholder="..."
+                          />
+                        </td>
                       </tr>
                         );
                       });
@@ -2925,12 +2951,13 @@ function EditSplitView({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[12px] font-black text-slate-900 uppercase tracking-widest">Tóm tắt phân tích</label>
+            <label className="text-[12px] font-black text-slate-900 uppercase tracking-widest">Ghi chú tổng hợp</label>
             <textarea 
-              value={data.summary} 
-              onChange={(e) => updateField('summary', e.target.value)}
+              value={data.notes} 
+              onChange={(e) => updateField('notes', e.target.value)}
               rows={4}
               className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all resize-none shadow-sm"
+              placeholder="Nhập ghi chú chung cho biên bản..."
             />
           </div>
         </div>
