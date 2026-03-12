@@ -1081,102 +1081,102 @@ export default function App() {
 
     const collectedResults: ExtractionResult[] = [];
 
-        const processFile = async (pFile: ProcessingFile, file: File) => {
-          setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
+        // ── Chuẩn bị file: đọc + nén/convert (CPU-bound, chạy song song 100%) ──
+        const prepareFile = async (file: File): Promise<{ base64: string; mimeType: string; fileName: string }> => {
+          const getBase64 = (f: File): Promise<string> => new Promise((res, rej) => {
+            const r = new FileReader(); r.readAsDataURL(f);
+            r.onload = () => res(r.result as string); r.onerror = rej;
+          });
 
-          try {
-            const getBase64 = (file: File): Promise<string> => {
-              return new Promise((resolve, reject) => {
+          // Nén ảnh: dùng createImageBitmap (nhanh hơn ~3x so với new Image())
+          const compressImage = async (f: File): Promise<string> => {
+            try {
+              const bitmap = await createImageBitmap(f);
+              const MAX = 2000;
+              const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+              const w = Math.round(bitmap.width * scale);
+              const h = Math.round(bitmap.height * scale);
+              const canvas = document.createElement('canvas');
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext('2d')!;
+              ctx.drawImage(bitmap, 0, 0, w, h);
+              bitmap.close();
+              return canvas.toDataURL('image/jpeg', 0.82);
+            } catch {
+              // fallback nếu createImageBitmap không hỗ trợ
+              return new Promise((res, rej) => {
                 const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = reject;
-              });
-            };
-
-            const compressImage = (file: File): Promise<string> => {
-              return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (event) => {
+                reader.readAsDataURL(f);
+                reader.onload = (ev) => {
                   const img = new Image();
-                  img.src = event.target?.result as string;
+                  img.src = ev.target?.result as string;
                   img.onload = () => {
+                    const MAX = 2000;
+                    const scale = Math.min(1, MAX / Math.max(img.width, img.height));
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 2000;
-                    const MAX_HEIGHT = 2000;
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > height) {
-                      if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                      if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    res(canvas.toDataURL('image/jpeg', 0.82));
                   };
-                  img.onerror = reject;
+                  img.onerror = rej;
                 };
-                reader.onerror = reject;
+                reader.onerror = rej;
               });
-            };
+            }
+          };
 
-            let base64 = "";
-        let mimeType = file.type;
-        let fileName = file.name;
-
-        if (file.type === "application/pdf") {
-          try {
-            // Chuyển PDF sang ảnh để tự động đưa vào Excel khi tải xuống
-            base64 = await convertPdfToImage(file);
-            mimeType = "image/jpeg"; // Chuyển thành image/jpeg để Gemini và Excel xử lý như ảnh
-            // Đổi đuôi file thành .jpg để đồng bộ
-            fileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
-          } catch (e) {
-            console.error("PDF to Image conversion failed during upload, using raw PDF:", e);
-            base64 = await getBase64(file);
-            mimeType = "application/pdf";
+          if (file.type === 'application/pdf') {
+            try {
+              const b = await convertPdfToImage(file);
+              return { base64: b, mimeType: 'image/jpeg', fileName: file.name.replace(/\.[^/.]+$/, '') + '.jpg' };
+            } catch {
+              return { base64: await getBase64(file), mimeType: 'application/pdf', fileName: file.name };
+            }
+          } else if (file.type.startsWith('image/')) {
+            return { base64: await compressImage(file), mimeType: 'image/jpeg', fileName: file.name };
           }
-        } else if (file.type.startsWith("image/")) {
-          base64 = await compressImage(file);
-          mimeType = "image/jpeg"; // Standardize to jpeg after compression
-        } else {
-          throw new Error("Định dạng tệp không được hỗ trợ. Vui lòng sử dụng ảnh hoặc PDF.");
-        }
-
-        setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40 } : f));
-
-        const rawResult = await extractDataFromFile(base64, mimeType, userApiKey);
-        setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 80 } : f));
-
-        const result: ExtractionResult = {
-          ...rawResult,
-          id: Math.random().toString(36).substring(7),
-          timestamp: Date.now(),
-          fileName: fileName,
-          _base64: base64,      // Lưu tạm để upload GitHub sau khi xác nhận
-          _mimeType: mimeType,
+          throw new Error('Định dạng tệp không được hỗ trợ. Vui lòng sử dụng ảnh hoặc PDF.');
         };
 
-        // Tự động lưu ngay sau khi quét xong
-        collectedResults.push(result);
-        setPendingResults(prev => [result, ...prev]);
-        setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
+        const processFile = async (pFile: ProcessingFile, file: File) => {
+          setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
+          try {
+            // Bước 1: chuẩn bị (nén/convert) — 10→40%
+            const { base64, mimeType, fileName } = await prepareFile(file);
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40 } : f));
 
-      } catch (err: any) {
-        console.error(err);
-        const errorMessage = err.message || "Đã xảy ra lỗi không xác định";
-        setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'error', error: errorMessage } : f));
-      }
-    };
+            // Bước 2: gọi AI — 40→90%
+            const rawResult = await extractDataFromFile(base64, mimeType, userApiKey);
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
 
-    // Chờ tất cả file xử lý xong
-    for (let i = 0; i < Array.from(files).length; i++) {
-      await processFile(newFiles[i], Array.from(files)[i]);
-    }
+            const result: ExtractionResult = {
+              ...rawResult,
+              id: Math.random().toString(36).substring(7),
+              timestamp: Date.now(),
+              fileName,
+              _base64: base64,
+              _mimeType: mimeType,
+            };
+
+            collectedResults.push(result);
+            setPendingResults(prev => [result, ...prev]);
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
+          } catch (err: any) {
+            console.error(err);
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'error', error: err.message || 'Lỗi không xác định' } : f));
+          }
+        };
+
+        // ── Xử lý song song: tất cả file chạy đồng thời (không chờ tuần tự) ──
+        // Giới hạn CONCURRENCY = 3 để tránh spam API / quá tải trình duyệt
+        const CONCURRENCY = 3;
+        const fileList = Array.from(files);
+        for (let i = 0; i < fileList.length; i += CONCURRENCY) {
+          const batch = fileList.slice(i, i + CONCURRENCY);
+          const batchFiles = newFiles.slice(i, i + CONCURRENCY);
+          await Promise.all(batch.map((file, j) => processFile(batchFiles[j], file)));
+        }
 
     // KHÔNG tự động lưu nữa, để người dùng kiểm tra và bấm "Lưu tất cả"
     setIsProcessing(false);
@@ -1190,6 +1190,49 @@ export default function App() {
 
   const removeProcessingFile = (id: string) => {
     setProcessingFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  // Helper dùng chung: Xóa 1 file trên GitHub theo raw URL
+  const deleteGithubFile = async (
+    rawUrl: string,
+    creds: { token: string; username: string; repo: string }
+  ): Promise<void> => {
+    const { token, username, repo } = creds;
+    const cleanUrl = decodeURIComponent(rawUrl.split('?')[0]);
+
+    let path = '';
+    const rawMatch = cleanUrl.match(/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
+    const blobMatch = cleanUrl.match(/github\.com\/[^\/]+\/[^\/]+\/blob\/[^\/]+\/(.+)/);
+    if (rawMatch) path = rawMatch[1];
+    else if (blobMatch) path = blobMatch[1];
+    if (!path) return;
+
+    const headers = {
+      'Authorization': `token ${token.trim()}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    };
+
+    // Thử qua backend trước
+    try {
+      const delRes = await fetch('/api/github/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileUrl: rawUrl })
+      });
+      if (delRes.ok) return;
+    } catch (_) {}
+
+    // Fallback: client-side delete
+    const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
+    const getRes = await fetch(apiUrl, { headers });
+    if (!getRes.ok) return; // file không tồn tại — ok
+    const fileData = await getRes.json();
+    await fetch(apiUrl, {
+      method: 'DELETE',
+      headers,
+      body: JSON.stringify({ message: `Delete: ${path}`, sha: fileData.sha })
+    });
   };
 
   // Helper: Upsert Excel lên GitHub — ghi đè file cũ nếu đã tồn tại (dùng SHA), tạo mới nếu chưa có
@@ -1484,15 +1527,23 @@ export default function App() {
     }
 
 
+    // 2. Lưu vào Supabase — nếu lỗi thì dọn dẹp file Excel trên GitHub để tránh mất đồng bộ
     if (supabase) {
       try {
         const { id, _base64, _mimeType, designLayerMap, ...dataToSave } = finalResult as any;
         const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
         if (supabaseError) {
+          // Rollback: xóa Excel vừa upload trên GitHub nếu Supabase thất bại
+          if (finalResult.excelUrl && githubCreds) {
+            await deleteGithubFile(finalResult.excelUrl, githubCreds).catch(() => {});
+          }
           alert("❌ Lỗi khi lưu vào Supabase: " + supabaseError.message);
           return;
         }
       } catch (e: any) {
+        if (finalResult.excelUrl && githubCreds) {
+          await deleteGithubFile(finalResult.excelUrl, githubCreds).catch(() => {});
+        }
         alert("❌ Lỗi kết nối Supabase: " + e.message);
         return;
       }
@@ -1558,66 +1609,16 @@ export default function App() {
         }
       }
 
-      // 2. Xóa file GitHub
-      if (itemToDelete?.fileUrl) {
-        try {
-          // Thử xóa qua backend trước (nếu có)
+      // 2. Xóa tất cả file liên quan trên GitHub (ảnh gốc + Excel)
+      const creds = githubCreds;
+      if (creds) {
+        const urlsToDelete = [itemToDelete?.fileUrl, itemToDelete?.excelUrl].filter(Boolean) as string[];
+        for (const url of urlsToDelete) {
           try {
-            const delRes = await fetch('/api/github/delete', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ fileUrl: itemToDelete.fileUrl })
-            });
-            if (delRes.ok) {
-              console.log("Đã xóa file GitHub qua backend");
-              return;
-            }
-          } catch (_) {}
-
-          // Fallback xóa trực tiếp từ client nếu backend thất bại hoặc không cấu hình
-          const creds = githubCreds;
-          if (creds?.token && creds?.username) {
-            const { token, username, repo } = creds;
-            // Loại bỏ query string nếu có
-            const cleanUrl = itemToDelete.fileUrl.split('?')[0];
-            const decodedUrl = decodeURIComponent(cleanUrl);
-            
-            let path = "";
-            if (decodedUrl.includes('raw.githubusercontent.com')) {
-              const match = decodedUrl.match(/https:\/\/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
-              if (match) path = match[1];
-            } else if (decodedUrl.includes('github.com')) {
-              const match = decodedUrl.match(/https:\/\/github\.com\/[^\/]+\/[^\/]+\/blob\/[^\/]+\/(.+)/);
-              if (match) path = match[1];
-            }
-
-            if (path) {
-              const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-                headers: { 
-                  'Authorization': `token ${token.trim()}`, 
-                  'Accept': 'application/vnd.github.v3+json' 
-                }
-              });
-              if (getRes.ok) {
-                const fileData = await getRes.json();
-                await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-                  method: 'DELETE',
-                  headers: { 
-                    'Authorization': `token ${token.trim()}`, 
-                    'Accept': 'application/vnd.github.v3+json', 
-                    'Content-Type': 'application/json' 
-                  },
-                  body: JSON.stringify({ 
-                    message: `Delete construction report: ${path}`, 
-                    sha: fileData.sha 
-                  })
-                });
-                console.log("Đã xóa file GitHub qua client");
-              }
-            }
+            await deleteGithubFile(url, creds);
+          } catch (e: any) {
+            console.error("Lỗi xóa GitHub:", url, e?.message);
           }
-        } catch (e: any) {
-          console.error("Lỗi xóa GitHub:", e?.message);
         }
       }
     })();
@@ -2512,6 +2513,52 @@ export default function App() {
                     >
                       {isConnectingGithub ? "Đang lưu..." : isGithubConnected ? "✓ Cập nhật kết nối" : "Lưu & kết nối"}
                     </button>
+
+                    {/* Nút dọn rác GitHub: xóa file mồ côi không có trong Supabase */}
+                    {isGithubConnected && (
+                      <button
+                        onClick={async () => {
+                          if (!githubCreds) return;
+                          if (!window.confirm("Tính năng này sẽ quét GitHub và xóa các file Excel/ảnh KHÔNG có trong Supabase.\n\nTiếp tục?")) return;
+                          const { token, username, repo } = githubCreds;
+                          const headers = { 'Authorization': `token ${token.trim()}`, 'Accept': 'application/vnd.github.v3+json' };
+
+                          // Lấy danh sách excelUrl và fileUrl đang có trong Supabase
+                          const validUrls = new Set<string>();
+                          if (supabase) {
+                            const { data } = await supabase.from('drill_extractions').select('excelUrl, fileUrl');
+                            (data || []).forEach((r: any) => {
+                              if (r.excelUrl) validUrls.add(r.excelUrl.split('?')[0]);
+                              if (r.fileUrl) validUrls.add(r.fileUrl.split('?')[0]);
+                            });
+                          }
+
+                          // Quét thư mục SGC-CKN/Excel trên GitHub
+                          let deleted = 0;
+                          try {
+                            const listRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/SGC-CKN/Excel`, { headers });
+                            if (listRes.ok) {
+                              const files = await listRes.json();
+                              for (const f of files) {
+                                const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${f.path}`;
+                                if (!validUrls.has(rawUrl)) {
+                                  await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${f.path}`, {
+                                    method: 'DELETE', headers: { ...headers, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ message: `Cleanup orphan: ${f.path}`, sha: f.sha })
+                                  });
+                                  deleted++;
+                                }
+                              }
+                            }
+                          } catch (e) { console.error(e); }
+
+                          alert(deleted > 0 ? `✅ Đã dọn ${deleted} file mồ côi trên GitHub.` : "✅ GitHub sạch, không có file mồ côi.");
+                        }}
+                        className="w-full py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all bg-red-50 text-red-500 hover:bg-red-100 border border-red-200 flex items-center justify-center gap-2"
+                      >
+                        <Trash2 size={12} /> Dọn rác GitHub
+                      </button>
+                    )}
                   </div>
                 </div>
 
