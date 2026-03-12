@@ -2532,24 +2532,49 @@ function EditSplitView({
       });
     };
 
-    // Fetch ảnh → base64 (chỉ với ảnh, không phải PDF)
-    const fetchImageBase64 = async (url: string): Promise<{ base64: string; ext: string } | null> => {
+    // Fetch ảnh về base64 - thử nhiều cách
+    const fetchImageBase64 = async (url: string, inMemoryBase64?: string, inMemoryMime?: string): Promise<{ base64: string; ext: string } | null> => {
       try {
         const isPdfUrl = url.toLowerCase().includes('.pdf') || url.includes('application/pdf');
         if (isPdfUrl) return null;
-        const resp = await fetch(url);
-        if (!resp.ok) return null;
-        const blob = await resp.blob();
-        if (!blob.type.startsWith('image/')) return null;
-        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'png' : 'jpeg';
-        return new Promise((res) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const b64 = (reader.result as string).split(',')[1];
-            res({ base64: b64, ext });
-          };
-          reader.readAsDataURL(blob);
-        });
+
+        // Ưu tiên 1: dùng base64 đang có trong memory (ngay sau khi upload)
+        if (inMemoryBase64 && inMemoryMime?.startsWith('image/')) {
+          const ext = inMemoryMime.includes('png') ? 'png' : 'jpeg';
+          return { base64: inMemoryBase64, ext };
+        }
+
+        // Ưu tiên 2: Cloudflare Pages Function proxy (production) hoặc server proxy (local dev)
+        const tryProxy = async () => {
+          // Thử Cloudflare Pages Function trước
+          const cfProxy = `/api/proxy-image?url=${encodeURIComponent(url)}`;
+          const resp = await fetch(cfProxy, { signal: AbortSignal.timeout(8000) });
+          if (!resp.ok) throw new Error('CF proxy failed');
+          const blob = await resp.blob();
+          if (!blob.type.startsWith('image/')) return null;
+          const ext = blob.type.includes('png') ? 'png' : 'jpeg';
+          return new Promise<{ base64: string; ext: string }>((res) => {
+            const reader = new FileReader();
+            reader.onloadend = () => { res({ base64: (reader.result as string).split(',')[1], ext }); };
+            reader.readAsDataURL(blob);
+          });
+        };
+
+        // Ưu tiên 3: fetch trực tiếp (hoạt động nếu server cho phép CORS)
+        const tryDirect = async () => {
+          const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!resp.ok) return null;
+          const blob = await resp.blob();
+          if (!blob.type.startsWith('image/')) return null;
+          const ext = blob.type.includes('png') ? 'png' : 'jpeg';
+          return new Promise<{ base64: string; ext: string }>((res) => {
+            const reader = new FileReader();
+            reader.onloadend = () => { res({ base64: (reader.result as string).split(',')[1], ext }); };
+            reader.readAsDataURL(blob);
+          });
+        };
+
+        return await tryProxy().catch(() => null) ?? await tryDirect().catch(() => null);
       } catch { return null; }
     };
 
@@ -2656,7 +2681,7 @@ function EditSplitView({
 
       // Nhúng ảnh biên bản (nếu là ảnh, không phải PDF)
       if (result.fileUrl) {
-        const imgData = await fetchImageBase64(result.fileUrl);
+        const imgData = await fetchImageBase64(result.fileUrl, (result as any)._base64, (result as any)._mimeType);
         if (imgData) {
           const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
           const startRow = 11 + result.layers.length + 2; // sau bảng data
