@@ -130,7 +130,7 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary' | 'norms' | 'pdf-splitter';
+type AppSheet = 'upload' | 'summary' | 'pdf-splitter';
 
 // --- Helper Functions ---
 
@@ -1129,19 +1129,6 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => { setActiveSheet('norms'); setIsSidebarOpen(false); }}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
-                activeSheet === 'norms' 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-white/10 text-blue-200"
-              )}
-            >
-              <BarChart2 size={18} className={activeSheet === 'norms' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Định mức thi công</span>
-            </button>
-
-            <button 
               onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
@@ -1503,8 +1490,6 @@ export default function App() {
           </div>
             )} {/* end else: không có file */}
           </div>
-        ) : activeSheet === 'norms' ? (
-          <NormsView history={history} />
         ) : activeSheet === 'pdf-splitter' ? (
           <PdfSplitterView />
         ) : (
@@ -1997,43 +1982,35 @@ function SummaryView({
     ? history.reduce((acc, r) => acc + (r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)), 0) / history.length
     : 0;
 
-  // Phân bố theo dự án (Pie)
-  const projectDist = projects.map(p => ({
-    name: p.length > 20 ? p.slice(0, 20) + '…' : p,
-    value: history.filter(r => r.project === p).length,
-  }));
-
-  // Tốc độ khoan từng cọc (Bar)
-  const speedData = history.slice().reverse().map(r => ({
-    name: r.pileId || '—',
-    'Tốc độ TB (m/h)': parseFloat((r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)).toFixed(2)),
-    'Chiều sâu (m)': parseFloat(r.layers.reduce((s, l) => s + l.lengthMeters, 0).toFixed(2)),
-  }));
-
-  // Tiến độ theo thời gian (Area)
-  const timelineData = history.slice().reverse().map((r, i) => ({
-    name: r.pileId || `#${i+1}`,
-    'Số cọc tích lũy': i + 1,
-    'Chiều sâu tích lũy': parseFloat(history.slice(0, i + 1).reduce((acc, x) => acc + x.layers.reduce((s, l) => s + l.lengthMeters, 0), 0).toFixed(1)),
-  }));
-
-  // Phân bố địa tầng
-  const geologyMap: Record<string, number> = {};
-  history.forEach(r => r.layers.forEach(l => {
-    const key = l.actualGeology || 'Khác';
-    geologyMap[key] = (geologyMap[key] || 0) + 1;
-  }));
-  const geologyData = Object.entries(geologyMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([name, value]) => ({ name, value }));
-
-  const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b'];
-
   // Tìm các cọc có vận tốc khoan < 1m/h
   const slowPiles = history.filter(r => 
     r.layers.some(l => l.speedMph > 0 && l.speedMph < 1)
+
   );
+
+  // ── Phát hiện trùng lặp (Hạng mục + Số hiệu cọc) ──
+  interface DuplicateGroup {
+    key: string;
+    item: string;
+    pileId: string;
+    records: ExtractionResult[];
+  }
+  const duplicateMap: Record<string, ExtractionResult[]> = {};
+  history.forEach(r => {
+    const item = (r.item || '').trim();
+    const pileId = (r.pileId || '').trim();
+    if (!item && !pileId) return;
+    const key = `${item}|||${pileId}`;
+    if (!duplicateMap[key]) duplicateMap[key] = [];
+    duplicateMap[key].push(r);
+  });
+  const duplicateGroups: DuplicateGroup[] = Object.entries(duplicateMap)
+    .filter(([, records]) => records.length > 1)
+    .map(([key, records]) => {
+      const [item, pileId] = key.split('|||');
+      return { key, item, pileId, records };
+    })
+    .sort((a, b) => b.records.length - a.records.length);
 
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
@@ -2078,6 +2055,75 @@ function SummaryView({
           </div>
         ))}
       </div>
+
+      {/* ── Cảnh báo trùng Hạng mục + Số hiệu cọc ── */}
+      {duplicateGroups.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-amber-500 rounded-lg">
+              <AlertCircle size={16} className="text-white" />
+            </div>
+            <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-widest">
+              Cảnh báo trùng Hạng mục &amp; Số hiệu cọc
+            </h4>
+            <span className="ml-auto bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {duplicateGroups.length} nhóm trùng
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-700 font-medium mb-4">
+            Các biên bản dưới đây có cùng <strong>Hạng mục</strong> và <strong>Số hiệu cọc</strong>. Vui lòng kiểm tra lại để tránh nhập liệu trùng lặp.
+          </p>
+          <div className="space-y-3">
+            {duplicateGroups.map((group) => (
+              <div key={group.key} className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Group header */}
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-100 border-b border-amber-200">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Hạng mục:</span>
+                    <span className="text-[12px] font-bold text-amber-900 truncate">{group.item || '(Chưa có)'}</span>
+                    <span className="mx-2 text-amber-400">|</span>
+                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Số hiệu cọc:</span>
+                    <span className="text-[13px] font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0">{group.pileId || '(Chưa có)'}</span>
+                  </div>
+                  <span className="text-[10px] font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                    {group.records.length} bản ghi
+                  </span>
+                </div>
+                {/* Records list */}
+                <div className="divide-y divide-amber-100">
+                  {group.records.map((rec, ri) => (
+                    <div key={rec.id} className="flex items-center gap-3 px-4 py-2 hover:bg-amber-50 transition-colors group">
+                      <span className="text-[10px] font-black text-amber-400 w-5 shrink-0">#{ri + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-bold text-slate-800 truncate">{rec.project || '—'}</p>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          BB: <span className="font-bold">{rec.reportNumber || '—'}</span>
+                          {rec.constructionStart && <> · Bắt đầu: <span className="font-bold">{rec.constructionStart}</span></>}
+                          {rec.fileName && <> · File: <span className="font-bold">{rec.fileName}</span></>}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => onEdit(rec)}
+                          className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
+                        >
+                          Xem
+                        </button>
+                        <button
+                          onClick={() => onDelete(rec.id)}
+                          className="px-3 py-1 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all border border-red-100"
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Cảnh báo vận tốc thấp (< 1m/h) ── */}
       {slowPiles.length > 0 && (
@@ -2126,343 +2172,14 @@ function SummaryView({
         </div>
       )}
 
-      {/* ── Biểu đồ hàng 1 ── */}
-      <div className="grid grid-cols-3 gap-4">
-
-        {/* Tốc độ & chiều sâu từng cọc */}
-        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <BarChart3 size={14} className="text-blue-600" /> Tốc độ khoan & Chiều sâu từng cọc
-          </h4>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={speedData} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
-                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
-                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
-                <Bar dataKey="Tốc độ TB (m/h)" fill="#2563eb" radius={[4,4,0,0]} />
-                <Bar dataKey="Chiều sâu (m)" fill="#f97316" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Phân bố theo dự án */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <PieChartIcon size={14} className="text-violet-600" /> Phân bố theo dự án
-          </h4>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={projectDist} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${(percent*100).toFixed(0)}%`} labelLine={false}>
-                  {projectDist.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Biểu đồ hàng 2 ── */}
-      <div className="grid grid-cols-3 gap-4">
-
-        {/* Tiến độ tích lũy */}
-        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <TrendingUp size={14} className="text-emerald-600" /> Tiến độ tích lũy
-          </h4>
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timelineData}>
-                <defs>
-                  <linearGradient id="gradDepth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="gradPile" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
-                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
-                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
-                <Area type="monotone" dataKey="Chiều sâu tích lũy" stroke="#2563eb" strokeWidth={2} fill="url(#gradDepth)" />
-                <Area type="monotone" dataKey="Số cọc tích lũy" stroke="#f97316" strokeWidth={2} fill="url(#gradPile)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Phân bố địa tầng */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Layers size={14} className="text-orange-500" /> Phân bố địa tầng
-          </h4>
-          <div className="space-y-2 overflow-y-auto max-h-[200px] custom-scrollbar pr-1">
-            {geologyData.map((g, i) => {
-              const max = geologyData[0]?.value || 1;
-              return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-600 w-8 text-right shrink-0">{g.name}</span>
-                  <div className="flex-1 h-4 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(g.value/max)*100}%`, background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-500 w-8 shrink-0">{g.value}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
     </div>
   );
 }
 
-function NormsView({ history }: { history: ExtractionResult[] }) {
-  const [filterDiameter, setFilterDiameter] = useState('');
-  const [filterLayer, setFilterLayer] = useState('');
 
-  if (history.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
-      <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart2 className="text-slate-300 w-12 h-12" /></div>
-      <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
-      <p className="text-slate-400 mt-2 text-sm">Hãy upload biên bản để xem định mức</p>
-    </div>
-  );
 
-  // ── Thu thập theo (Đường kính × actualGeology) ──
-  interface NormRow {
-    diameter: string;
-    geoCode: string;
-    layerDesign: string;
-    speeds: number[];
-    pileCount: Set<string>;
-  }
 
-  const normMap: Record<string, NormRow> = {};
-
-  history.forEach(result => {
-    result.layers.forEach(layer => {
-      const diameter = result.diameter || layer.diameter || '—';
-      const geoCode = layer.actualGeology?.toString().trim() || '—';
-      const desc = layer.layerDesign || '—';
-      const key = `${diameter}__${geoCode}`;
-
-      if (!normMap[key]) {
-        normMap[key] = { diameter, geoCode, layerDesign: desc, speeds: [], pileCount: new Set() };
-      }
-      const row = normMap[key];
-      if (row.layerDesign === '—' && desc !== '—') row.layerDesign = desc;
-      if (layer.speedMph > 0) row.speeds.push(layer.speedMph);
-      row.pileCount.add(result.pileId || result.id);
-    });
-  });
-
-  const norms = Object.values(normMap).map(row => {
-    const speeds = row.speeds.filter(s => s > 0);
-    const avgSpeed = speeds.length > 0 ? speeds.reduce((a,b) => a+b, 0) / speeds.length : 0;
-    const minSpeed = speeds.length > 0 ? Math.min(...speeds) : 0;
-    const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
-    return { ...row, avgSpeed, minSpeed, maxSpeed, pileCountNum: row.pileCount.size, sampleCount: speeds.length };
-  }).sort((a, b) => {
-    if (a.diameter !== b.diameter) return a.diameter.localeCompare(b.diameter);
-    return parseInt(a.geoCode) - parseInt(b.geoCode) || a.geoCode.localeCompare(b.geoCode);
-  });
-
-  const filtered = norms.filter(r =>
-    (!filterDiameter || r.diameter.toLowerCase().includes(filterDiameter.toLowerCase())) &&
-    (!filterLayer || r.geoCode.includes(filterLayer) || r.layerDesign.toLowerCase().includes(filterLayer.toLowerCase()))
-  );
-
-  const allSpeeds = norms.flatMap(r => r.speeds).filter(s => s > 0);
-  const globalAvg = allSpeeds.length > 0 ? allSpeeds.reduce((a,b)=>a+b,0)/allSpeeds.length : 0;
-  const globalMin = allSpeeds.length > 0 ? Math.min(...allSpeeds) : 0;
-  const globalMax = allSpeeds.length > 0 ? Math.max(...allSpeeds) : 0;
-  const geoCodes  = [...new Set(norms.map(r => r.geoCode))].sort((a,b) => parseInt(a)-parseInt(b)||a.localeCompare(b));
-  const diameters = [...new Set(norms.map(r => r.diameter))];
-
-  const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b','#ef4444','#14b8a6','#a855f7','#fb923c'];
-
-  const chartByGeo = geoCodes.map(code => {
-    const rows = norms.filter(r => r.geoCode === code);
-    const allS  = rows.flatMap(r => r.speeds).filter(s => s > 0);
-    return {
-      name: `ĐC ${code}`,
-      'V.Min': allS.length > 0 ? parseFloat(Math.min(...allS).toFixed(2)) : 0,
-      'V.TB':  allS.length > 0 ? parseFloat((allS.reduce((a,b)=>a+b,0)/allS.length).toFixed(2)) : 0,
-      'V.Max': allS.length > 0 ? parseFloat(Math.max(...allS).toFixed(2)) : 0,
-    };
-  });
-
-  const chartByDiameter = diameters.map(d => {
-    const rows = norms.filter(r => r.diameter === d);
-    const allS  = rows.flatMap(r => r.speeds).filter(s => s > 0);
-    return {
-      name: d,
-      'V.TB (m/h)': allS.length > 0 ? parseFloat((allS.reduce((a,b)=>a+b,0)/allS.length).toFixed(2)) : 0,
-    };
-  });
-
-  return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
-          <div>
-            <h3 className="text-[18px] font-black text-black uppercase tracking-tight">Định Mức Thi Công</h3>
-            <p className="text-xs text-slate-500 font-medium">Thống kê vận tốc theo đường kính & ký hiệu địa chất thực tế</p>
-          </div>
-        </div>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{history.length} cọc • {geoCodes.length} lớp địa chất</span>
-      </div>
-
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: 'V.TB toàn bộ',    value: `${formatNumber(globalAvg)} m/h`, color: 'bg-blue-600',   icon: <TrendingUp className="w-5 h-5 text-white" /> },
-          { label: 'V.Min ghi nhận',  value: `${formatNumber(globalMin)} m/h`, color: 'bg-orange-500', icon: <ArrowDownToLine className="w-5 h-5 text-white" /> },
-          { label: 'V.Max ghi nhận',  value: `${formatNumber(globalMax)} m/h`, color: 'bg-emerald-500',icon: <Activity className="w-5 h-5 text-white" /> },
-          { label: 'Số lớp địa chất', value: `${geoCodes.length} lớp`,     color: 'bg-violet-500',  icon: <Layers className="w-5 h-5 text-white" /> },
-        ].map((kpi, i) => (
-          <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`p-2 rounded-xl ${kpi.color}`}>{kpi.icon}</div>
-            </div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{kpi.label}</p>
-            <span className="text-2xl font-black text-slate-900">{kpi.value}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Layers size={14} className="text-blue-600" /> V.Min / V.TB / V.Max theo lớp địa chất thực tế
-          </h4>
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartByGeo} barGap={2} barCategoryGap="30%">
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
-                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
-                <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
-                <Bar dataKey="V.Min" fill="#94a3b8" radius={[3,3,0,0]} />
-                <Bar dataKey="V.TB"  fill="#2563eb" radius={[3,3,0,0]} />
-                <Bar dataKey="V.Max" fill="#f97316" radius={[3,3,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Activity size={14} className="text-orange-500" /> V.TB theo đường kính
-          </h4>
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartByDiameter}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} unit=" m/h" />
-                <Tooltip formatter={(v: any) => formatNumber(v)} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '11px' }} />
-                <Bar dataKey="V.TB (m/h)" radius={[4,4,0,0]}>
-                  {chartByDiameter.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-            <BarChart2 size={14} className="text-blue-600" /> Bảng định mức chi tiết ({filtered.length} tổ hợp)
-          </h4>
-          <div className="flex gap-2">
-            <input value={filterDiameter} onChange={e => setFilterDiameter(e.target.value)}
-              placeholder="Lọc đường kính..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-36" />
-            <input value={filterLayer} onChange={e => setFilterLayer(e.target.value)}
-              placeholder="Lọc lớp ĐC / mô tả..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-blue-400 w-44" />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-[#1a3a6b] text-white text-[12px] font-black uppercase tracking-wider">
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-12">STT</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-28">Đường kính</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-24">Ký hiệu ĐC</th>
-                <th className="px-4 py-3 text-left border-r border-blue-700">Mô tả lớp thiết kế tương ứng</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-20">Số cọc</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-20">Số mẫu</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-32" style={{background:'#1e4080'}}>V.Min (m/h)</th>
-                <th className="px-4 py-3 text-center border-r border-blue-700 w-32" style={{background:'#1e4080'}}>V.Max (m/h)</th>
-                <th className="px-4 py-3 text-center w-36 bg-orange-500">V.TB (m/h)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((row, idx) => (
-                <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                  <td className="px-4 py-3 text-center text-[12px] font-bold text-blue-700 border-r border-slate-100">{idx + 1}</td>
-                  <td className="px-4 py-3 text-center text-[12px] font-bold text-slate-800 border-r border-slate-100">{row.diameter}</td>
-                  <td className="px-4 py-3 text-center border-r border-slate-100">
-                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 text-blue-800 text-[13px] font-black">
-                      {row.geoCode}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-[12px] text-slate-700 border-r border-slate-100 whitespace-pre-wrap break-words">{row.layerDesign}</td>
-                  <td className="px-4 py-3 text-center text-[12px] font-semibold text-slate-700 border-r border-slate-100">{row.pileCountNum}</td>
-                  <td className="px-4 py-3 text-center text-[12px] text-slate-500 border-r border-slate-100">{row.sampleCount}</td>
-                  <td className="px-4 py-3 text-center border-r border-slate-100">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold bg-slate-100 text-slate-700">
-                      {formatNumber(row.minSpeed)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center border-r border-slate-100">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold bg-slate-100 text-slate-700">
-                      {formatNumber(row.maxSpeed)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={cn(
-                      "inline-flex items-center px-3 py-1 rounded-full text-[12px] font-black",
-                      row.avgSpeed > 5 ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"
-                    )}>
-                      {formatNumber(row.avgSpeed)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 border-t-2 border-slate-300 text-[12px] font-black">
-                <td colSpan={4} className="px-4 py-3 text-black uppercase border-r border-slate-200">Tổng hợp toàn bộ</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200 text-blue-700">{[...new Set(history.map(r => r.pileId))].length}</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200">{filtered.reduce((s,r)=>s+r.sampleCount,0)}</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMin)}</td>
-                <td className="px-4 py-3 text-center border-r border-slate-200">{formatNumber(globalMax)}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[12px] font-black">
-                    {formatNumber(globalAvg)}
-                  </span>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
 function StatCard({ title, value, icon }: { title: string; value: string; icon: React.ReactNode }) {
