@@ -2503,6 +2503,202 @@ function EditSplitView({
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   const [zoom, setZoom] = useState(1);
+
+  // Màu nền cho từng nhóm lớp (khớp với bảng hiển thị)
+  const GROUP_COLORS = [
+    { bg: 'BFDFFF', font: '0D3B6E' }, // sky-200
+    { bg: 'FDE68A', font: '78350F' }, // amber-200
+    { bg: 'A7F3D0', font: '065F46' }, // emerald-200
+    { bg: 'FECACA', font: '7F1D1D' }, // rose-200
+    { bg: 'DDD6FE', font: '4C1D95' }, // violet-200
+    { bg: 'D9F99D', font: '365314' }, // lime-200
+    { bg: 'FED7AA', font: '7C2D12' }, // orange-200
+    { bg: 'A5F3FC', font: '164E63' }, // cyan-200
+    { bg: 'FBCFE8', font: '831843' }, // pink-200
+    { bg: '99F6E4', font: '134E4A' }, // teal-200
+    { bg: 'FECACA', font: '7F1D1D' }, // red-200
+    { bg: 'C7D2FE', font: '312E81' }, // indigo-200
+  ];
+
+  const exportToExcel = (result: ExtractionResult) => {
+    // Dynamic import xlsx
+    import('xlsx').then((XLSX) => {
+      const wb = XLSX.utils.book_new();
+
+      // ── SHEET 1: Chi tiết các lớp địa chất ──
+      const headers = ['Địa chất thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const infoRows = [
+        ['Dự án:', result.project],
+        ['Hạng mục:', result.item],
+        ['Tên bộ phận:', result.componentName],
+        ['Số hiệu cọc:', result.pileId],
+        ['Biên bản số:', result.reportNumber],
+        ['Đường kính:', result.diameter],
+        ['Bắt đầu:', result.constructionStart],
+        ['Kết thúc:', result.constructionEnd],
+        [],
+        headers,
+      ];
+
+      // Tính màu theo nhóm layerDesign liên tiếp
+      let groupCount = 0;
+      let prevKey = '';
+      const rowColorIdx: number[] = result.layers.map((layer) => {
+        const key = layer.layerDesign?.trim() || '__empty__';
+        if (key !== prevKey) { groupCount++; prevKey = key; }
+        return (groupCount - 1) % GROUP_COLORS.length;
+      });
+
+      const dataRows = result.layers.map((layer) => [
+        layer.actualGeology,
+        result.diameter,
+        layer.layerDesign,
+        layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
+        layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
+        layer.elevationFrom,
+        layer.elevationTo,
+        parseFloat(layer.durationHours.toFixed(2)),
+        parseFloat(layer.lengthMeters.toFixed(2)),
+        parseFloat(layer.speedMph.toFixed(2)),
+        layer.notes || '',
+      ]);
+
+      const ws1Data = [...infoRows, ...dataRows];
+      const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+
+      // Set column widths
+      ws1['!cols'] = [
+        { wch: 16 }, { wch: 12 }, { wch: 45 }, { wch: 14 }, { wch: 14 },
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 },
+      ];
+
+      // Style header row (row index 9 = infoRows.length - 1)
+      const headerRowIdx = infoRows.length - 1;
+      headers.forEach((_, ci) => {
+        const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
+        if (!ws1[cellRef]) ws1[cellRef] = { v: headers[ci], t: 's' };
+        ws1[cellRef].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+          fill: { fgColor: { rgb: '1E3A6E' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
+        };
+      });
+
+      // Style data rows với màu nhóm
+      dataRows.forEach((_, ri) => {
+        const sheetRowIdx = headerRowIdx + 1 + ri;
+        const colorIdx = rowColorIdx[ri];
+        const { bg, font } = GROUP_COLORS[colorIdx];
+        headers.forEach((_, ci) => {
+          const cellRef = XLSX.utils.encode_cell({ r: sheetRowIdx, c: ci });
+          if (!ws1[cellRef]) ws1[cellRef] = { v: '', t: 's' };
+          const isSpeed = ci === 9;
+          const speedVal = result.layers[ri].speedMph;
+          ws1[cellRef].s = {
+            fill: { fgColor: { rgb: isSpeed && speedVal <= 1 ? 'DC2626' : bg } },
+            font: { color: { rgb: isSpeed && speedVal <= 1 ? 'FFFFFF' : font }, sz: 10, bold: isSpeed && speedVal <= 1 },
+            alignment: { horizontal: ci === 2 || ci === 10 ? 'left' : 'center', vertical: 'center', wrapText: true },
+            border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } },
+          };
+        });
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws1, 'Chi tiết địa chất');
+
+      // ── SHEET 2: Tổng hợp theo lớp thiết kế ──
+      const headers2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
+
+      // Tính groups
+      const groups: any[] = [];
+      let gc = 0; let pk = '';
+      result.layers.forEach((layer) => {
+        const key = layer.layerDesign?.trim() || '(Chưa có)';
+        if (key !== pk) { gc++; pk = key; }
+        const colorIdx2 = (gc - 1) % GROUP_COLORS.length;
+        const last = groups[groups.length - 1];
+        if (last && last.layerDesign === key) {
+          last.segments += 1;
+          last.elevationTo = layer.elevationTo;
+          last.totalDuration += layer.durationHours;
+          last.totalLength += layer.lengthMeters;
+          last.colorIdx = colorIdx2;
+        } else {
+          groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: colorIdx2 });
+        }
+      });
+      groups.forEach(g => { g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0; });
+
+      const totalDur = groups.reduce((s, g) => s + g.totalDuration, 0);
+      const totalLen = groups.reduce((s, g) => s + g.totalLength, 0);
+
+      const ws2Rows = [
+        headers2,
+        ...groups.map((g, i) => [
+          i + 1, result.diameter, g.layerDesign, g.segments,
+          parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)),
+          parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)),
+          parseFloat(g.avgSpeed.toFixed(2)),
+        ]),
+        ['Tổng cộng', '', '', result.layers.length,
+          result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
+          result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
+          parseFloat(totalDur.toFixed(2)), parseFloat(totalLen.toFixed(2)),
+          totalDur > 0 ? parseFloat((totalLen / totalDur).toFixed(2)) : '',
+        ],
+      ];
+
+      const ws2 = XLSX.utils.aoa_to_sheet(ws2Rows);
+      ws2['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 45 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+
+      // Style header
+      headers2.forEach((_, ci) => {
+        const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
+        if (!ws2[cellRef]) ws2[cellRef] = { v: headers2[ci], t: 's' };
+        ws2[cellRef].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+          fill: { fgColor: { rgb: '1E3A6E' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
+        };
+      });
+
+      // Style data rows
+      groups.forEach((g, ri) => {
+        const { bg, font } = GROUP_COLORS[g.colorIdx];
+        headers2.forEach((_, ci) => {
+          const cellRef = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+          if (!ws2[cellRef]) ws2[cellRef] = { v: '', t: 's' };
+          const isSpeed = ci === 8;
+          ws2[cellRef].s = {
+            fill: { fgColor: { rgb: isSpeed && g.avgSpeed <= 1 ? 'DC2626' : bg } },
+            font: { color: { rgb: isSpeed && g.avgSpeed <= 1 ? 'FFFFFF' : font }, sz: 10 },
+            alignment: { horizontal: ci === 2 ? 'left' : 'center', vertical: 'center', wrapText: true },
+            border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } },
+          };
+        });
+      });
+
+      // Style footer row
+      const footerRowIdx = groups.length + 1;
+      headers2.forEach((_, ci) => {
+        const cellRef = XLSX.utils.encode_cell({ r: footerRowIdx, c: ci });
+        if (!ws2[cellRef]) ws2[cellRef] = { v: ws2Rows[footerRowIdx][ci] ?? '', t: typeof ws2Rows[footerRowIdx][ci] === 'number' ? 'n' : 's' };
+        ws2[cellRef].s = {
+          font: { bold: true, sz: 11 },
+          fill: { fgColor: { rgb: 'E2E8F0' } },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: { top: { style: 'medium' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
+        };
+      });
+
+      XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp lớp thiết kế');
+
+      // Xuất file
+      const fileName = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/[^a-zA-Z0-9_\-\.À-ỹ]/g, '_');
+      XLSX.writeFile(wb, fileName);
+    });
+  };
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -2724,13 +2920,20 @@ function EditSplitView({
         <div className="flex items-center gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 bg-white/10 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-white/20 transition-colors border border-white/20"
+            className="px-4 py-2 bg-red-400 hover:bg-red-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-red-300"
           >
             Hủy bỏ
           </button>
+          <button
+            onClick={() => exportToExcel(data)}
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-emerald-400 flex items-center gap-2"
+          >
+            <ArrowDownToLine size={14} />
+            Xuất Excel
+          </button>
           <button 
             onClick={() => onSave(data)}
-            className="px-6 py-2 bg-white text-blue-900 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-lg shadow-blue-950/20 flex items-center gap-2"
+            className="px-6 py-2 bg-sky-400 hover:bg-sky-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
           >
             <Save size={14} />
             Lưu thay đổi

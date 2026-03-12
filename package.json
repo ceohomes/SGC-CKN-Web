@@ -24,6 +24,7 @@
     "express": "^4.21.2",
     "express-session": "^1.19.0",
     "file-saver": "^2.0.5",
+    "xlsx": "^0.18.5",
     "isomorphic-fetch": "^3.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.546.0",
