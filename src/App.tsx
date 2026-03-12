@@ -161,6 +161,7 @@ interface ExtractionResult {
   fileName?: string;
   fileUrl?: string;
   stt?: number;       // Số thứ tự từ Supabase
+  excelUrl?: string;  // URL file Excel đã tạo và upload GitHub
   _base64?: string;   // Tạm lưu để upload GitHub khi xác nhận
   _mimeType?: string;
 }
@@ -815,9 +816,16 @@ export default function App() {
               setUserApiKey(apiKeySetting.value);
               localStorage.setItem('gemini_api_key', apiKeySetting.value);
             }
-            if (logoSetting && logoSetting.value) {
-              setCustomLogo(logoSetting.value);
-              localStorage.setItem('pile_drill_custom_logo', logoSetting.value);
+            if (logoSetting) {
+              if (logoSetting.value) {
+                // Supabase có logo → dùng Supabase làm nguồn chính xác nhất
+                setCustomLogo(logoSetting.value);
+                localStorage.setItem('pile_drill_custom_logo', logoSetting.value);
+              } else {
+                // Supabase lưu chuỗi rỗng = đã reset → xóa cả localStorage
+                setCustomLogo(null);
+                localStorage.removeItem('pile_drill_custom_logo');
+              }
             }
           }
         } catch (e) {
@@ -886,10 +894,11 @@ export default function App() {
             setUserApiKey(value);
             localStorage.setItem('gemini_api_key', value);
           } else if (id === 'app_logo') {
-            setCustomLogo(value || null);
             if (value) {
+              setCustomLogo(value);
               localStorage.setItem('pile_drill_custom_logo', value);
             } else {
+              setCustomLogo(null);
               localStorage.removeItem('pile_drill_custom_logo');
             }
           }
@@ -938,18 +947,25 @@ export default function App() {
     setUserApiKey(key);
     localStorage.setItem('gemini_api_key', key);
     
-    // Save to Supabase
     if (supabase) {
       try {
+        // Lưu API key
         await supabase
           .from('app_settings')
           .upsert({ id: 'gemini_api_key', value: key, updated_at: new Date().toISOString() });
+
+        // Đồng thời lưu logo hiện tại (re-sync để chắc chắn không bị mất sau F5)
+        const logoValue = customLogo || '';
+        await supabase
+          .from('app_settings')
+          .upsert({ id: 'app_logo', value: logoValue, updated_at: new Date().toISOString() });
       } catch (e) {
-        console.error("Failed to save API key to Supabase", e);
+        console.error("Failed to save settings to Supabase", e);
       }
     }
     
     setIsSettingsOpen(false);
+    // Không cần alert — chỉ báo lỗi khi thực sự fail
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -958,17 +974,45 @@ export default function App() {
 
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
+      const originalBase64 = event.target?.result as string;
+
+      // Nén ảnh logo xuống tối đa 300x300px để tránh vượt giới hạn lưu trữ
+      const compressLogo = (src: string): Promise<string> => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX = 300;
+            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/png', 0.9));
+          };
+          img.onerror = () => resolve(src);
+          img.src = src;
+        });
+      };
+
+      const base64 = await compressLogo(originalBase64);
+
+      // Cập nhật UI + localStorage ngay lập tức
       setCustomLogo(base64);
       localStorage.setItem('pile_drill_custom_logo', base64);
-      
-      // Save to Supabase
+
+      // Lưu vào Supabase
       if (supabase) {
         try {
-          await supabase
+          const { error } = await supabase
             .from('app_settings')
             .upsert({ id: 'app_logo', value: base64, updated_at: new Date().toISOString() });
-        } catch (e) {
+          if (error) {
+            console.error("Failed to save logo to Supabase:", error.message);
+            // Logo vẫn được lưu ở localStorage, chỉ cảnh báo nếu Supabase lỗi
+            alert("⚠️ Logo đã lưu cục bộ nhưng không đồng bộ được lên server: " + error.message);
+          }
+        } catch (e: any) {
           console.error("Failed to save logo to Supabase", e);
         }
       }
@@ -1148,6 +1192,221 @@ export default function App() {
     setProcessingFiles(prev => prev.filter(f => f.id !== id));
   };
 
+  // Helper: Upsert Excel lên GitHub — ghi đè file cũ nếu đã tồn tại (dùng SHA), tạo mới nếu chưa có
+  // Path cố định: SGC-CKN/Excel/{id}.xlsx → mỗi biên bản CHỈ có đúng 1 file Excel duy nhất
+  const upsertExcelToGitHub = async (
+    id: string,
+    excelBase64: string,
+    creds: { token: string; username: string; repo: string },
+    existingExcelUrl?: string
+  ): Promise<string | null> => {
+    const { token, username, repo } = creds;
+    const excelPath = `SGC-CKN/Excel/${id}.xlsx`;
+    const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${excelPath}`;
+    const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${excelPath}`;
+    const headers = {
+      'Authorization': `Bearer ${token.trim()}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    };
+
+    // Lấy SHA của file hiện tại (nếu có) để ghi đè
+    let sha: string | undefined;
+    try {
+      const getRes = await fetch(apiUrl, { headers: { 'Authorization': headers['Authorization'], 'Accept': headers['Accept'] } });
+      if (getRes.ok) {
+        const fileData = await getRes.json();
+        sha = fileData.sha;
+      }
+    } catch (_) {}
+
+    const body: any = {
+      message: sha ? `Update Excel: ${id}` : `Create Excel: ${id}`,
+      content: excelBase64,
+    };
+    if (sha) body.sha = sha; // bắt buộc có SHA khi ghi đè
+
+    const putRes = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (putRes.ok) return rawUrl;
+    const err = await putRes.json().catch(() => ({}));
+    console.error('upsertExcelToGitHub failed:', err);
+    return null;
+  };
+
+  // Hàm tạo Excel buffer (không download, chỉ trả về base64) để upload GitHub
+  const generateExcelBase64 = async (result: ExtractionResult, imageData?: { base64: string; ext: string } | null): Promise<string | null> => {
+    const loadExcelJS = (): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        script.onload = () => resolve((window as any).ExcelJS);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    const GROUP_COLORS = [
+      { bg: 'BFDFFF', font: '0D3B6E' },{ bg: 'FDE68A', font: '78350F' },
+      { bg: 'A7F3D0', font: '065F46' },{ bg: 'FECACA', font: '7F1D1D' },
+      { bg: 'DDD6FE', font: '4C1D95' },{ bg: 'D9F99D', font: '365314' },
+      { bg: 'FED7AA', font: '7C2D12' },{ bg: 'A5F3FC', font: '164E63' },
+      { bg: 'FBCFE8', font: '831843' },{ bg: '99F6E4', font: '134E4A' },
+      { bg: 'FECACA', font: '7F1D1D' },{ bg: 'C7D2FE', font: '312E81' },
+    ];
+
+    try {
+      const ExcelJS = await loadExcelJS();
+      const argb = (hex: string) => 'FF' + hex.toUpperCase();
+      const thinBorder = (color = 'CCCCCC') => ({
+        top: { style: 'thin' as const, color: { argb: argb(color) } },
+        bottom: { style: 'thin' as const, color: { argb: argb(color) } },
+        left: { style: 'thin' as const, color: { argb: argb(color) } },
+        right: { style: 'thin' as const, color: { argb: argb(color) } },
+      });
+      const applyCell = (cell: any, value: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean; border?: any }) => {
+        cell.value = value;
+        cell.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
+        if (opts.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
+        cell.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
+        cell.border = opts.border ?? thinBorder();
+      };
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'SGC-CKN'; wb.created = new Date();
+
+      let gc = 0; let pk = '';
+      const rowColorIdx = result.layers.map((layer) => {
+        const key = layer.layerDesign?.trim() || '__';
+        if (key !== pk) { gc++; pk = key; }
+        return (gc - 1) % GROUP_COLORS.length;
+      });
+
+      const ws1 = wb.addWorksheet('Chi tiết địa chất');
+      ws1.columns = [
+        { width: 14 },{ width: 11 },{ width: 46 },{ width: 13 },{ width: 13 },
+        { width: 11 },{ width: 11 },{ width: 11 },{ width: 9 },{ width: 9 },{ width: 28 },
+      ];
+
+      const infoItems = [
+        ['Dự án', result.project],['Hạng mục', result.item],
+        ['Tên bộ phận', result.componentName],['Số hiệu cọc', result.pileId],
+        ['Biên bản số', result.reportNumber],['Đường kính', result.diameter],
+        ['Bắt đầu thi công', result.constructionStart],['Kết thúc thi công', result.constructionEnd],
+      ];
+      infoItems.forEach(([k, v]) => {
+        const row = ws1.addRow([k, v]);
+        row.height = 18;
+        applyCell(row.getCell(1), k, { bg: 'EFF6FF', fontColor: '1E3A6E', bold: true, align: 'left', border: thinBorder('DBEAFE') });
+        applyCell(row.getCell(2), v, { bg: 'FFFFFF', fontColor: '374151', align: 'left', border: thinBorder('DBEAFE') });
+        ws1.mergeCells(row.number, 2, row.number, 11);
+      });
+      const blankRow = ws1.addRow([]); blankRow.height = 6;
+
+      const hdrCols = ['Địa chất TT','Đường kính','Mô tả lớp thiết kế','Từ (h)','Đến (h)','Cao độ từ','Cao độ đến','T.Gian (h)','Dài (m)','V (m/h)','Ghi chú'];
+      const hdrRow = ws1.addRow(hdrCols);
+      hdrRow.height = 36;
+      hdrCols.forEach((h, ci) => {
+        applyCell(hdrRow.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 || ci === 10 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
+
+      result.layers.forEach((layer, ri) => {
+        const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
+        const spd = layer.speedMph;
+        const isSlowSpd = spd > 0 && spd <= 1;
+        const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+        const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
+        const vals = [
+          layer.actualGeology, result.diameter, layer.layerDesign,
+          layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
+          layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
+          layer.elevationFrom, layer.elevationTo,
+          parseFloat(layer.durationHours.toFixed(2)),
+          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(spd.toFixed(2)),
+          layer.notes || '',
+        ];
+        const dataRow = ws1.addRow(vals);
+        dataRow.height = 36;
+        vals.forEach((v, ci) => {
+          const isSpd = ci === 9;
+          applyCell(dataRow.getCell(ci + 1), v, { bg: isSpd ? spdBg : bg, fontColor: isSpd ? spdFontColor : fontColor, bold: isSpd && isSlowSpd, align: ci === 2 || ci === 10 ? 'left' : 'center', wrap: ci === 2 || ci === 3 || ci === 4 || ci === 10, border: thinBorder() });
+        });
+      });
+
+      if (imageData) {
+        const imgId = wb.addImage({ base64: imageData.base64, extension: imageData.ext as any });
+        const startRow = 11 + result.layers.length + 2;
+        const titleRow = ws1.getRow(startRow);
+        titleRow.height = 25;
+        applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
+        ws1.mergeCells(startRow, 1, startRow, 11);
+        ws1.addImage(imgId, { tl: { col: 0, row: startRow }, ext: { width: 850, height: 1100 } });
+        for (let i = startRow + 1; i <= startRow + 60; i++) ws1.getRow(i).height = 20;
+      }
+
+      const ws2 = wb.addWorksheet('Tổng hợp lớp thiết kế');
+      ws2.columns = [{ width: 6 },{ width: 11 },{ width: 46 },{ width: 10 },{ width: 14 },{ width: 14 },{ width: 14 },{ width: 12 },{ width: 12 }];
+      const hdr2 = ['STT','Đường kính','Lớp Thiết Kế','Số đoạn','Cao độ từ (m)','Cao độ đến (m)','Tổng T.Gian (h)','Tổng Dài (m)','V TB (m/h)'];
+      const hdrRow2 = ws2.addRow(hdr2);
+      hdrRow2.height = 36;
+      hdr2.forEach((h, ci) => {
+        applyCell(hdrRow2.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
+
+      const groups: any[] = [];
+      let gc2 = 0; let pk2 = '';
+      result.layers.forEach((layer) => {
+        const key = layer.layerDesign?.trim() || '(Chưa có)';
+        if (key !== pk2) { gc2++; pk2 = key; }
+        const ci2 = (gc2 - 1) % GROUP_COLORS.length;
+        const last = groups[groups.length - 1];
+        if (last && last.layerDesign === key) {
+          last.segments++; last.elevationTo = layer.elevationTo;
+          last.totalDuration += layer.durationHours; last.totalLength += layer.lengthMeters;
+        } else {
+          groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: ci2 });
+        }
+      });
+      groups.forEach(g => { g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0; });
+      const totalDur = groups.reduce((s, g) => s + g.totalDuration, 0);
+      const totalLen2 = groups.reduce((s, g) => s + g.totalLength, 0);
+      const totalAvgSpd = totalDur > 0 ? totalLen2 / totalDur : 0;
+
+      groups.forEach((g, i) => {
+        const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
+        const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
+        const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
+        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const r2 = ws2.addRow(vals2);
+        r2.height = 32;
+        vals2.forEach((v, ci) => {
+          const isSpd = ci === 8;
+          applyCell(r2.getCell(ci + 1), v, { bg: isSpd ? spdBg : bg, fontColor: isSpd ? (isSlowSpd ? 'FFFFFF' : 'C2410C') : fontColor, bold: isSpd && isSlowSpd, align: ci === 2 ? 'left' : 'center', wrap: ci === 2, border: thinBorder() });
+        });
+      });
+
+      const totVals = ['TỔNG CỘNG','','',result.layers.length,
+        result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
+        parseFloat(totalDur.toFixed(2)),parseFloat(totalLen2.toFixed(2)),parseFloat(totalAvgSpd.toFixed(2))];
+      const totRow = ws2.addRow(totVals);
+      totRow.height = 28;
+      totVals.forEach((v, ci) => {
+        applyCell(totRow.getCell(ci + 1), v, { bg: 'E2E8F0', fontColor: '1E3A6E', bold: true, sz: 11, align: ci === 0 ? 'left' : 'center', border: { ...thinBorder(), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } } });
+      });
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const uint8 = new Uint8Array(buffer as ArrayBuffer);
+      let bin = '';
+      for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
+      return btoa(bin);
+    } catch (e) {
+      console.error('generateExcelBase64 error:', e);
+      return null;
+    }
+  };
+
   const saveResult = async (result: ExtractionResult) => {
     let finalResult = { ...result };
 
@@ -1202,7 +1461,29 @@ export default function App() {
       }
     }
 
-    // 2. Lưu vào Supabase
+    // 1b. Tự động tạo Excel và upload lên GitHub (path cố định theo id, luôn ghi đè file cũ)
+    if (isGithubConnected && githubCreds) {
+      try {
+        let autoImg: { base64: string; ext: string } | null = null;
+        if (finalResult._base64) {
+          const parts = finalResult._base64.split(',');
+          if (parts.length > 1) {
+            const mime = finalResult._mimeType || '';
+            const ext = mime.includes('png') ? 'png' : 'jpeg';
+            autoImg = { base64: parts[1], ext };
+          }
+        }
+        const excelBase64 = await generateExcelBase64(finalResult, autoImg);
+        if (excelBase64) {
+          const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl);
+          if (newUrl) finalResult.excelUrl = newUrl;
+        }
+      } catch (e) {
+        console.error('Auto Excel upload error:', e);
+      }
+    }
+
+
     if (supabase) {
       try {
         const { id, _base64, _mimeType, designLayerMap, ...dataToSave } = finalResult as any;
@@ -1354,17 +1635,47 @@ export default function App() {
     setEditingResult(null);
 
     // Gọi API ngầm (không chặn UI)
-    if (supabase) {
-      (async () => {
+    (async () => {
+      let finalResult = { ...updatedResult };
+
+      // Tái tạo Excel và ghi đè file cũ trên GitHub (path cố định theo id)
+      if (isGithubConnected && githubCreds) {
         try {
-          const { designLayerMap: _dlm, ...updateData } = updatedResult as any;
-          const { error } = await supabase.from('drill_extractions').update(updateData).eq('id', updatedResult.id);
+          // Lấy ảnh từ fileUrl nếu có (để nhúng vào Excel)
+          let autoImg: { base64: string; ext: string } | null = null;
+          if (finalResult._base64) {
+            const parts = finalResult._base64.split(',');
+            if (parts.length > 1) {
+              const mime = finalResult._mimeType || '';
+              const ext = mime.includes('png') ? 'png' : 'jpeg';
+              autoImg = { base64: parts[1], ext };
+            }
+          }
+          const excelBase64 = await generateExcelBase64(finalResult, autoImg);
+          if (excelBase64) {
+            const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl);
+            if (newUrl) {
+              finalResult.excelUrl = newUrl;
+              // Cập nhật lại UI với excelUrl mới (giữ nguyên nếu không đổi)
+              setHistory(prev => prev.map(item => item.id === finalResult.id ? { ...item, excelUrl: newUrl } : item));
+            }
+          }
+        } catch (e) {
+          console.error('Re-generate Excel on edit failed:', e);
+        }
+      }
+
+      // Lưu vào Supabase
+      if (supabase) {
+        try {
+          const { designLayerMap: _dlm, _base64: _b, _mimeType: _m, ...updateData } = finalResult as any;
+          const { error } = await supabase.from('drill_extractions').update(updateData).eq('id', finalResult.id);
           if (error) console.error("Lỗi cập nhật Supabase:", error.message);
         } catch (e: any) {
           console.error("Lỗi kết nối Supabase:", e?.message);
         }
-      })();
-    }
+      }
+    })();
   };
 
   return (
@@ -1983,13 +2294,14 @@ export default function App() {
                           <th className="text-center">Chiều dài (m)</th>
                           <th className="text-center">T.Gian TC (h)</th>
                           <th className="text-center">Vận tốc TB (m/h)</th>
+                          <th className="text-center">File Dữ liệu</th>
                           <th className="text-center">Thao tác</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={13} className="text-center py-16 text-slate-400">
+                            <td colSpan={14} className="text-center py-16 text-slate-400">
                               <div className="flex flex-col items-center gap-3">
                                 <Search size={32} className="opacity-30" />
                                 <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy kết quả</p>
@@ -2031,6 +2343,22 @@ export default function App() {
                                   </span>
                                 );
                               })()}
+                            </td>
+                            <td className="text-center">
+                              {item.excelUrl ? (
+                                <a
+                                  href={item.excelUrl}
+                                  download
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-black uppercase tracking-wide hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                  title="Tải file Excel"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ArrowDownToLine size={12} />
+                                  Excel
+                                </a>
+                              ) : (
+                                <span className="text-[11px] text-slate-300 font-medium">—</span>
+                              )}
                             </td>
                             <td className="text-center">
                               <div className="flex items-center justify-end gap-1.5">

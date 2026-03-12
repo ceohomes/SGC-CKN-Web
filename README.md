@@ -1,20 +1,39 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# SGC - CKN | Construction Management
 
-# Run and deploy your AI Studio app
+Hệ thống quản lý dữ liệu thi công cọc khoan nhồi.
 
-This contains everything you need to run your app locally.
+## Tính năng mới (cập nhật)
+- ✅ **Cột "File Dữ liệu"**: Tự động tạo file Excel và lưu link tải trực tiếp trên bảng danh sách
+- ✅ Khi lưu biên bản → hệ thống tự export Excel → upload GitHub → lưu link vào Supabase
+- ✅ Click link Excel trên bảng → tải về ngay lập tức
 
-View your app in AI Studio: https://ai.studio/apps/d1b99b7a-76a5-4d81-b160-557f251dfa62
+---
 
-## Run Locally
+## Deploy lên Cloudflare Pages / Vercel / Netlify
 
-**Prerequisites:**  Node.js
+### Bước 1: Cài đặt
+```bash
+npm install
+```
 
+### Bước 2: Build
+```bash
+npm run build
+```
+→ Kết quả nằm trong thư mục `dist/`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Bước 3: Deploy
+- **Cloudflare Pages**: Upload `dist/` hoặc kết nối GitHub repo (Build command: `npm run build`, Output: `dist`)
+- **Vercel**: `vercel --prod`
+- **Netlify**: Drag & drop thư mục `dist/`
+
+---
+
+## Cấu hình trong ứng dụng
+
+Sau khi deploy, vào **Cài đặt** (⚙️) để nhập:
+1. **Gemini API Key** — AI trích xuất dữ liệu
+2. **GitHub Token + Username + Repo** — lưu file ảnh và Excel tự động
+3. **Logo** — tuỳ chỉnh logo công ty
+
+Node.js 18+ required.
