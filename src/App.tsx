@@ -164,6 +164,7 @@ interface ExtractionResult {
   excelUrl?: string;  // URL file Excel đã tạo và upload GitHub
   _base64?: string;   // Tạm lưu để upload GitHub khi xác nhận
   _mimeType?: string;
+  designLayerMap?: Record<string, string>; // Bảng tra cứu lớp địa chất
 }
 
 const GROUP_COLORS = [
@@ -1310,8 +1311,20 @@ export default function App() {
             const rawResult = await extractDataFromFile(base64, mimeType, userApiKey);
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
 
+            // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
+            const map = rawResult.designLayerMap || {};
+            const normalizedLayers = (rawResult.layers || []).map(layer => {
+              const geoCode = (layer.actualGeology || '').trim();
+              // Nếu tìm thấy mô tả trong bảng tra cứu thì ưu tiên sử dụng
+              if (geoCode && map[geoCode]) {
+                return { ...layer, layerDesign: map[geoCode] };
+              }
+              return layer;
+            });
+
             const result: ExtractionResult = {
               ...rawResult,
+              layers: normalizedLayers,
               id: Math.random().toString(36).substring(7),
               timestamp: Date.now(),
               fileName,
@@ -3688,9 +3701,20 @@ function EditSplitView({
       // Bước 3: Gọi AI trích xuất lại với ảnh đã chuẩn hóa
       const rawResult = await extractDataFromFile(normalized.base64, normalized.mime, apiKey);
 
+      // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
+      const map = rawResult.designLayerMap || {};
+      const normalizedLayers = (rawResult.layers || []).map(layer => {
+        const geoCode = (layer.actualGeology || '').trim();
+        if (geoCode && map[geoCode]) {
+          return { ...layer, layerDesign: map[geoCode] };
+        }
+        return layer;
+      });
+
       // Bước 4: Merge kết quả mới vào data hiện tại
       setData(prev => ({
         ...rawResult,
+        layers: normalizedLayers,
         id: prev.id,
         timestamp: prev.timestamp,
         fileUrl: prev.fileUrl,
@@ -4169,7 +4193,7 @@ function EditSplitView({
     const newLayers = [...data.layers];
     newLayers[idx] = { ...newLayers[idx], [field]: value };
     
-    // Nếu thay đổi actualGeology, tự động cập nhật designLayerCode và layerDesign
+    // Tự động tra cứu (VLOOKUP) mô tả địa chất khi thay đổi mã địa chất thực tế
     if (field === 'actualGeology') {
       const val = value.toString().trim();
       // Chấp nhận cả dạng "1" hoặc "1 (2)"
@@ -4178,8 +4202,8 @@ function EditSplitView({
         const code = match[1];
         newLayers[idx].designLayerCode = code;
         // Cập nhật mô tả từ designLayerMap nếu có
-        const designMap = (data as any).designLayerMap;
-        if (designMap && designMap[code]) {
+        const designMap = data.designLayerMap || {};
+        if (designMap[code]) {
           newLayers[idx].layerDesign = designMap[code];
         }
       }
