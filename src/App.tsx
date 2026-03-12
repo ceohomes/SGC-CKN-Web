@@ -2554,6 +2554,8 @@ function EditSplitView({
       return { base64: b64, ext };
     } catch { return null; }
   };
+
+  const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
     const loadExcelJS = (): Promise<any> => {
       return new Promise((resolve, reject) => {
         if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
