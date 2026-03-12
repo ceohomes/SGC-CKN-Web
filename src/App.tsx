@@ -190,12 +190,14 @@ const normalizeDateTime = (raw: string): string => {
 
   // Tách phần ngày – ưu tiên DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD
   let day = '', month = '', year = '';
-  const dmyMatch = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  const dmyMatch = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   const ymdMatch = s.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  
   if (dmyMatch) {
     day   = dmyMatch[1].padStart(2, '0');
     month = dmyMatch[2].padStart(2, '0');
     year  = dmyMatch[3];
+    if (year.length === 2) year = '20' + year;
   } else if (ymdMatch) {
     year  = ymdMatch[1];
     month = ymdMatch[2].padStart(2, '0');
@@ -207,6 +209,14 @@ const normalizeDateTime = (raw: string): string => {
       day   = compact[1].slice(0, 2);
       month = compact[1].slice(2, 4);
       year  = compact[1].slice(4, 8);
+    } else {
+      // Thử lấy 6 chữ số: DDMMYY
+      const compact6 = s.match(/(\d{6})/);
+      if (compact6) {
+        day   = compact6[1].slice(0, 2);
+        month = compact6[1].slice(2, 4);
+        year  = '20' + compact6[1].slice(4, 6);
+      }
     }
   }
 
@@ -491,15 +501,67 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
 // --- Utilities ---
 const expandYear = (val: string) => {
   if (!val) return val;
-  const parts = val.split(/[/.-]/);
-  if (parts.length === 3) {
-    let [d, m, y] = parts;
-    if (y.length === 2) {
-      y = '20' + y;
-      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-    }
+  let s = val.trim();
+  
+  // Extract all digits
+  const digits = s.replace(/\D/g, '');
+  
+  // If we have 6 or 8 digits, treat as compact date
+  if (digits.length === 6 || digits.length === 8) {
+    let dStr = digits.slice(0, 2);
+    let mStr = digits.slice(2, 4);
+    let yStr = digits.slice(4);
+    
+    if (yStr.length === 2) yStr = '20' + yStr;
+    
+    let d = Math.min(Math.max(parseInt(dStr), 1), 31);
+    let m = Math.min(Math.max(parseInt(mStr), 1), 12);
+    
+    return `${d.toString().padStart(2, '0')}/${m.toString().padStart(2, '0')}/${yStr}`;
   }
-  return val;
+
+  // If it has slashes or other separators, try to parse parts
+  const parts = s.split(/[\/\-\.]/).filter(p => p.length > 0);
+  if (parts.length >= 2) {
+    let dStr = parts[0] || '';
+    let mStr = parts[1] || '';
+    let yStr = parts[2] || '';
+    
+    // Handle case where user typed DD/MMYYYY
+    if (!yStr && mStr.length >= 4) {
+      yStr = mStr.slice(2);
+      mStr = mStr.slice(0, 2);
+    }
+
+    let d = Math.min(Math.max(parseInt(dStr) || 1, 1), 31);
+    let m = Math.min(Math.max(parseInt(mStr) || 1, 1), 12);
+    let y = yStr;
+
+    if (y.length === 2) y = '20' + y;
+    if (y.length === 0) y = new Date().getFullYear().toString();
+    if (y.length > 4) y = y.slice(0, 4);
+    if (y.length < 4 && y.length > 0) y = y.padStart(4, '0');
+    if (y.length === 0) y = new Date().getFullYear().toString();
+
+    return `${d.toString().padStart(2, '0')}/${m.toString().padStart(2, '0')}/${y}`;
+  }
+  
+  // If just digits but not 6 or 8, try to format anyway if it's long enough
+  if (digits.length >= 4) {
+     let dStr = digits.slice(0, 2);
+     let mStr = digits.slice(2, 4);
+     let yStr = digits.slice(4) || new Date().getFullYear().toString();
+     
+     if (yStr.length === 2) yStr = '20' + yStr;
+     if (yStr.length > 4) yStr = yStr.slice(0, 4);
+     
+     let d = Math.min(Math.max(parseInt(dStr), 1), 31);
+     let m = Math.min(Math.max(parseInt(mStr), 1), 12);
+     
+     return `${d.toString().padStart(2, '0')}/${m.toString().padStart(2, '0')}/${yStr}`;
+  }
+
+  return s;
 };
 
 // --- Components ---
@@ -555,6 +617,52 @@ const SmartDateInput = ({
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    
+    // Only allow digits and separators
+    val = val.replace(/[^\d\/\-\.]/g, '');
+    if (val.length > 10) val = val.slice(0, 10);
+    
+    // Auto-format: add slashes if typing only digits
+    const digits = val.replace(/\D/g, '');
+    let displayValue = val;
+
+    if (digits.length > 0 && !val.includes('/') && !val.includes('-') && !val.includes('.')) {
+      displayValue = digits.slice(0, 2);
+      if (digits.length > 2) {
+        displayValue += '/' + digits.slice(2, 4);
+        if (digits.length > 4) {
+          displayValue += '/' + digits.slice(4, 8);
+        }
+      }
+    }
+
+    // Real-time "Smart" correction: 
+    // If we have a "complete" looking string, try to expand it immediately
+    if (digits.length === 6 || digits.length === 8 || displayValue.length === 10) {
+      const expanded = expandYear(displayValue);
+      if (expanded !== displayValue) {
+        displayValue = expanded;
+      }
+    }
+
+    setInputValue(displayValue);
+
+    // Try to sync with parent state immediately if valid
+    const parts = displayValue.split(/[\/\-\.]/);
+    if (parts.length === 3) {
+      let [d, m, y] = parts;
+      if (y.length === 4 && d.length <= 2 && m.length <= 2) {
+        const isoDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        const date = new Date(isoDate);
+        if (!isNaN(date.getTime())) {
+          onChange(isoDate);
+        }
+      }
+    }
+  };
+
   const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value; // YYYY-MM-DD
     onChange(val);
@@ -562,7 +670,7 @@ const SmartDateInput = ({
 
   return (
     <div className="space-y-2">
-      <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">{label}</label>
+      <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">{label}</label>
       <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
         <button 
           type="button"
@@ -586,7 +694,7 @@ const SmartDateInput = ({
         <input
           type="text"
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={handleInputChange}
           onBlur={handleBlur}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleBlur();
@@ -1354,24 +1462,24 @@ export default function App() {
       </aside>
 
       {/* Header */}
-      <header className="border-b border-[#1e3a5f] px-5 py-1.5 flex items-center justify-between sticky top-0 z-30 text-white min-h-[48px]" style={{ background: "#1a3a6b" }}>
+      <header className="border-b border-[#1e3a5f] px-5 py-1 flex items-center justify-between sticky top-0 z-30 text-white min-h-[64px]" style={{ background: "#1a3a6b" }}>
         <div 
           className="flex items-center gap-3 cursor-pointer group"
           onMouseEnter={() => setIsSidebarOpen(true)}
           onClick={() => setIsSidebarOpen(true)}
         >
-          <div className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
+          <div className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border border-blue-700 bg-white">
             {customLogo ? (
               <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                <Construction className="text-white w-5 h-5" />
+                <Construction className="text-white w-6 h-6" />
               </div>
             )}
           </div>
           <div>
-            <h1 className="text-[18px] font-black tracking-tight text-white uppercase leading-none">SGC - CKN</h1>
-            <p className="text-[9px] text-blue-300 font-bold uppercase tracking-[0.2em] mt-0.5">
+            <h1 className="text-[18px] font-black text-white uppercase tracking-tight leading-none">SGC - CKN</h1>
+            <p className="text-[9px] font-bold text-blue-300 uppercase tracking-[0.2em] mt-0.5">
               Construction Management
             </p>
           </div>
@@ -1685,14 +1793,14 @@ export default function App() {
                 {/* Filter Panel */}
                 {showFilters && (
                   <div className="rounded-2xl border border-slate-300/50 bg-[#f5f2e1] shadow-xl animate-in fade-in slide-in-from-top-2 duration-200" style={{ overflow: 'visible' }}>
-                    <div className="px-6 py-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5" style={{ overflow: 'visible' }}>
+                    <div className="px-6 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" style={{ overflow: 'visible' }}>
                       {/* Dự án - Dropdown + Search */}
                       {(() => {
                         const opts = [...new Set(history.map(r => r.project).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterProject.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={projectDropdownRef}>
-                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Dự án</label>
+                            <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Dự án</label>
                             <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showProjectDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
                               <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterProject} onChange={e => { setFilterProject(e.target.value); setShowProjectDropdown(true); }} onFocus={() => setShowProjectDropdown(true)}
@@ -1737,7 +1845,7 @@ export default function App() {
                         const matched = opts.filter(p => p.toLowerCase().includes(filterItem.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={itemDropdownRef}>
-                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Hạng mục</label>
+                            <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Hạng mục</label>
                             <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showItemDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
                               <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterItem} onChange={e => { setFilterItem(e.target.value); setShowItemDropdown(true); }} onFocus={() => setShowItemDropdown(true)}
@@ -1778,7 +1886,7 @@ export default function App() {
                       })()}
                       {/* Tên bộ phận */}
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Tên bộ phận</label>
+                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Tên bộ phận</label>
                         <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
                           <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           <input value={filterComponentName} onChange={e => setFilterComponentName(e.target.value)} placeholder="Tìm kiếm tên bộ phận..."
@@ -1788,7 +1896,7 @@ export default function App() {
                       </div>
                       {/* Biên bản số */}
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Biên bản số</label>
+                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Biên bản số</label>
                         <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
                           <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           <input value={filterReportNumber} onChange={e => setFilterReportNumber(e.target.value)} placeholder="Tìm kiếm biên bản..."
@@ -1802,7 +1910,7 @@ export default function App() {
                         const matched = opts.filter(p => p.toLowerCase().includes(filterDiameter.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={diameterDropdownRef}>
-                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Đường kính</label>
+                            <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Đường kính</label>
                             <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showDiameterDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
                               <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterDiameter} onChange={e => { setFilterDiameter(e.target.value); setShowDiameterDropdown(true); }} onFocus={() => setShowDiameterDropdown(true)}
