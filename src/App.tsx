@@ -2530,77 +2530,64 @@ function EditSplitView({
     try {
       const url = data.fileUrl;
       if (!url) return null;
-      const isPdf = url.toLowerCase().includes('.pdf');
-      if (isPdf) return null;
 
-      // Chuẩn hoá về raw URL
+      // Bỏ qua PDF — không thể đưa vào Excel dạng ảnh
+      if (url.toLowerCase().includes('.pdf')) return null;
+
+      // Chuẩn hoá URL về dạng raw.githubusercontent.com
       let rawUrl = url;
       if (url.includes('github.com') && url.includes('/blob/')) {
         rawUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
       }
 
-      // Xác định định dạng file
-      const cleanRaw = rawUrl.split('?')[0].toLowerCase();
-      const ext = cleanRaw.endsWith('.png') ? 'png' : 'jpeg';
+      const cleanUrl = rawUrl.split('?')[0].toLowerCase();
+      const ext = cleanUrl.endsWith('.png') ? 'png' : 'jpeg';
 
-      // Helper: chuyển ArrayBuffer → base64
-      const bufferToBase64 = (buf: ArrayBuffer): string => {
+      // Helper: ArrayBuffer → base64
+      const toBase64 = (buf: ArrayBuffer): string => {
         const bytes = new Uint8Array(buf);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-        return btoa(binary);
+        let bin = '';
+        for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
       };
 
-      // ── Chiến lược 1: Cloudflare proxy (tránh CORS, hỗ trợ token phía server) ──
+      // ── Chiến lược 1: Cloudflare Proxy (đọc GITHUB_TOKEN từ server, không CORS) ──
       try {
-        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
-        const proxyResp = await fetch(proxyUrl);
+        const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(rawUrl)}`);
         if (proxyResp.ok) {
           const buf = await proxyResp.arrayBuffer();
-          if (buf.byteLength > 0) {
-            return { base64: bufferToBase64(buf), ext };
-          }
+          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
         }
-      } catch { /* tiếp tục chiến lược khác */ }
+      } catch { /* thử cách khác */ }
 
-      // ── Chiến lược 2: Fetch trực tiếp raw URL (hoạt động với repo public) ──
+      // ── Chiến lược 2: Fetch thẳng raw URL với token client (public repo) ──
       try {
-        const directResp = await fetch(rawUrl, { cache: 'no-store' });
+        const headers: Record<string, string> = {};
+        if (githubCreds?.token) headers['Authorization'] = `token ${githubCreds.token}`;
+        const directResp = await fetch(rawUrl, { headers, cache: 'no-store' });
         if (directResp.ok) {
           const buf = await directResp.arrayBuffer();
-          if (buf.byteLength > 0) {
-            return { base64: bufferToBase64(buf), ext };
-          }
+          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
         }
-      } catch { /* tiếp tục chiến lược khác */ }
+      } catch { /* thử cách khác */ }
 
-      // ── Chiến lược 3: GitHub Contents API (giới hạn 1MB, có token) ──
-      const match = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
-      if (match) {
-        const [, owner, repo, branch, filePath] = match;
+      // ── Chiến lược 3: GitHub Contents API (Accept: raw) ──
+      const m = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
+      if (m) {
+        const [, owner, repo, branch, filePath] = m;
         const token = githubCreds?.token;
-        const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json' };
+        const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3.raw' };
         if (token) headers['Authorization'] = `token ${token}`;
-
-        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
-        const resp = await fetch(apiUrl, { headers });
-        if (resp.ok) {
-          const json = await resp.json();
-          if (json.content) {
-            const b64 = json.content.replace(/\n/g, '');
-            return { base64: b64, ext };
+        try {
+          const apiResp = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+            { headers }
+          );
+          if (apiResp.ok) {
+            const buf = await apiResp.arrayBuffer();
+            if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
           }
-          // File > 1MB: dùng download_url từ API
-          if (json.download_url) {
-            try {
-              const dlResp = await fetch(json.download_url);
-              if (dlResp.ok) {
-                const buf = await dlResp.arrayBuffer();
-                if (buf.byteLength > 0) return { base64: bufferToBase64(buf), ext };
-              }
-            } catch { /* thất bại */ }
-          }
-        }
+        } catch { /* thất bại */ }
       }
 
       return null;
@@ -2817,8 +2804,7 @@ function EditSplitView({
 
   const [displayUrl, setDisplayUrl] = useState<string | null>(result.fileUrl || null);
   const [isPdf, setIsPdf] = useState(false);
-  const [showImagePicker, setShowImagePicker] = useState(false);
-  const [pickedImageData, setPickedImageData] = useState<{ base64: string; ext: string } | null>(null);
+  // Dialog upload thủ công đã bị loại bỏ — ảnh luôn tự động lấy từ GitHub
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
@@ -3042,15 +3028,9 @@ function EditSplitView({
               if (isFetchingImage) return;
               setIsFetchingImage(true);
               try {
-                // Thử tự lấy ảnh từ GitHub trước
                 const autoImg = await fetchImageFromGitHub();
-                if (autoImg) {
-                  // Có ảnh tự động → xuất luôn
-                  exportToExcel(data, autoImg);
-                } else {
-                  // Không lấy được (PDF hoặc lỗi) → mở dialog chọn tay
-                  setShowImagePicker(true);
-                }
+                // Xuất Excel luôn — có ảnh thì đính kèm, không có thì vẫn xuất (không cần ảnh)
+                exportToExcel(data, autoImg);
               } finally {
                 setIsFetchingImage(false);
               }
@@ -3079,65 +3059,6 @@ function EditSplitView({
         </div>
       </div>
       )} {/* end !embedded header */}
-
-      {/* Dialog chọn ảnh biên bản trước khi xuất Excel */}
-      {showImagePicker && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[440px] space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-100 p-2 rounded-xl"><ArrowDownToLine size={20} className="text-emerald-600" /></div>
-              <div>
-                <h3 className="font-black text-slate-900 text-base">Xuất File Excel</h3>
-                <p className="text-xs text-slate-500">Đính kèm ảnh biên bản vào sheet Excel</p>
-              </div>
-            </div>
-
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center space-y-3 hover:border-emerald-400 transition-colors cursor-pointer"
-              onClick={() => document.getElementById('excel-img-picker')?.click()}
-            >
-              {pickedImageData ? (
-                <div className="space-y-2">
-                  <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden">
-                    <img src={`data:image/${pickedImageData.ext};base64,${pickedImageData.base64}`} className="w-full h-full object-contain" />
-                  </div>
-                  <p className="text-xs text-emerald-600 font-bold">✓ Đã chọn ảnh — click để đổi ảnh khác</p>
-                </div>
-              ) : (
-                <div className="space-y-2 py-4">
-                  <div className="text-3xl">🖼️</div>
-                  <p className="text-sm font-bold text-slate-700">Click để chọn ảnh biên bản</p>
-                  <p className="text-xs text-slate-400">JPG, PNG, WEBP — ảnh chụp biên bản gốc</p>
-                </div>
-              )}
-              <input id="excel-img-picker" type="file" accept="image/*" className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const full = reader.result as string;
-                    const ext = file.type.includes('png') ? 'png' : 'jpeg';
-                    setPickedImageData({ base64: full.split(',')[1], ext });
-                  };
-                  reader.readAsDataURL(file);
-                }}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={() => { setShowImagePicker(false); setPickedImageData(null); }}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors">
-                Bỏ qua, không cần ảnh
-              </button>
-              <button onClick={() => { setShowImagePicker(false); exportToExcel(data, pickedImageData); setPickedImageData(null); }}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-black transition-colors flex items-center justify-center gap-2">
-                <ArrowDownToLine size={15} />
-                Xuất Excel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">

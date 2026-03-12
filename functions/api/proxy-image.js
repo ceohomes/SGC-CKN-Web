@@ -1,6 +1,6 @@
 // Cloudflare Pages Function: /api/proxy-image?url=<encoded_url>
-// Dùng để fetch ảnh từ GitHub tránh CORS khi xuất Excel
-// Hỗ trợ repo public (không cần token) và repo private (cần GITHUB_TOKEN trong env)
+// Tự động đọc GITHUB_TOKEN từ Cloudflare Pages Environment Variables
+// Hỗ trợ cả repo public (không cần token) và repo private (cần GITHUB_TOKEN)
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -20,82 +20,93 @@ export async function onRequest(context) {
   const targetUrl = url.searchParams.get('url');
 
   if (!targetUrl) {
-    return new Response('Thiếu tham số url', { status: 400, headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ error: 'Thiếu tham số url' }), {
+      status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+    });
   }
 
   // Chỉ cho phép fetch từ GitHub
   if (!targetUrl.includes('github.com') && !targetUrl.includes('raw.githubusercontent.com')) {
-    return new Response('Chỉ hỗ trợ URL từ GitHub', { status: 403, headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ error: 'Chỉ hỗ trợ URL từ GitHub' }), {
+      status: 403, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+    });
   }
 
-  try {
-    let fetchUrl = targetUrl;
+  // Đọc GITHUB_TOKEN từ Cloudflare Pages env
+  const token = env.GITHUB_TOKEN || env.github_token || '';
 
-    // Chuyển github.com/blob → raw.githubusercontent.com
-    if (fetchUrl.includes('github.com') && fetchUrl.includes('/blob/')) {
-      fetchUrl = fetchUrl
+  try {
+    // Chuẩn hoá URL về dạng raw
+    let rawUrl = targetUrl;
+    if (rawUrl.includes('github.com') && rawUrl.includes('/blob/')) {
+      rawUrl = rawUrl
         .replace('github.com', 'raw.githubusercontent.com')
         .replace('/blob/', '/');
     }
 
-    const headers = {
-      'Accept': 'image/*, */*',
-      'User-Agent': 'SGC-CKN-App/1.0',
-    };
+    // --- Cách 1: Fetch thẳng raw URL (nhanh nhất, hoạt động với public repo) ---
+    const rawHeaders = { 'User-Agent': 'SGC-CKN/1.0' };
+    if (token) rawHeaders['Authorization'] = `token ${token}`;
 
-    // Dùng GITHUB_TOKEN nếu có (set trong Cloudflare Pages > Settings > Variables)
-    const token = env.GITHUB_TOKEN;
-    if (token) {
-      headers['Authorization'] = `token ${token}`;
+    const rawResp = await fetch(rawUrl, { headers: rawHeaders });
+    if (rawResp.ok) {
+      const buffer = await rawResp.arrayBuffer();
+      if (buffer.byteLength > 0) {
+        return new Response(buffer, {
+          status: 200,
+          headers: {
+            'Content-Type': getContentType(rawUrl),
+            ...CORS_HEADERS,
+            'Cache-Control': 'public, max-age=3600',
+          },
+        });
+      }
     }
 
-    const resp = await fetch(fetchUrl, { headers });
+    // --- Cách 2: GitHub Contents API với Accept: application/vnd.github.v3.raw ---
+    // Hỗ trợ file > 1MB và private repo
+    const match = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
+    if (match) {
+      const [, owner, repo, branch, filePath] = match;
+      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
 
-    if (!resp.ok) {
-      // Nếu raw URL thất bại, thử GitHub Contents API
-      const match = fetchUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
-      if (match && token) {
-        const [, owner, repo, branch, filePath] = match;
-        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
-        const apiResp = await fetch(apiUrl, {
-          headers: {
-            'Accept': 'application/vnd.github.v3.raw',
-            'Authorization': `token ${token}`,
-            'User-Agent': 'SGC-CKN-App/1.0',
-          }
-        });
-        if (apiResp.ok) {
-          const buffer = await apiResp.arrayBuffer();
-          const lowerUrl = fetchUrl.toLowerCase();
-          let contentType = 'image/jpeg';
-          if (lowerUrl.endsWith('.png')) contentType = 'image/png';
-          else if (lowerUrl.endsWith('.webp')) contentType = 'image/webp';
+      const apiHeaders = {
+        'Accept': 'application/vnd.github.v3.raw',
+        'User-Agent': 'SGC-CKN/1.0',
+      };
+      if (token) apiHeaders['Authorization'] = `token ${token}`;
+
+      const apiResp = await fetch(apiUrl, { headers: apiHeaders });
+      if (apiResp.ok) {
+        const buffer = await apiResp.arrayBuffer();
+        if (buffer.byteLength > 0) {
           return new Response(buffer, {
             status: 200,
-            headers: { 'Content-Type': contentType, ...CORS_HEADERS, 'Cache-Control': 'public, max-age=3600' },
+            headers: {
+              'Content-Type': getContentType(rawUrl),
+              ...CORS_HEADERS,
+              'Cache-Control': 'public, max-age=3600',
+            },
           });
         }
       }
-      return new Response(`Lỗi fetch ảnh: ${resp.status}`, { status: resp.status, headers: CORS_HEADERS });
     }
 
-    const buffer = await resp.arrayBuffer();
-    const lowerUrl = fetchUrl.toLowerCase();
-    let contentType = resp.headers.get('content-type') || 'image/jpeg';
-    if (lowerUrl.endsWith('.png')) contentType = 'image/png';
-    else if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg')) contentType = 'image/jpeg';
-    else if (lowerUrl.endsWith('.webp')) contentType = 'image/webp';
-
-    return new Response(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType,
-        ...CORS_HEADERS,
-        'Cache-Control': 'public, max-age=3600',
-        'Content-Disposition': 'inline',
-      },
+    return new Response(JSON.stringify({ error: 'Không thể tải ảnh từ GitHub', rawStatus: rawResp.status }), {
+      status: 502, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
     });
+
   } catch (err) {
-    return new Response(`Lỗi server: ${err.message}`, { status: 500, headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+    });
   }
+}
+
+function getContentType(url) {
+  const u = url.toLowerCase().split('?')[0];
+  if (u.endsWith('.png')) return 'image/png';
+  if (u.endsWith('.webp')) return 'image/webp';
+  if (u.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
 }
