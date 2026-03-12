@@ -282,9 +282,10 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
       { width: 14 },  // Chiều dài (m)
       { width: 14 },  // T.Gian TC (h)
       { width: 16 },  // Vận tốc TB (m/h)
+      { width: 30 },  // File dữ liệu
     ];
 
-    const NCOLS = 12;
+    const NCOLS = 13; // Tổng số cột bao gồm cột File dữ liệu mới
 
     const r1 = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG']);
     r1.height = 30;
@@ -299,8 +300,8 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
 
     ws.addRow([]).height = 6;
 
-    const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)'];
-    const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center'];
+    const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'File dữ liệu'];
+    const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center', 'left'];
     const r4 = ws.addRow(HEADERS);
     r4.height = 38;
     HEADERS.forEach((h, ci) => {
@@ -333,30 +334,39 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
         parseFloat(totalLen.toFixed(2)),
         totalHrs > 0 ? parseFloat(totalHrs.toFixed(2)) : '—',
         parseFloat(spd.toFixed(2)),
+        item.excelUrl || '',
       ];
       const dr = ws.addRow(vals);
       dr.height = 22;
       vals.forEach((v, ci) => {
         const isSpd = ci === 11;
         const isLen = ci === 9;
+        const isFile = ci === 12;
+        
+        const cellObj = dr.getCell(ci + 1);
         cell(
-          dr.getCell(ci + 1), v,
+          cellObj, v,
           isSpd ? spdBg : rowBg,
-          isSpd ? spdFc : isLen ? 'C2410C' : '1E293B',
-          (isSpd && isSlow) || isLen,
+          isFile ? '2563EB' : (isSpd ? spdFc : isLen ? 'C2410C' : '1E293B'),
+          (isSpd && isSlow) || isLen || isFile,
           HDR_ALIGN[ci], 10
         );
+        
+        if (isFile && v) {
+          cellObj.value = { text: 'Xem file chi tiết', hyperlink: v };
+          cellObj.font = { ...cellObj.font, underline: true };
+        }
       });
     });
 
     const sumLen = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.lengthMeters) || 0), 0), 0);
     const sumHrs = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.durationHours) || 0), 0), 0);
     const sumSpd = sumHrs > 0 ? sumLen / sumHrs : 0;
-    const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2))];
+    const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2)), ''];
     const sr = ws.addRow(sumVals);
     sr.height = 26;
     sumVals.forEach((v, ci) => {
-      const isNum = ci >= 9;
+      const isNum = ci >= 9 && ci <= 11;
       cell(sr.getCell(ci + 1), v, 'E2E8F0', '1E3A6E', true, ci === 8 ? 'right' : isNum ? 'center' : 'left', 11);
       sr.getCell(ci + 1).border = { ...border('94A3B8'), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } };
     });
