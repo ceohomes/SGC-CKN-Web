@@ -2523,117 +2523,173 @@ function EditSplitView({
   const exportToExcel = (result: ExtractionResult) => {
     const loadXLSX = (): Promise<any> => {
       return new Promise((resolve, reject) => {
-        if ((window as any).XLSX) { resolve((window as any).XLSX); return; }
+        if ((window as any).XLSXStyle) { resolve((window as any).XLSXStyle); return; }
+        // xlsx-js-style hỗ trợ cell styling đầy đủ
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-        script.onload = () => resolve((window as any).XLSX);
+        script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+        script.onload = () => {
+          const X = (window as any).XLSXStyle || (window as any).XLSX;
+          resolve(X);
+        };
         script.onerror = reject;
         document.head.appendChild(script);
       });
     };
 
+    // Helper tạo cell có style
+    const cell = (v: any, s: any) => ({ v, t: typeof v === 'number' ? 'n' : 's', s });
+
+    const borderThin = (color = 'CCCCCC') => ({
+      top: { style: 'thin', color: { rgb: color } },
+      bottom: { style: 'thin', color: { rgb: color } },
+      left: { style: 'thin', color: { rgb: color } },
+      right: { style: 'thin', color: { rgb: color } },
+    });
+
     loadXLSX().then((XLSX) => {
       const wb = XLSX.utils.book_new();
 
-      // ── SHEET 1: Chi tiết các lớp địa chất ──
-      const headers = ['Địa chất thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
-      const infoRows: any[][] = [
-        ['Dự án:', result.project],
-        ['Hạng mục:', result.item],
-        ['Tên bộ phận:', result.componentName],
-        ['Số hiệu cọc:', result.pileId],
-        ['Biên bản số:', result.reportNumber],
-        ['Đường kính:', result.diameter],
-        ['Bắt đầu:', result.constructionStart],
-        ['Kết thúc:', result.constructionEnd],
-        [],
-        headers,
+      // ── Tính groupColor index cho từng layer ──
+      let gc = 0; let pk = '';
+      const rowColorIdx: number[] = result.layers.map((layer) => {
+        const key = layer.layerDesign?.trim() || '__';
+        if (key !== pk) { gc++; pk = key; }
+        return (gc - 1) % GROUP_COLORS.length;
+      });
+
+      // ════════════════════════════════════════
+      // SHEET 1: Chi tiết các lớp địa chất
+      // ════════════════════════════════════════
+      const HDR_STYLE = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Arial' }, fill: { fgColor: { rgb: '1A3A6B' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin('FFFFFF') };
+      const INFO_KEY = { font: { bold: true, sz: 10, name: 'Arial' }, fill: { fgColor: { rgb: 'EFF6FF' } }, border: borderThin('DBEAFE') };
+      const INFO_VAL = { font: { sz: 10, name: 'Arial' }, fill: { fgColor: { rgb: 'FFFFFF' } }, border: borderThin('DBEAFE') };
+
+      // Dòng thông tin header
+      const infoData: any[][] = [
+        [cell('Dự án', INFO_KEY), cell(result.project, INFO_VAL)],
+        [cell('Hạng mục', INFO_KEY), cell(result.item, INFO_VAL)],
+        [cell('Tên bộ phận', INFO_KEY), cell(result.componentName, INFO_VAL)],
+        [cell('Số hiệu cọc', INFO_KEY), cell(result.pileId, INFO_VAL)],
+        [cell('Biên bản số', INFO_KEY), cell(result.reportNumber, INFO_VAL)],
+        [cell('Đường kính', INFO_KEY), cell(result.diameter, INFO_VAL)],
+        [cell('Bắt đầu thi công', INFO_KEY), cell(result.constructionStart, INFO_VAL)],
+        [cell('Kết thúc thi công', INFO_KEY), cell(result.constructionEnd, INFO_VAL)],
+        Array(11).fill(cell('', {})),
       ];
 
-      let groupCount = 0; let prevKey = '';
-      const rowColorIdx: number[] = result.layers.map((layer) => {
-        const key = layer.layerDesign?.trim() || '__empty__';
-        if (key !== prevKey) { groupCount++; prevKey = key; }
-        return (groupCount - 1) % GROUP_COLORS.length;
-      });
+      // Dòng header bảng
+      const headers1 = ['Địa chất TT', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const hdrRow1 = headers1.map(h => cell(h, HDR_STYLE));
 
-      const dataRows = result.layers.map((layer) => [
-        layer.actualGeology, result.diameter, layer.layerDesign,
-        layer.timeFrom + (layer.dateFrom ? ' ' + layer.dateFrom : ''),
-        layer.timeTo + (layer.dateTo ? ' ' + layer.dateTo : ''),
-        layer.elevationFrom, layer.elevationTo,
-        parseFloat(layer.durationHours.toFixed(2)),
-        parseFloat(layer.lengthMeters.toFixed(2)),
-        parseFloat(layer.speedMph.toFixed(2)),
-        layer.notes || '',
-      ]);
-
-      const ws1 = XLSX.utils.aoa_to_sheet([...infoRows, ...dataRows]);
-      ws1['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 45 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 }];
-
-      const headerRowIdx = infoRows.length - 1;
-      headers.forEach((h, ci) => {
-        const ref = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
-        if (!ws1[ref]) ws1[ref] = { v: h, t: 's' };
-        ws1[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A6E' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
-      });
-
-      dataRows.forEach((_, ri) => {
-        const sheetRow = headerRowIdx + 1 + ri;
+      // Dòng dữ liệu
+      const dataRows1 = result.layers.map((layer, ri) => {
         const { bg, font } = GROUP_COLORS[rowColorIdx[ri]];
-        headers.forEach((_, ci) => {
-          const ref = XLSX.utils.encode_cell({ r: sheetRow, c: ci });
-          if (!ws1[ref]) ws1[ref] = { v: '', t: 's' };
-          const isSpeed = ci === 9; const spd = result.layers[ri].speedMph;
-          ws1[ref].s = { fill: { fgColor: { rgb: isSpeed && spd <= 1 ? 'DC2626' : bg } }, font: { color: { rgb: isSpeed && spd <= 1 ? 'FFFFFF' : font }, sz: 10, bold: isSpeed && spd <= 1 }, alignment: { horizontal: ci === 2 || ci === 10 ? 'left' : 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
+        const spd = layer.speedMph;
+        const isSlowSpeed = spd > 0 && spd <= 1;
+        const mkCell = (v: any, align: 'center' | 'left' = 'center') => cell(v, {
+          font: { sz: 10, name: 'Arial', color: { rgb: font } },
+          fill: { fgColor: { rgb: bg } },
+          alignment: { horizontal: align, vertical: 'center', wrapText: true },
+          border: borderThin(),
         });
+        const spdCell = cell(parseFloat(spd.toFixed(2)), {
+          font: { bold: true, sz: 10, name: 'Arial', color: { rgb: isSlowSpeed ? 'FFFFFF' : 'C2410C' } },
+          fill: { fgColor: { rgb: isSlowSpeed ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED' } },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: borderThin(),
+        });
+        return [
+          mkCell(layer.actualGeology),
+          mkCell(result.diameter),
+          mkCell(layer.layerDesign, 'left'),
+          mkCell(layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : '')),
+          mkCell(layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : '')),
+          cell(layer.elevationFrom, { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(layer.elevationTo, { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(parseFloat(layer.durationHours.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(parseFloat(layer.lengthMeters.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          spdCell,
+          mkCell(layer.notes || '', 'left'),
+        ];
       });
+
+      const ws1 = XLSX.utils.aoa_to_sheet([...infoData, hdrRow1, ...dataRows1]);
+      ws1['!cols'] = [{ wch: 14 }, { wch: 11 }, { wch: 48 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 28 }];
+      // Set row heights
+      ws1['!rows'] = [
+        ...Array(9).fill({ hpt: 18 }),
+        { hpt: 4 }, // blank row
+        { hpt: 30 }, // header
+        ...result.layers.map(() => ({ hpt: 32 })),
+      ];
       XLSX.utils.book_append_sheet(wb, ws1, 'Chi tiết địa chất');
 
-      // ── SHEET 2: Tổng hợp ──
+      // ════════════════════════════════════════
+      // SHEET 2: Tổng hợp theo lớp thiết kế
+      // ════════════════════════════════════════
       const headers2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
+      const hdrRow2 = headers2.map(h => cell(h, HDR_STYLE));
+
+      // Tính groups
       const groups: any[] = [];
-      let gc = 0; let pk = '';
+      let gc2 = 0; let pk2 = '';
       result.layers.forEach((layer) => {
         const key = layer.layerDesign?.trim() || '(Chưa có)';
-        if (key !== pk) { gc++; pk = key; }
-        const ci2 = (gc - 1) % GROUP_COLORS.length;
+        if (key !== pk2) { gc2++; pk2 = key; }
+        const ci2 = (gc2 - 1) % GROUP_COLORS.length;
         const last = groups[groups.length - 1];
-        if (last && last.layerDesign === key) { last.segments++; last.elevationTo = layer.elevationTo; last.totalDuration += layer.durationHours; last.totalLength += layer.lengthMeters; }
-        else { groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: ci2 }); }
+        if (last && last.layerDesign === key) {
+          last.segments++; last.elevationTo = layer.elevationTo;
+          last.totalDuration += layer.durationHours; last.totalLength += layer.lengthMeters;
+        } else {
+          groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: ci2 });
+        }
       });
       groups.forEach(g => { g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0; });
       const totalDur = groups.reduce((s, g) => s + g.totalDuration, 0);
       const totalLen2 = groups.reduce((s, g) => s + g.totalLength, 0);
+      const totalAvgSpd = totalDur > 0 ? totalLen2 / totalDur : 0;
 
-      const ws2Rows = [
-        headers2,
-        ...groups.map((g, i) => [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))]),
-        ['Tổng cộng', '', '', result.layers.length, result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '', result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '', parseFloat(totalDur.toFixed(2)), parseFloat(totalLen2.toFixed(2)), totalDur > 0 ? parseFloat((totalLen2 / totalDur).toFixed(2)) : ''],
-      ];
-      const ws2 = XLSX.utils.aoa_to_sheet(ws2Rows);
-      ws2['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 45 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-
-      headers2.forEach((h, ci) => {
-        const ref = XLSX.utils.encode_cell({ r: 0, c: ci });
-        if (!ws2[ref]) ws2[ref] = { v: h, t: 's' };
-        ws2[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A6E' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
-      });
-      groups.forEach((g, ri) => {
+      const dataRows2 = groups.map((g, i) => {
         const { bg, font } = GROUP_COLORS[g.colorIdx];
-        headers2.forEach((_, ci) => {
-          const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-          if (!ws2[ref]) ws2[ref] = { v: '', t: 's' };
-          const isSpd = ci === 8;
-          ws2[ref].s = { fill: { fgColor: { rgb: isSpd && g.avgSpeed <= 1 ? 'DC2626' : bg } }, font: { color: { rgb: isSpd && g.avgSpeed <= 1 ? 'FFFFFF' : font }, sz: 10 }, alignment: { horizontal: ci === 2 ? 'left' : 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
+        const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
+        const mkC = (v: any, align: 'center' | 'left' = 'center') => cell(v, {
+          font: { sz: 10, name: 'Arial', color: { rgb: font } },
+          fill: { fgColor: { rgb: bg } },
+          alignment: { horizontal: align, vertical: 'center', wrapText: true },
+          border: borderThin(),
         });
+        const spdC = cell(parseFloat(g.avgSpeed.toFixed(2)), {
+          font: { bold: true, sz: 10, name: 'Arial', color: { rgb: isSlowSpd ? 'FFFFFF' : 'C2410C' } },
+          fill: { fgColor: { rgb: isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED' } },
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: borderThin(),
+        });
+        return [
+          mkC(i + 1), mkC(result.diameter), mkC(g.layerDesign, 'left'), mkC(g.segments),
+          cell(parseFloat(g.elevationFrom.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(parseFloat(g.elevationTo.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(parseFloat(g.totalDuration.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          cell(parseFloat(g.totalLength.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
+          spdC,
+        ];
       });
-      const footerRow = groups.length + 1;
-      headers2.forEach((_, ci) => {
-        const ref = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-        if (!ws2[ref]) ws2[ref] = { v: ws2Rows[footerRow][ci] ?? '', t: typeof ws2Rows[footerRow][ci] === 'number' ? 'n' : 's' };
-        ws2[ref].s = { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: { style: 'medium' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
-      });
+
+      const FOOTER_STYLE = { font: { bold: true, sz: 11, name: 'Arial', color: { rgb: '1E3A6E' } }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: { style: 'medium', color: { rgb: '1E3A6E' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
+      const footerRow = [
+        cell('TỔNG CỘNG', { ...FOOTER_STYLE, alignment: { horizontal: 'left', vertical: 'center' } }),
+        cell('', FOOTER_STYLE), cell('', FOOTER_STYLE),
+        cell(result.layers.length, FOOTER_STYLE),
+        cell(result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '', FOOTER_STYLE),
+        cell(result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '', FOOTER_STYLE),
+        cell(parseFloat(totalDur.toFixed(2)), FOOTER_STYLE),
+        cell(parseFloat(totalLen2.toFixed(2)), FOOTER_STYLE),
+        cell(parseFloat(totalAvgSpd.toFixed(2)), FOOTER_STYLE),
+      ];
+
+      const ws2 = XLSX.utils.aoa_to_sheet([hdrRow2, ...dataRows2, footerRow]);
+      ws2['!cols'] = [{ wch: 6 }, { wch: 11 }, { wch: 48 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+      ws2['!rows'] = [{ hpt: 30 }, ...groups.map(() => ({ hpt: 28 })), { hpt: 24 }];
       XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp lớp thiết kế');
 
       const fileName = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/\s+/g, '_');
