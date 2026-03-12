@@ -1237,14 +1237,39 @@ export default function App() {
 
   // Helper: Upsert Excel lên GitHub — ghi đè file cũ nếu đã tồn tại (dùng SHA), tạo mới nếu chưa có
   // Path cố định: SGC-CKN/Excel/{id}.xlsx → mỗi biên bản CHỈ có đúng 1 file Excel duy nhất
+  // Tạo tên file Excel chuẩn: TênBộPhận_SốHiệuCọc_ĐườngKính_NgàyKếtThúc
+  const buildExcelFileName = (result: ExtractionResult): string => {
+    const endDateRaw = result.constructionEnd || '';
+    const endDatePart = endDateRaw.includes(' ') ? endDateRaw.split(' ').slice(-1)[0] : endDateRaw;
+    const endDateForName = endDatePart.replace(/\//g, '-'); // DD-MM-YYYY
+    return [
+      result.componentName || 'BienBan',
+      result.pileId || '',
+      result.diameter || '',
+      endDateForName || '',
+    ].filter(Boolean).join('_').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9À-ɏḀ-ỿ_\-]/g, '_');
+  };
+
   const upsertExcelToGitHub = async (
     id: string,
     excelBase64: string,
     creds: { token: string; username: string; repo: string },
-    existingExcelUrl?: string
+    existingExcelUrl?: string,
+    result?: ExtractionResult
   ): Promise<string | null> => {
     const { token, username, repo } = creds;
-    const excelPath = `SGC-CKN/Excel/${id}.xlsx`;
+
+    // Tên file đẹp theo format chuẩn, id ở đầu đảm bảo unique khi ghi đè
+    const friendlyName = result ? buildExcelFileName(result) : id;
+    const fileName = `${id}_${friendlyName}.xlsx`;
+
+    // Nếu đã có URL cũ trên GitHub → lấy path từ URL cũ để ghi đè đúng file
+    let excelPath = `SGC-CKN/Excel/${fileName}`;
+    if (existingExcelUrl) {
+      const match = decodeURIComponent(existingExcelUrl).match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)/);
+      if (match) excelPath = match[1]; // giữ nguyên path cũ để ghi đè
+    }
+
     const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${excelPath}`;
     const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${excelPath}`;
     const headers = {
@@ -1264,10 +1289,10 @@ export default function App() {
     } catch (_) {}
 
     const body: any = {
-      message: sha ? `Update Excel: ${id}` : `Create Excel: ${id}`,
+      message: sha ? `Update Excel: ${friendlyName}` : `Create Excel: ${friendlyName}`,
       content: excelBase64,
     };
-    if (sha) body.sha = sha; // bắt buộc có SHA khi ghi đè
+    if (sha) body.sha = sha;
 
     const putRes = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
     if (putRes.ok) return rawUrl;
@@ -1518,7 +1543,7 @@ export default function App() {
         }
         const excelBase64 = await generateExcelBase64(finalResult, autoImg);
         if (excelBase64) {
-          const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl);
+          const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
           if (newUrl) finalResult.excelUrl = newUrl;
         }
       } catch (e) {
@@ -1654,7 +1679,7 @@ export default function App() {
           }
           const excelBase64 = await generateExcelBase64(finalResult, autoImg);
           if (excelBase64) {
-            const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl);
+            const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
             if (newUrl) {
               finalResult.excelUrl = newUrl;
               // Cập nhật lại UI với excelUrl mới (giữ nguyên nếu không đổi)
@@ -3437,11 +3462,13 @@ function EditSplitView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
+      a.style.display = 'none';
       const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
       a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
-    }).catch((err) => { console.error(err); alert('Không thể tải thư viện xuất Excel.'); });
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+    }).catch((err) => { console.error(err); alert('Lỗi xuất Excel: ' + (err?.message || err)); });
   };
 
     const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
@@ -3650,18 +3677,8 @@ function EditSplitView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // Tên file: TênBộPhận_SốHiệuCọc_ĐườngKính_NgàyKếtThúc.xlsx
-      const endDateRaw = result.constructionEnd || '';
-      // constructionEnd: "HH:mm DD/MM/YYYY" → lấy phần ngày cuối
-      const endDatePart = endDateRaw.includes(' ') ? endDateRaw.split(' ').slice(-1)[0] : endDateRaw;
-      const endDateForName = endDatePart.replace(/\//g, '-'); // DD-MM-YYYY
-      const nameParts = [
-        result.componentName || 'BienBan',
-        result.pileId || '',
-        result.diameter || '',
-        endDateForName || '',
-      ].filter(Boolean).join('_').replace(/\s+/g, '_');
-      a.download = `${nameParts}.xlsx`;
+      // Tên file chuẩn dùng chung buildExcelFileName
+      a.download = `${buildExcelFileName(result)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     }).catch((err) => { console.error(err); alert('Không thể tải thư viện xuất Excel. Vui lòng kiểm tra kết nối mạng.'); });
