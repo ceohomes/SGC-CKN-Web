@@ -2758,6 +2758,9 @@ function EditSplitView({
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const PDF_RENDER_WIDTH = 2400;
   const PDF_DISPLAY_WIDTH = 600;
 
