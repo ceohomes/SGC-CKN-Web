@@ -552,11 +552,14 @@ QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
    - "reportNumber" (Biên bản số): Trích xuất từ dòng "Biên bản số: ...". (ví dụ: "01/BB-TDC").
    - "diameter" (Đường kính): Trích xuất từ dòng "Đường kính: ...". (ví dụ: "D2000").
 
-2. ĐỊA TẦNG:
-   - Tìm bảng "Lớp thiết kế" để lấy bảng tra cứu "designLayerMap" (key là số hiệu lớp "1", "2", "3"..., value là mô tả địa chất thiết kế tương ứng).
-   - "designLayerCode": Là số hiệu lớp thiết kế (thường lấy từ cột đầu tiên của bảng hoặc suy luận từ bảng tra cứu).
+2. ĐỊA TẦNG VÀ BẢNG TRA CỨU (CỰC KỲ QUAN TRỌNG):
+   - BƯỚC 1: Tìm bảng "Căn cứ Hồ sơ BVBPCT được duyệt" (thường nằm ở phía trên bên trái). Đây là bảng quy định mô tả địa chất cho từng lớp.
+   - BƯỚC 2: Trích xuất bảng này thành "designLayerMap". Ví dụ: { "1": "Sét pha màu xám đen...", "2": "Sét màu xám ghi...", "3": "Cát xám ghi..." }. PHẢI ĐỐI CHIẾU TỪNG DÒNG, KHÔNG ĐƯỢC NHẦM LẪN.
+   - BƯỚC 3: Khi trích xuất các dòng trong bảng "Chi tiết các lớp địa chất" (bảng chính bên dưới):
+     - "actualGeology": Lấy số hiệu từ cột "Địa chất thực tế" (ví dụ: "1", "2").
+     - "layerDesign": BẮT BUỘC phải lấy mô tả tương ứng với số hiệu đó từ bảng "designLayerMap" đã trích xuất ở Bước 2. Đây chính là logic VLOOKUP.
+   - "designLayerCode": Là số hiệu lớp thiết kế (lấy từ cột đầu tiên của bảng tra cứu).
    - "actualGeology": Trích xuất CHÍNH XÁC số hiệu từ cột "Địa chất thực tế". Đây PHẢI là một con số (ví dụ: "1", "2", "3"). TUYỆT ĐỐI KHÔNG trích xuất mô tả bằng chữ vào ô này.
-   - "layerDesign": Là mô tả địa chất thiết kế tương ứng với số hiệu lớp đó (lấy từ bảng tra cứu "designLayerMap").
    - "layerNumber": Số thứ tự dòng trong bảng (1, 2, 3...).
 
 3. TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
@@ -644,26 +647,24 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
   if (!text) throw new Error("Không có phản hồi từ AI");
   const rawData = JSON.parse(text);
 
-  // Post-process: đảm bảo layerDesign nhất quán theo designLayerCode
-  // Ưu tiên 1: designLayerMap do AI tạo ra (bảng tra cứu chính xác nhất)
-  // Ưu tiên 2: first-occurrence từ layers (fallback)
-  const aiLayerMap: Record<string, string> = {};
+  // Post-process: đảm bảo layerDesign nhất quán theo actualGeology (VLOOKUP logic)
+  // Ưu tiên 1: designLayerMap do AI trích xuất từ bảng tra cứu "Căn cứ Hồ sơ..."
+  const vlookupMap: Record<string, string> = {};
   if (rawData.designLayerMap && typeof rawData.designLayerMap === 'object') {
     Object.entries(rawData.designLayerMap).forEach(([code, desc]) => {
-      if (code && desc) aiLayerMap[code.toString().trim()] = desc as string;
+      if (code && desc) vlookupMap[code.toString().trim()] = desc as string;
     });
   }
 
-  // Fallback: lấy first-occurrence từ layers nếu AI map thiếu
-  const layerDesignMap: Record<string, string> = { ...aiLayerMap };
-  rawData.layers.forEach((layer: any) => {
-    const code = layer.designLayerCode?.toString().trim() || '';
-    if (code && !layerDesignMap[code] && layer.layerDesign) {
-      layerDesignMap[code] = layer.layerDesign;
-    }
-  });
-
   const processedLayers = rawData.layers.map((layer: any) => {
+    const geoCode = (layer.actualGeology || '').toString().trim();
+    
+    // Áp dụng VLOOKUP: Nếu mã địa chất thực tế có trong bảng tra cứu, lấy mô tả từ đó
+    if (geoCode && vlookupMap[geoCode]) {
+      layer.layerDesign = vlookupMap[geoCode];
+      layer.designLayerCode = geoCode; // Đồng bộ luôn mã thiết kế
+    }
+
     const startMinutes = parseTimeToMinutes(layer.timeFrom);
     const endMinutes = parseTimeToMinutes(layer.timeTo);
     let durationMinutes = endMinutes - startMinutes;
@@ -673,18 +674,12 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
     const length = Math.abs(layer.elevationTo - layer.elevationFrom);
     const speed = durationHours > 0 ? length / durationHours : 0;
 
-    const code = layer.designLayerCode?.toString().trim() || '';
-    // Gán lại layerDesign nhất quán theo designLayerCode
-    const consistentLayerDesign = (code && layerDesignMap[code]) ? layerDesignMap[code] : layer.layerDesign;
-
     // Giữ nguyên actualGeology từ AI (đã yêu cầu lấy số hiệu lớp "1", "2"...)
     const cleanGeo = (layer.actualGeology || '').toString().trim();
 
     return {
       ...layer,
       actualGeology: cleanGeo,
-      designLayerCode: code,
-      layerDesign: consistentLayerDesign,
       project: rawData.project,
       item: rawData.item,
       componentName: rawData.componentName,
@@ -1315,9 +1310,18 @@ export default function App() {
             const map = rawResult.designLayerMap || {};
             const normalizedLayers = (rawResult.layers || []).map(layer => {
               const geoCode = (layer.actualGeology || '').trim();
-              // Nếu tìm thấy mô tả trong bảng tra cứu thì ưu tiên sử dụng
+              const currentDesign = (layer.layerDesign || '').trim();
+              
+              // Nếu dòng đã có mô tả và mô tả đó dài hơn/chi tiết hơn Map, giữ nguyên dòng
               if (geoCode && map[geoCode]) {
-                return { ...layer, layerDesign: map[geoCode] };
+                if (!currentDesign || currentDesign.length < 5) {
+                  return { ...layer, layerDesign: map[geoCode] };
+                }
+                // Nếu mô tả dòng và Map khác nhau, ưu tiên Map vì người dùng muốn tính nhất quán (VLOOKUP)
+                // Nhưng chỉ khi Map có dữ liệu thực sự khác biệt
+                if (currentDesign !== map[geoCode]) {
+                  return { ...layer, layerDesign: map[geoCode] };
+                }
               }
               return layer;
             });
@@ -3705,8 +3709,12 @@ function EditSplitView({
       const map = rawResult.designLayerMap || {};
       const normalizedLayers = (rawResult.layers || []).map(layer => {
         const geoCode = (layer.actualGeology || '').trim();
+        const currentDesign = (layer.layerDesign || '').trim();
+        
         if (geoCode && map[geoCode]) {
-          return { ...layer, layerDesign: map[geoCode] };
+          if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
+            return { ...layer, layerDesign: map[geoCode] };
+          }
         }
         return layer;
       });
