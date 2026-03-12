@@ -72,7 +72,47 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 
 // Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version || '4.4.168'}/build/pdf.worker.min.mjs`;
+
+// Helper: Chuyển đổi PDF sang ảnh (JPEG) để nhúng vào Excel
+const convertPdfToImage = async (data: ArrayBuffer | Blob | File | string): Promise<string> => {
+  try {
+    let arrayBuffer: ArrayBuffer;
+    if (typeof data === 'string') {
+      // Hỗ trợ cả data URL và base64 thô
+      const base64 = data.includes(',') ? data.split(',')[1] : data;
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      arrayBuffer = bytes.buffer;
+    } else if (data instanceof ArrayBuffer) {
+      arrayBuffer = data;
+    } else {
+      arrayBuffer = await data.arrayBuffer();
+    }
+
+    const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    if (context) {
+      await (page as any).render({ canvasContext: context, viewport }).promise;
+      return canvas.toDataURL('image/jpeg', 0.8);
+    }
+    throw new Error("Không thể tạo context canvas");
+  } catch (err) {
+    console.error("PDF to Image conversion error:", err);
+    throw err;
+  }
+};
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -290,9 +330,11 @@ QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
    - "diameter" (Đường kính): Trích xuất từ dòng "Đường kính: ...". (ví dụ: "D2000").
 
 2. ĐỊA TẦNG:
-   - Tìm bảng "Lớp thiết kế" để lấy mô tả cho "designLayerMap".
-   - Cột "Địa chất thực tế" có dạng "X (Y)": X là designLayerCode, Y là layerNumber.
-   - "layerDesign" PHẢI khớp với mô tả của lớp X trong bảng tra cứu.
+   - Tìm bảng "Lớp thiết kế" để lấy bảng tra cứu "designLayerMap" (key là số hiệu lớp "1", "2", "3"..., value là mô tả địa chất thiết kế tương ứng).
+   - "designLayerCode": Là số hiệu lớp thiết kế (thường lấy từ cột đầu tiên của bảng hoặc suy luận từ bảng tra cứu).
+   - "actualGeology": Trích xuất CHÍNH XÁC số hiệu từ cột "Địa chất thực tế". Đây PHẢI là một con số (ví dụ: "1", "2", "3"). TUYỆT ĐỐI KHÔNG trích xuất mô tả bằng chữ vào ô này.
+   - "layerDesign": Là mô tả địa chất thiết kế tương ứng với số hiệu lớp đó (lấy từ bảng tra cứu "designLayerMap").
+   - "layerNumber": Số thứ tự dòng trong bảng (1, 2, 3...).
 
 3. TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
    - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55).
@@ -362,7 +404,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
                 dateTo: { type: Type.STRING },
                 elevationFrom: { type: Type.NUMBER },
                 elevationTo: { type: Type.NUMBER },
-                actualGeology: { type: Type.STRING },
+                actualGeology: { type: Type.STRING, description: "Số hiệu lớp địa chất thực tế (ví dụ: \"1\", \"2\"). Tuyệt đối không lấy mô tả chữ." },
                 notes: { type: Type.STRING, description: "Ghi chú cho lớp địa chất này (nếu có)" }
               },
               required: ["layerNumber", "designLayerCode", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
@@ -412,7 +454,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
     // Gán lại layerDesign nhất quán theo designLayerCode
     const consistentLayerDesign = (code && layerDesignMap[code]) ? layerDesignMap[code] : layer.layerDesign;
 
-    // Giữ nguyên actualGeology từ AI (đã yêu cầu lấy full "1 (1)")
+    // Giữ nguyên actualGeology từ AI (đã yêu cầu lấy số hiệu lớp "1", "2"...)
     const cleanGeo = (layer.actualGeology || '').toString().trim();
 
     return {
@@ -445,6 +487,124 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
 };
 
 // --- Components ---
+
+// --- Utilities ---
+const expandYear = (val: string) => {
+  if (!val) return val;
+  const parts = val.split(/[/.-]/);
+  if (parts.length === 3) {
+    let [d, m, y] = parts;
+    if (y.length === 2) {
+      y = '20' + y;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+  }
+  return val;
+};
+
+// --- Components ---
+const SmartDateInput = ({ 
+  label, 
+  value, 
+  onChange 
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (val: string) => void;
+}) => {
+  const [inputValue, setInputValue] = useState('');
+  const dateRef = useRef<HTMLInputElement>(null);
+
+  // Sync internal input value with external value (YYYY-MM-DD -> DD/MM/YYYY)
+  useEffect(() => {
+    if (value && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [y, m, d] = value.split('-');
+      setInputValue(`${d}/${m}/${y}`);
+    } else if (!value) {
+      setInputValue('');
+    }
+  }, [value]);
+
+  const handleBlur = () => {
+    const expanded = expandYear(inputValue);
+    if (expanded !== inputValue) {
+      setInputValue(expanded);
+    }
+
+    if (!expanded) {
+      onChange('');
+      return;
+    }
+
+    const parts = expanded.split(/[/.-]/);
+    if (parts.length === 3) {
+      let [d, m, y] = parts;
+      if (y.length === 4 && d.length <= 2 && m.length <= 2) {
+        const day = d.padStart(2, '0');
+        const month = m.padStart(2, '0');
+        const year = y;
+        const isoDate = `${year}-${month}-${day}`;
+        
+        const date = new Date(isoDate);
+        if (!isNaN(date.getTime())) {
+          onChange(isoDate);
+          setInputValue(`${day}/${month}/${year}`);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value; // YYYY-MM-DD
+    onChange(val);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">{label}</label>
+      <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
+        <button 
+          type="button"
+          onClick={() => {
+            try {
+              // @ts-ignore
+              if (dateRef.current?.showPicker) {
+                // @ts-ignore
+                dateRef.current.showPicker();
+              } else {
+                dateRef.current?.focus();
+              }
+            } catch (e) {
+              dateRef.current?.focus();
+            }
+          }}
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-500 transition-colors"
+        >
+          <Calendar size={12} />
+        </button>
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleBlur();
+          }}
+          placeholder="dd/mm/yyyy"
+          className="w-full pl-9 pr-3.5 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium"
+        />
+        <input 
+          type="date"
+          ref={dateRef}
+          value={value}
+          onChange={handleNativeChange}
+          className="absolute opacity-0 pointer-events-none w-0 h-0"
+        />
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
@@ -769,54 +929,65 @@ export default function App() {
 
     const collectedResults: ExtractionResult[] = [];
 
-    const processFile = async (pFile: ProcessingFile, file: File) => {
-      setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
+        const processFile = async (pFile: ProcessingFile, file: File) => {
+          setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
 
-      try {
-        const getBase64 = (file: File): Promise<string> => {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-          });
-        };
-
-        const compressImage = (file: File): Promise<string> => {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-              const img = new Image();
-              img.src = event.target?.result as string;
-              img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 2000;
-                const MAX_HEIGHT = 2000;
-                let width = img.width;
-                let height = img.height;
-                if (width > height) {
-                  if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                } else {
-                  if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.8));
-              };
-              img.onerror = reject;
+          try {
+            const getBase64 = (file: File): Promise<string> => {
+              return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+              });
             };
-            reader.onerror = reject;
-          });
-        };
 
-        let base64 = "";
+            const compressImage = (file: File): Promise<string> => {
+              return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                  const img = new Image();
+                  img.src = event.target?.result as string;
+                  img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 2000;
+                    const MAX_HEIGHT = 2000;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > height) {
+                      if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    } else {
+                      if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                  };
+                  img.onerror = reject;
+                };
+                reader.onerror = reject;
+              });
+            };
+
+            let base64 = "";
         let mimeType = file.type;
+        let fileName = file.name;
 
         if (file.type === "application/pdf") {
-          base64 = await getBase64(file);
+          try {
+            // Chuyển PDF sang ảnh để tự động đưa vào Excel khi tải xuống
+            base64 = await convertPdfToImage(file);
+            mimeType = "image/jpeg"; // Chuyển thành image/jpeg để Gemini và Excel xử lý như ảnh
+            // Đổi đuôi file thành .jpg để đồng bộ
+            fileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+          } catch (e) {
+            console.error("PDF to Image conversion failed during upload, using raw PDF:", e);
+            base64 = await getBase64(file);
+            mimeType = "application/pdf";
+          }
         } else if (file.type.startsWith("image/")) {
           base64 = await compressImage(file);
           mimeType = "image/jpeg"; // Standardize to jpeg after compression
@@ -833,7 +1004,7 @@ export default function App() {
           ...rawResult,
           id: Math.random().toString(36).substring(7),
           timestamp: Date.now(),
-          fileName: file.name,
+          fileName: fileName,
           _base64: base64,      // Lưu tạm để upload GitHub sau khi xác nhận
           _mimeType: mimeType,
         };
@@ -1513,23 +1684,24 @@ export default function App() {
 
                 {/* Filter Panel */}
                 {showFilters && (
-                  <div className="rounded-2xl border border-[#1e3a5f] shadow-md animate-in fade-in slide-in-from-top-2 duration-200" style={{ background: 'linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)', overflow: 'visible' }}>
-                    <div className="px-6 py-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" style={{ overflow: 'visible' }}>
+                  <div className="rounded-2xl border border-slate-300/50 bg-[#f5f2e1] shadow-xl animate-in fade-in slide-in-from-top-2 duration-200" style={{ overflow: 'visible' }}>
+                    <div className="px-6 py-5 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5" style={{ overflow: 'visible' }}>
                       {/* Dự án - Dropdown + Search */}
                       {(() => {
                         const opts = [...new Set(history.map(r => r.project).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterProject.toLowerCase()));
                         return (
-                          <div className="space-y-1.5 relative" ref={projectDropdownRef}>
-                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Dự án</label>
-                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showProjectDropdown ? "border-blue-300" : "border-white/20")}>
-                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                          <div className="space-y-2 relative" ref={projectDropdownRef}>
+                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Dự án</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showProjectDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
+                              <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterProject} onChange={e => { setFilterProject(e.target.value); setShowProjectDropdown(true); }} onFocus={() => setShowProjectDropdown(true)}
-                                placeholder="Gõ để lọc dự án..."
-                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
-                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                {filterProject && <button onClick={() => { setFilterProject(''); setShowProjectDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
-                                <button onClick={() => setShowProjectDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showProjectDropdown && "rotate-180")} /></button>
+                                placeholder="Tìm kiếm dự án..."
+                                className="w-full pl-9 pr-14 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                {filterProject && <button onClick={() => { setFilterProject(''); setShowProjectDropdown(false); }} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                                <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                                <button onClick={() => setShowProjectDropdown(p => !p)} className="p-1 text-slate-400 hover:text-blue-600 transition-colors"><ChevronDown size={14} className={cn("transition-transform duration-300", showProjectDropdown && "rotate-180")} /></button>
                               </div>
                             </div>
                             {showProjectDropdown && (
@@ -1564,16 +1736,17 @@ export default function App() {
                         const opts = [...new Set(history.map(r => r.item).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterItem.toLowerCase()));
                         return (
-                          <div className="space-y-1.5 relative" ref={itemDropdownRef}>
-                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Hạng mục</label>
-                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showItemDropdown ? "border-blue-300" : "border-white/20")}>
-                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                          <div className="space-y-2 relative" ref={itemDropdownRef}>
+                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Hạng mục</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showItemDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
+                              <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterItem} onChange={e => { setFilterItem(e.target.value); setShowItemDropdown(true); }} onFocus={() => setShowItemDropdown(true)}
-                                placeholder="Gõ để lọc hạng mục..."
-                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
-                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                {filterItem && <button onClick={() => { setFilterItem(''); setShowItemDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
-                                <button onClick={() => setShowItemDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showItemDropdown && "rotate-180")} /></button>
+                                placeholder="Tìm kiếm hạng mục..."
+                                className="w-full pl-9 pr-14 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                {filterItem && <button onClick={() => { setFilterItem(''); setShowItemDropdown(false); }} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                                <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                                <button onClick={() => setShowItemDropdown(p => !p)} className="p-1 text-slate-400 hover:text-blue-600 transition-colors"><ChevronDown size={14} className={cn("transition-transform duration-300", showItemDropdown && "rotate-180")} /></button>
                               </div>
                             </div>
                             {showItemDropdown && (
@@ -1604,23 +1777,23 @@ export default function App() {
                         );
                       })()}
                       {/* Tên bộ phận */}
-                      <div className="space-y-1.5">
-                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Tên bộ phận</label>
-                        <div className="relative border border-white/20 rounded-xl bg-white/10 focus-within:bg-white/20 focus-within:border-blue-300 transition-all">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
-                          <input value={filterComponentName} onChange={e => setFilterComponentName(e.target.value)} placeholder="Gõ để lọc tên bộ phận..."
-                            className="w-full pl-8 pr-8 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
-                          {filterComponentName && <button onClick={() => setFilterComponentName('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Tên bộ phận</label>
+                        <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
+                          <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          <input value={filterComponentName} onChange={e => setFilterComponentName(e.target.value)} placeholder="Tìm kiếm tên bộ phận..."
+                            className="w-full pl-9 pr-9 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                          {filterComponentName && <button onClick={() => setFilterComponentName('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
                       {/* Biên bản số */}
-                      <div className="space-y-1.5">
-                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Biên bản số</label>
-                        <div className="relative border border-white/20 rounded-xl bg-white/10 focus-within:bg-white/20 focus-within:border-blue-300 transition-all">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
-                          <input value={filterReportNumber} onChange={e => setFilterReportNumber(e.target.value)} placeholder="Gõ để lọc biên bản..."
-                            className="w-full pl-8 pr-8 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
-                          {filterReportNumber && <button onClick={() => setFilterReportNumber('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Biên bản số</label>
+                        <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
+                          <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          <input value={filterReportNumber} onChange={e => setFilterReportNumber(e.target.value)} placeholder="Tìm kiếm biên bản..."
+                            className="w-full pl-9 pr-9 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                          {filterReportNumber && <button onClick={() => setFilterReportNumber('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
                       {/* Đường kính - Dropdown + Search */}
@@ -1628,16 +1801,17 @@ export default function App() {
                         const opts = [...new Set(history.map(r => r.diameter).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterDiameter.toLowerCase()));
                         return (
-                          <div className="space-y-1.5 relative" ref={diameterDropdownRef}>
-                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Đường kính</label>
-                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showDiameterDropdown ? "border-blue-300" : "border-white/20")}>
-                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                          <div className="space-y-2 relative" ref={diameterDropdownRef}>
+                            <label className="text-[10px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Đường kính</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showDiameterDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
+                              <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               <input value={filterDiameter} onChange={e => { setFilterDiameter(e.target.value); setShowDiameterDropdown(true); }} onFocus={() => setShowDiameterDropdown(true)}
-                                placeholder="Gõ để lọc đường kính..."
-                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
-                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                {filterDiameter && <button onClick={() => { setFilterDiameter(''); setShowDiameterDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
-                                <button onClick={() => setShowDiameterDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showDiameterDropdown && "rotate-180")} /></button>
+                                placeholder="Tìm kiếm đường kính..."
+                                className="w-full pl-9 pr-14 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                {filterDiameter && <button onClick={() => { setFilterDiameter(''); setShowDiameterDropdown(false); }} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                                <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                                <button onClick={() => setShowDiameterDropdown(p => !p)} className="p-1 text-slate-400 hover:text-blue-600 transition-colors"><ChevronDown size={14} className={cn("transition-transform duration-300", showDiameterDropdown && "rotate-180")} /></button>
                               </div>
                             </div>
                             {showDiameterDropdown && (
@@ -1668,17 +1842,17 @@ export default function App() {
                         );
                       })()}
                       {/* Ngày kết thúc từ */}
-                      <div className="space-y-1.5">
-                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Ngày kết thúc từ</label>
-                        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-                          className="w-full px-3 py-2 text-[12px] border border-white/20 rounded-xl bg-white/10 focus:bg-white/20 focus:border-blue-300 outline-none transition-all text-white [color-scheme:dark]" />
-                      </div>
+                      <SmartDateInput 
+                        label="Ngày kết thúc từ"
+                        value={filterDateFrom}
+                        onChange={setFilterDateFrom}
+                      />
                       {/* Ngày kết thúc đến */}
-                      <div className="space-y-1.5">
-                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Ngày kết thúc đến</label>
-                        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-                          className="w-full px-3 py-2 text-[12px] border border-white/20 rounded-xl bg-white/10 focus:bg-white/20 focus:border-blue-300 outline-none transition-all text-white [color-scheme:dark]" />
-                      </div>
+                      <SmartDateInput 
+                        label="Ngày kết thúc đến"
+                        value={filterDateTo}
+                        onChange={setFilterDateTo}
+                      />
                     </div>
                   </div>
                 )}
@@ -2528,11 +2702,31 @@ function EditSplitView({
   // Tự động lấy ảnh từ GitHub Contents API (hỗ trợ CORS)
   const fetchImageFromGitHub = async (): Promise<{ base64: string; ext: string } | null> => {
     try {
+      // 1. Ưu tiên dùng _base64 nếu có (đối với file mới upload chưa lưu hoặc còn cache)
+      if (data._base64) {
+        const parts = data._base64.split(',');
+        if (parts.length > 1) {
+          const mime = data._mimeType || '';
+          const isPdf = mime === 'application/pdf' || data.fileName?.toLowerCase().endsWith('.pdf');
+          
+          if (isPdf && !mime.startsWith('image/')) {
+            // Nếu là PDF thực sự (chưa được convert thành image/jpeg ở handleFileUpload)
+            try {
+              const imgBase64 = await convertPdfToImage(data._base64);
+              return { base64: imgBase64.split(',')[1], ext: 'jpeg' };
+            } catch (e) {
+              console.error("Failed to convert cached PDF:", e);
+            }
+          } else {
+            // Nếu là ảnh (hoặc PDF đã convert thành image/jpeg ở handleFileUpload)
+            const ext = mime.includes('png') ? 'png' : 'jpeg';
+            return { base64: parts[1], ext };
+          }
+        }
+      }
+
       const url = data.fileUrl;
       if (!url) return null;
-
-      // Bỏ qua PDF — không thể đưa vào Excel dạng ảnh
-      if (url.toLowerCase().includes('.pdf')) return null;
 
       // Chuẩn hoá URL về dạng raw.githubusercontent.com
       let rawUrl = url;
@@ -2541,7 +2735,8 @@ function EditSplitView({
       }
 
       const cleanUrl = rawUrl.split('?')[0].toLowerCase();
-      const ext = cleanUrl.endsWith('.png') ? 'png' : 'jpeg';
+      const isPdf = cleanUrl.endsWith('.pdf') || url.includes('application/pdf');
+      const ext = isPdf ? 'jpeg' : (cleanUrl.endsWith('.png') ? 'png' : 'jpeg');
 
       // Helper: ArrayBuffer → base64
       const toBase64 = (buf: ArrayBuffer): string => {
@@ -2551,12 +2746,28 @@ function EditSplitView({
         return btoa(bin);
       };
 
+      // Helper: Xử lý buffer (nếu là PDF thì convert sang ảnh)
+      const processBuffer = async (buf: ArrayBuffer): Promise<{ base64: string; ext: string }> => {
+        if (isPdf) {
+          try {
+            console.log("Đang chuyển đổi PDF từ GitHub sang ảnh để nhúng Excel...");
+            const imgBase64 = await convertPdfToImage(buf);
+            return { base64: imgBase64.split(',')[1], ext: 'jpeg' };
+          } catch (e) {
+            console.error("Lỗi chuyển đổi PDF sang ảnh từ buffer:", e);
+            // Nếu lỗi convert, trả về null để Excel vẫn xuất được data (không có ảnh)
+            throw e; 
+          }
+        }
+        return { base64: toBase64(buf), ext };
+      };
+
       // ── Chiến lược 1: Cloudflare Proxy (đọc GITHUB_TOKEN từ server, không CORS) ──
       try {
-        const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(rawUrl)}`);
+        const proxyResp = await fetch(`/api/proxy/github?url=${encodeURIComponent(rawUrl)}`);
         if (proxyResp.ok) {
           const buf = await proxyResp.arrayBuffer();
-          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+          if (buf.byteLength > 100) return await processBuffer(buf);
         }
       } catch { /* thử cách khác */ }
 
@@ -2567,7 +2778,7 @@ function EditSplitView({
         const directResp = await fetch(rawUrl, { headers, cache: 'no-store' });
         if (directResp.ok) {
           const buf = await directResp.arrayBuffer();
-          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+          if (buf.byteLength > 100) return await processBuffer(buf);
         }
       } catch { /* thử cách khác */ }
 
@@ -2585,7 +2796,7 @@ function EditSplitView({
           );
           if (apiResp.ok) {
             const buf = await apiResp.arrayBuffer();
-            if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+            if (buf.byteLength > 100) return await processBuffer(buf);
           }
         } catch { /* thất bại */ }
       }
@@ -2715,17 +2926,21 @@ function EditSplitView({
           const startRow = 11 + result.layers.length + 2; // sau bảng data
           // Thêm tiêu đề ảnh
           const titleRow = ws1.getRow(startRow);
-          titleRow.height = 20;
+          titleRow.height = 25;
           applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
           ws1.mergeCells(startRow, 1, startRow, 11);
 
+          // Nhúng ảnh vào dòng ngay sau tiêu đề
+          // tl.row là 0-indexed, startRow là 1-indexed (dòng tiêu đề).
+          // Vậy tl.row = startRow đặt ảnh bắt đầu từ dòng ngay sau tiêu đề.
           ws1.addImage(imgId, {
-            tl: { col: 0, row: startRow }, // bắt đầu từ cột A
-            ext: { width: 900, height: 1200 }, // kích thước ảnh A4
+            tl: { col: 0, row: startRow }, 
+            ext: { width: 850, height: 1100 }, 
           });
-          // Giãn các dòng để chứa ảnh (~1200px / 72dpi * 72 ≈ 900pt)
-          for (let i = startRow + 1; i <= startRow + 50; i++) {
-            ws1.getRow(i).height = 18;
+
+          // Giãn các dòng để chứa ảnh (~1100px)
+          for (let i = startRow + 1; i <= startRow + 60; i++) {
+            ws1.getRow(i).height = 20;
           }
         }
       }
@@ -2865,7 +3080,14 @@ function EditSplitView({
   useEffect(() => {
     async function loadFile() {
       if (!data.fileUrl) {
-        setDisplayUrl(null);
+        if (data._base64) {
+          setDisplayUrl(data._base64);
+          // Nếu là PDF chưa convert (trường hợp cũ) thì vẫn hiện PDF, 
+          // nhưng với logic mới PDF đã thành image/jpeg
+          setIsPdf(data._mimeType === 'application/pdf');
+        } else {
+          setDisplayUrl(null);
+        }
         setLoadError(null);
         return;
       }
@@ -2885,7 +3107,7 @@ function EditSplitView({
     }
 
     loadFile();
-  }, [data.fileUrl]);
+  }, [data.fileUrl, data._base64, data._mimeType]);
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 8));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.2));
@@ -2933,10 +3155,11 @@ function EditSplitView({
     const newLayers = [...data.layers];
     newLayers[idx] = { ...newLayers[idx], [field]: value };
     
-    // Nếu thay đổi actualGeology dạng "1 (1)", tự động cập nhật designLayerCode và layerDesign
+    // Nếu thay đổi actualGeology, tự động cập nhật designLayerCode và layerDesign
     if (field === 'actualGeology') {
       const val = value.toString().trim();
-      const match = val.match(/^(\d+)\s*\((.*)\)$/);
+      // Chấp nhận cả dạng "1" hoặc "1 (2)"
+      const match = val.match(/^(\d+)/);
       if (match) {
         const code = match[1];
         newLayers[idx].designLayerCode = code;
@@ -3114,6 +3337,26 @@ function EditSplitView({
                 placeholder="VD: D2000"
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
+              <input 
+                value={data.constructionStart} 
+                onChange={(e) => updateField('constructionStart', e.target.value)}
+                onBlur={(e) => updateField('constructionStart', expandYear(e.target.value))}
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+                placeholder="HH:mm dd/mm/yyyy"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
+              <input 
+                value={data.constructionEnd} 
+                onChange={(e) => updateField('constructionEnd', e.target.value)}
+                onBlur={(e) => updateField('constructionEnd', expandYear(e.target.value))}
+                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+                placeholder="HH:mm dd/mm/yyyy"
+              />
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -3211,6 +3454,7 @@ function EditSplitView({
                               type="text"
                               value={layer.dateFrom || ''} 
                               onChange={(e) => updateLayer(idx, 'dateFrom', e.target.value)}
+                              onBlur={(e) => updateLayer(idx, 'dateFrom', expandYear(e.target.value))}
                               className="w-full bg-transparent border-none text-[10px] text-slate-500 font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
                               placeholder="dd/mm/yyyy"
                             />
@@ -3229,6 +3473,7 @@ function EditSplitView({
                               type="text"
                               value={layer.dateTo || ''} 
                               onChange={(e) => updateLayer(idx, 'dateTo', e.target.value)}
+                              onBlur={(e) => updateLayer(idx, 'dateTo', expandYear(e.target.value))}
                               className="w-full bg-transparent border-none text-[10px] text-slate-500 font-normal focus:bg-white px-1 py-0 text-center outline-none transition-all"
                               placeholder="dd/mm/yyyy"
                             />
