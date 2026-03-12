@@ -724,6 +724,11 @@ export default function App() {
   const [history, setHistory] = useState<ExtractionResult[]>([]);
   const [processingFiles, setProcessingFiles] = useState<ProcessingFile[]>([]);
   const [pendingResults, setPendingResults] = useState<ExtractionResult[]>([]);
+  const [conflictDialog, setConflictDialog] = useState<{
+    result: ExtractionResult;
+    conflicts: { geology: string; designs: string[] }[];
+    onForce: () => void;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userApiKey, setUserApiKey] = useState<string>('');
   const [customLogo, setCustomLogo] = useState<string | null>(null);
@@ -1475,7 +1480,40 @@ export default function App() {
     }
   };
 
-  const saveResult = async (result: ExtractionResult) => {
+  // ── Kiểm tra tính nhất quán: cùng số TT địa chất → mô tả lớp thiết kế phải giống nhau ──
+  const validateLayerConsistency = (result: ExtractionResult): { valid: boolean; conflicts: { geology: string; designs: string[] }[] } => {
+    const map: Record<string, Set<string>> = {};
+    (result.layers || []).forEach(layer => {
+      const geo = (layer.actualGeology || '').trim();
+      const design = (layer.layerDesign || '').trim();
+      if (!geo || !design) return;
+      if (!map[geo]) map[geo] = new Set();
+      map[geo].add(design);
+    });
+    const conflicts = Object.entries(map)
+      .filter(([, designs]) => designs.size > 1)
+      .map(([geology, designs]) => ({ geology, designs: Array.from(designs) }));
+    return { valid: conflicts.length === 0, conflicts };
+  };
+
+  const saveResult = async (result: ExtractionResult, skipValidation = false) => {
+    // ── Validate trước khi lưu: cùng số TT địa chất → lớp thiết kế phải nhất quán ──
+    if (!skipValidation) {
+      const { valid, conflicts } = validateLayerConsistency(result);
+      if (!valid) {
+        // Hiện dialog cảnh báo, không lưu ngay
+        setConflictDialog({
+          result,
+          conflicts,
+          onForce: () => {
+            setConflictDialog(null);
+            saveResult(result, true); // force save sau khi người dùng xác nhận
+          },
+        });
+        return;
+      }
+    }
+
     let finalResult = { ...result };
 
     // 1. Upload file lên GitHub (nếu chưa có fileUrl và có dữ liệu file)
@@ -1590,12 +1628,36 @@ export default function App() {
 
   const handleSaveAll = async () => {
     if (pendingResults.length === 0) return;
-    
+
+    // Kiểm tra tính nhất quán cho TẤT CẢ biên bản trước khi lưu
+    for (const r of pendingResults) {
+      const { valid, conflicts } = validateLayerConsistency(r);
+      if (!valid) {
+        // Dừng lại, hiện dialog cho biên bản bị lỗi
+        setConflictDialog({
+          result: r,
+          conflicts,
+          onForce: async () => {
+            setConflictDialog(null);
+            // Lưu biên bản này (bỏ qua validate) rồi tiếp tục
+            await saveResult(r, true);
+            // Tiếp tục lưu các biên bản còn lại
+            const remaining = pendingResults.filter(x => x.id !== r.id);
+            for (const rr of remaining) await saveResult(rr);
+            setPendingResults([]);
+            setProcessingFiles([]);
+            setIsProcessing(false);
+          },
+        });
+        return; // dừng, chờ người dùng xử lý
+      }
+    }
+
     setIsProcessing(true);
     const resultsToSave = [...pendingResults];
     
     for (const r of resultsToSave) {
-      await saveResult(r);
+      await saveResult(r, true); // đã validate ở trên rồi
     }
     
     setPendingResults([]);
@@ -2631,6 +2693,81 @@ export default function App() {
         </p>
       </footer>
 
+      {/* ── Conflict Dialog: cùng số TT địa chất nhưng lớp thiết kế khác nhau ── */}
+      {conflictDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <AlertCircle size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-white font-black text-[15px] uppercase tracking-tight">Phát hiện dữ liệu không nhất quán</h3>
+                <p className="text-orange-100 text-[11px] font-medium">AI có thể đã quét sai mô tả lớp địa chất</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-slate-700 text-sm font-medium">
+                Cùng <span className="font-black text-blue-700">số thứ tự địa chất thực tế</span> nhưng có <span className="font-black text-red-600">mô tả lớp thiết kế khác nhau</span>:
+              </p>
+
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {conflictDialog.conflicts.map(({ geology, designs }) => (
+                  <div key={geology} className="border border-red-200 rounded-xl overflow-hidden">
+                    <div className="bg-red-50 px-4 py-2 flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-full bg-red-500 text-white text-[12px] font-black flex items-center justify-center shrink-0">{geology}</span>
+                      <span className="text-red-700 font-black text-[12px] uppercase tracking-wider">Địa chất thực tế số {geology} — {designs.length} mô tả khác nhau</span>
+                    </div>
+                    <div className="divide-y divide-red-100">
+                      {designs.map((d, i) => (
+                        <div key={i} className="px-4 py-2 flex items-start gap-2">
+                          <span className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${i === 0 ? 'bg-blue-400' : 'bg-orange-400'}`} />
+                          <span className="text-slate-700 text-[12px]">{d}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-800 text-[12px] font-medium">
+                💡 Khuyến nghị: Kiểm tra lại biên bản gốc và chỉnh sửa trước khi lưu để đảm bảo dữ liệu chính xác.
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-5 flex gap-3">
+              <button
+                onClick={() => {
+                  setConflictDialog(null);
+                  // Mở edit modal để chỉnh sửa
+                  setEditingResult(JSON.parse(JSON.stringify(conflictDialog.result)));
+                  setIsEditModalOpen(true);
+                }}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+              >
+                <Edit2 size={14} /> Chỉnh sửa ngay
+              </button>
+              <button
+                onClick={conflictDialog.onForce}
+                className="flex-1 py-3 bg-orange-100 hover:bg-orange-200 text-orange-700 border border-orange-200 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all"
+              >
+                Vẫn lưu
+              </button>
+              <button
+                onClick={() => setConflictDialog(null)}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Split View Modal */}
       {isEditModalOpen && editingResult && (
         <EditSplitView 
@@ -2638,6 +2775,7 @@ export default function App() {
           onClose={() => { setIsEditModalOpen(false); setEditingResult(null); }}
           onSave={handleSaveEdit}
           githubCreds={githubCreds}
+          userApiKey={userApiKey}
         />
       )}
     </div>
@@ -2998,6 +3136,28 @@ function SummaryView({
     })
     .sort((a, b) => b.records.length - a.records.length);
 
+  // ── Phát hiện không nhất quán: cùng số TT địa chất, lớp thiết kế khác nhau ──
+  interface InconsistentRecord {
+    result: ExtractionResult;
+    conflicts: { geology: string; designs: string[] }[];
+  }
+  const inconsistentRecords: InconsistentRecord[] = history
+    .map(r => {
+      const map: Record<string, Set<string>> = {};
+      (r.layers || []).forEach(layer => {
+        const geo = (layer.actualGeology || '').trim();
+        const design = (layer.layerDesign || '').trim();
+        if (!geo || !design) return;
+        if (!map[geo]) map[geo] = new Set();
+        map[geo].add(design);
+      });
+      const conflicts = Object.entries(map)
+        .filter(([, d]) => d.size > 1)
+        .map(([geology, d]) => ({ geology, designs: Array.from(d) }));
+      return conflicts.length > 0 ? { result: r, conflicts } : null;
+    })
+    .filter(Boolean) as InconsistentRecord[];
+
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
@@ -3043,6 +3203,83 @@ function SummaryView({
       </div>
 
       {/* ── Cảnh báo trùng Hạng mục + Số hiệu cọc ── */}
+      {/* ── Cảnh báo không nhất quán địa chất ── */}
+      {inconsistentRecords.length > 0 && (
+        <div className="bg-red-50 border border-red-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-1.5 bg-red-500 rounded-lg">
+              <AlertCircle size={16} className="text-white" />
+            </div>
+            <h4 className="text-[11px] font-black text-red-800 uppercase tracking-widest">
+              Cảnh báo dữ liệu địa chất không nhất quán
+            </h4>
+            <span className="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {inconsistentRecords.length} biên bản lỗi
+            </span>
+          </div>
+          <p className="text-[11px] text-red-700 font-medium mb-4">
+            Các biên bản dưới đây có <strong>cùng số thứ tự địa chất thực tế</strong> nhưng <strong>mô tả lớp thiết kế khác nhau</strong> — AI có thể đã quét sai. Vui lòng quét lại hoặc chỉnh sửa thủ công.
+          </p>
+          <div className="space-y-3">
+            {inconsistentRecords.map(({ result: rec, conflicts }) => (
+              <div key={rec.id} className="bg-white border border-red-200 rounded-xl overflow-hidden shadow-sm">
+                {/* Biên bản header */}
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-red-100 border-b border-red-200">
+                  <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-black text-red-900 truncate max-w-xs">{rec.componentName || '(Chưa có)'}</span>
+                    {rec.pileId && <span className="text-[11px] font-black text-red-700 bg-red-200 px-2 py-0.5 rounded-full shrink-0">{rec.pileId}</span>}
+                    {rec.diameter && <span className="text-[10px] text-red-600 font-bold shrink-0">{rec.diameter}</span>}
+                    {rec.constructionEnd && <span className="text-[10px] text-red-500 font-medium shrink-0">{rec.constructionEnd}</span>}
+                  </div>
+                  <span className="text-[10px] font-black text-red-700 bg-red-200 px-2 py-0.5 rounded-full shrink-0">
+                    {conflicts.length} xung đột
+                  </span>
+                </div>
+
+                {/* Chi tiết các xung đột */}
+                <div className="divide-y divide-red-100">
+                  {conflicts.map(({ geology, designs }) => (
+                    <div key={geology} className="px-4 py-2.5 flex items-start gap-3">
+                      <span className="w-7 h-7 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center shrink-0 mt-0.5">
+                        {geology}
+                      </span>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-[10px] font-black text-red-700 uppercase tracking-wider">Địa chất TT số {geology} — {designs.length} mô tả khác nhau:</p>
+                        {designs.map((d, di) => (
+                          <div key={di} className="flex items-start gap-2">
+                            <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${di === 0 ? 'bg-blue-400' : 'bg-orange-400'}`} />
+                            <span className="text-[11px] text-slate-700">{d}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Action buttons */}
+                <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-center gap-2 justify-end">
+                  <span className="text-[10px] text-red-500 font-medium flex-1">
+                    BB: {rec.reportNumber || '—'} · {rec.constructionStart || '—'} → {rec.constructionEnd || '—'}
+                  </span>
+                  <button
+                    onClick={() => onEdit(rec)}
+                    className="px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                  >
+                    <RotateCcw size={11} /> Quét lại AI
+                  </button>
+                  <button
+                    onClick={() => onEdit(rec)}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                  >
+                    <Edit2 size={11} /> Chỉnh sửa
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {duplicateGroups.length > 0 && (
         <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="flex items-center gap-2 mb-4">
@@ -3199,10 +3436,51 @@ function EditSplitView({
   onSave: (res: ExtractionResult) => void;
   embedded?: boolean;
   githubCreds?: { token: string; username: string; repo: string } | null;
+  userApiKey?: string;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   const [zoom, setZoom] = useState(1);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const [rescanStatus, setRescanStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // ── Quét lại toàn bộ dữ liệu bằng AI từ ảnh biên bản ──
+  const rescanWithAI = async (apiKey?: string) => { // apiKey = userApiKey từ App
+    setIsRescanning(true);
+    setRescanStatus('idle');
+    try {
+      // Bước 1: Lấy ảnh (từ _base64 cache hoặc GitHub)
+      const img = await fetchImageFromGitHub();
+      if (!img) {
+        alert('❌ Không tìm thấy ảnh biên bản để quét lại. Vui lòng kiểm tra kết nối GitHub.');
+        setRescanStatus('error');
+        return;
+      }
+
+      // Bước 2: Gọi AI trích xuất lại
+      const base64Full = `data:image/${img.ext};base64,${img.base64}`;
+      const rawResult = await extractDataFromFile(base64Full, `image/${img.ext}`, apiKey);
+
+      // Bước 3: Merge kết quả mới vào data hiện tại (giữ nguyên id, timestamp, fileUrl, excelUrl)
+      setData(prev => ({
+        ...rawResult,
+        id: prev.id,
+        timestamp: prev.timestamp,
+        fileUrl: prev.fileUrl,
+        excelUrl: prev.excelUrl,
+        fileName: prev.fileName,
+        _base64: prev._base64,
+        _mimeType: prev._mimeType,
+      }));
+      setRescanStatus('success');
+    } catch (err: any) {
+      console.error('rescanWithAI error:', err);
+      alert('❌ Lỗi quét lại AI: ' + (err?.message || String(err)));
+      setRescanStatus('error');
+    } finally {
+      setIsRescanning(false);
+    }
+  };
 
   // Màu nền cho từng nhóm lớp (khớp với bảng hiển thị)
   const GROUP_COLORS = [
@@ -3912,6 +4190,27 @@ function EditSplitView({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Nút Quét lại AI */}
+          <button
+            disabled={isRescanning}
+            onClick={() => rescanWithAI(userApiKey)}
+            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
+              isRescanning
+                ? 'bg-purple-300 border-purple-200 text-white cursor-wait'
+                : rescanStatus === 'success'
+                ? 'bg-emerald-500 border-emerald-400 text-white hover:bg-emerald-600'
+                : 'bg-purple-500 border-purple-400 text-white hover:bg-purple-600'
+            }`}
+            title="Gửi lại ảnh biên bản cho AI trích xuất lại toàn bộ dữ liệu"
+          >
+            {isRescanning ? (
+              <><svg className="animate-spin" width={13} height={13} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang quét...</>
+            ) : rescanStatus === 'success' ? (
+              <><CheckCircle2 size={13} /> Đã quét xong — Kiểm tra & Lưu</>
+            ) : (
+              <><RotateCcw size={13} /> Quét lại AI</>
+            )}
+          </button>
           <button 
             onClick={onClose}
             className="px-4 py-2 bg-red-400 hover:bg-red-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-red-300"
@@ -3928,6 +4227,14 @@ function EditSplitView({
         </div>
       </div>
       )} {/* end !embedded header */}
+
+      {/* Banner kết quả quét lại */}
+      {!embedded && rescanStatus === 'success' && (
+        <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2 flex items-center gap-2 text-emerald-700 text-[12px] font-bold shrink-0">
+          <CheckCircle2 size={14} />
+          AI đã quét lại xong — Dữ liệu bên dưới đã được cập nhật. Vui lòng kiểm tra rồi bấm <span className="font-black mx-1">Lưu thay đổi</span>.
+        </div>
+      )}
 
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
