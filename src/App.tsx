@@ -2520,7 +2520,7 @@ function EditSplitView({
     { bg: 'C7D2FE', font: '312E81' }, // indigo-200
   ];
 
-  const exportToExcel = (result: ExtractionResult) => {
+  const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
     const loadExcelJS = (): Promise<any> => {
       return new Promise((resolve, reject) => {
         if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
@@ -2530,52 +2530,6 @@ function EditSplitView({
         script.onerror = reject;
         document.head.appendChild(script);
       });
-    };
-
-    // Fetch ảnh về base64 - thử nhiều cách
-    const fetchImageBase64 = async (url: string, inMemoryBase64?: string, inMemoryMime?: string): Promise<{ base64: string; ext: string } | null> => {
-      try {
-        const isPdfUrl = url.toLowerCase().includes('.pdf') || url.includes('application/pdf');
-        if (isPdfUrl) return null;
-
-        // Ưu tiên 1: dùng base64 đang có trong memory (ngay sau khi upload)
-        if (inMemoryBase64 && inMemoryMime?.startsWith('image/')) {
-          const ext = inMemoryMime.includes('png') ? 'png' : 'jpeg';
-          return { base64: inMemoryBase64, ext };
-        }
-
-        // Ưu tiên 2: Cloudflare Pages Function proxy (production) hoặc server proxy (local dev)
-        const tryProxy = async () => {
-          // Thử Cloudflare Pages Function trước
-          const cfProxy = `/api/proxy-image?url=${encodeURIComponent(url)}`;
-          const resp = await fetch(cfProxy, { signal: AbortSignal.timeout(8000) });
-          if (!resp.ok) throw new Error('CF proxy failed');
-          const blob = await resp.blob();
-          if (!blob.type.startsWith('image/')) return null;
-          const ext = blob.type.includes('png') ? 'png' : 'jpeg';
-          return new Promise<{ base64: string; ext: string }>((res) => {
-            const reader = new FileReader();
-            reader.onloadend = () => { res({ base64: (reader.result as string).split(',')[1], ext }); };
-            reader.readAsDataURL(blob);
-          });
-        };
-
-        // Ưu tiên 3: fetch trực tiếp (hoạt động nếu server cho phép CORS)
-        const tryDirect = async () => {
-          const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
-          if (!resp.ok) return null;
-          const blob = await resp.blob();
-          if (!blob.type.startsWith('image/')) return null;
-          const ext = blob.type.includes('png') ? 'png' : 'jpeg';
-          return new Promise<{ base64: string; ext: string }>((res) => {
-            const reader = new FileReader();
-            reader.onloadend = () => { res({ base64: (reader.result as string).split(',')[1], ext }); };
-            reader.readAsDataURL(blob);
-          });
-        };
-
-        return await tryProxy().catch(() => null) ?? await tryDirect().catch(() => null);
-      } catch { return null; }
     };
 
     // Helper màu ExcelJS
@@ -2680,8 +2634,8 @@ function EditSplitView({
       });
 
       // Nhúng ảnh biên bản (nếu là ảnh, không phải PDF)
-      if (result.fileUrl) {
-        const imgData = await fetchImageBase64(result.fileUrl, (result as any)._base64, (result as any)._mimeType);
+      if (imageData) {
+        const imgData = imageData;
         if (imgData) {
           const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
           const startRow = 11 + result.layers.length + 2; // sau bảng data
@@ -2776,6 +2730,8 @@ function EditSplitView({
 
   const [displayUrl, setDisplayUrl] = useState<string | null>(result.fileUrl || null);
   const [isPdf, setIsPdf] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [pickedImageData, setPickedImageData] = useState<{ base64: string; ext: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
@@ -2994,7 +2950,7 @@ function EditSplitView({
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => exportToExcel(data)}
+            onClick={() => setShowImagePicker(true)}
             className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-emerald-400 flex items-center gap-2"
           >
             <ArrowDownToLine size={14} />
@@ -3016,6 +2972,65 @@ function EditSplitView({
         </div>
       </div>
       )} {/* end !embedded header */}
+
+      {/* Dialog chọn ảnh biên bản trước khi xuất Excel */}
+      {showImagePicker && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-[440px] space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-100 p-2 rounded-xl"><ArrowDownToLine size={20} className="text-emerald-600" /></div>
+              <div>
+                <h3 className="font-black text-slate-900 text-base">Xuất File Excel</h3>
+                <p className="text-xs text-slate-500">Đính kèm ảnh biên bản vào sheet Excel</p>
+              </div>
+            </div>
+
+            <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center space-y-3 hover:border-emerald-400 transition-colors cursor-pointer"
+              onClick={() => document.getElementById('excel-img-picker')?.click()}
+            >
+              {pickedImageData ? (
+                <div className="space-y-2">
+                  <div className="w-full h-32 bg-slate-100 rounded-lg overflow-hidden">
+                    <img src={`data:image/${pickedImageData.ext};base64,${pickedImageData.base64}`} className="w-full h-full object-contain" />
+                  </div>
+                  <p className="text-xs text-emerald-600 font-bold">✓ Đã chọn ảnh — click để đổi ảnh khác</p>
+                </div>
+              ) : (
+                <div className="space-y-2 py-4">
+                  <div className="text-3xl">🖼️</div>
+                  <p className="text-sm font-bold text-slate-700">Click để chọn ảnh biên bản</p>
+                  <p className="text-xs text-slate-400">JPG, PNG, WEBP — ảnh chụp biên bản gốc</p>
+                </div>
+              )}
+              <input id="excel-img-picker" type="file" accept="image/*" className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const full = reader.result as string;
+                    const ext = file.type.includes('png') ? 'png' : 'jpeg';
+                    setPickedImageData({ base64: full.split(',')[1], ext });
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => { setShowImagePicker(false); setPickedImageData(null); }}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors">
+                Bỏ qua, không cần ảnh
+              </button>
+              <button onClick={() => { setShowImagePicker(false); exportToExcel(data, pickedImageData); setPickedImageData(null); }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-black transition-colors flex items-center justify-center gap-2">
+                <ArrowDownToLine size={15} />
+                Xuất Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
