@@ -475,10 +475,27 @@ export default function App() {
   const [filterDiameter, setFilterDiameter] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const itemDropdownRef = useRef<HTMLDivElement>(null);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [showDiameterDropdown, setShowDiameterDropdown] = useState(false);
+  const diameterDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Đóng dropdown khi click ngoài
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) setShowProjectDropdown(false);
+      if (itemDropdownRef.current && !itemDropdownRef.current.contains(e.target as Node)) setShowItemDropdown(false);
+      if (diameterDropdownRef.current && !diameterDropdownRef.current.contains(e.target as Node)) setShowDiameterDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Load history, API key, and logo from localStorage and Supabase on mount
   useEffect(() => {
@@ -1412,12 +1429,12 @@ export default function App() {
                 if (filterDiameter && !item.diameter?.toLowerCase().includes(filterDiameter.toLowerCase())) return false;
                 if (filterDateFrom) {
                   const from = parseFilterDate(filterDateFrom);
-                  const itemDate = parseDate(item.constructionStart);
+                  const itemDate = parseDate(item.constructionEnd);
                   if (from && itemDate && itemDate < from) return false;
                 }
                 if (filterDateTo) {
                   const to = parseFilterDate(filterDateTo);
-                  const itemDate = parseDate(item.constructionStart);
+                  const itemDate = parseDate(item.constructionEnd);
                   if (to && itemDate && itemDate > to) return false;
                 }
                 return true;
@@ -1495,92 +1512,171 @@ export default function App() {
 
                 {/* Filter Panel */}
                 {showFilters && (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {/* Dự án */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
-                        <div className="relative">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={filterProject}
-                            onChange={e => setFilterProject(e.target.value)}
-                            placeholder="Tìm dự án..."
-                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                          />
-                        </div>
-                      </div>
-                      {/* Hạng mục */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
-                        <div className="relative">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={filterItem}
-                            onChange={e => setFilterItem(e.target.value)}
-                            placeholder="Tìm hạng mục..."
-                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                          />
-                        </div>
-                      </div>
+                  <div className="rounded-2xl overflow-hidden border border-[#1e3a5f] shadow-md animate-in fade-in slide-in-from-top-2 duration-200" style={{ background: 'linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)' }}>
+                    <div className="px-6 py-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {/* Dự án - Dropdown + Search */}
+                      {(() => {
+                        const opts = [...new Set(history.map(r => r.project).filter(Boolean))].sort();
+                        const matched = opts.filter(p => p.toLowerCase().includes(filterProject.toLowerCase()));
+                        return (
+                          <div className="space-y-1.5 relative" ref={projectDropdownRef}>
+                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Dự án</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showProjectDropdown ? "border-blue-300" : "border-white/20")}>
+                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                              <input value={filterProject} onChange={e => { setFilterProject(e.target.value); setShowProjectDropdown(true); }} onFocus={() => setShowProjectDropdown(true)}
+                                placeholder="Gõ để lọc dự án..."
+                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {filterProject && <button onClick={() => { setFilterProject(''); setShowProjectDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
+                                <button onClick={() => setShowProjectDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showProjectDropdown && "rotate-180")} /></button>
+                              </div>
+                            </div>
+                            {showProjectDropdown && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                <button onClick={() => { setFilterProject(''); setShowProjectDropdown(false); }} className={cn("w-full text-left px-3 py-2 text-[12px] font-bold transition-colors flex items-center gap-2", !filterProject ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-50")}>
+                                  <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{!filterProject && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                  Tất cả ({opts.length} dự án)
+                                </button>
+                                <div className="border-t border-slate-100 max-h-52 overflow-y-auto custom-scrollbar">
+                                  {matched.length === 0
+                                    ? <p className="text-center py-4 text-[12px] text-slate-400">Không tìm thấy</p>
+                                    : matched.map((p, i) => {
+                                        const kw = filterProject.toLowerCase(); const idx = p.toLowerCase().indexOf(kw);
+                                        return (
+                                          <button key={i} onClick={() => { setFilterProject(p); setShowProjectDropdown(false); }}
+                                            className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterProject === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
+                                            <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterProject === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                            <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterProject.length)}</span>}{idx>=0?p.slice(idx+filterProject.length):''}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.project === p).length}</span>
+                                          </button>
+                                        );
+                                      })
+                                  }
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* Hạng mục - Dropdown + Search */}
+                      {(() => {
+                        const opts = [...new Set(history.map(r => r.item).filter(Boolean))].sort();
+                        const matched = opts.filter(p => p.toLowerCase().includes(filterItem.toLowerCase()));
+                        return (
+                          <div className="space-y-1.5 relative" ref={itemDropdownRef}>
+                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Hạng mục</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showItemDropdown ? "border-blue-300" : "border-white/20")}>
+                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                              <input value={filterItem} onChange={e => { setFilterItem(e.target.value); setShowItemDropdown(true); }} onFocus={() => setShowItemDropdown(true)}
+                                placeholder="Gõ để lọc hạng mục..."
+                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {filterItem && <button onClick={() => { setFilterItem(''); setShowItemDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
+                                <button onClick={() => setShowItemDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showItemDropdown && "rotate-180")} /></button>
+                              </div>
+                            </div>
+                            {showItemDropdown && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                <button onClick={() => { setFilterItem(''); setShowItemDropdown(false); }} className={cn("w-full text-left px-3 py-2 text-[12px] font-bold transition-colors flex items-center gap-2", !filterItem ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-50")}>
+                                  <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{!filterItem && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                  Tất cả ({opts.length} hạng mục)
+                                </button>
+                                <div className="border-t border-slate-100 max-h-52 overflow-y-auto custom-scrollbar">
+                                  {matched.length === 0
+                                    ? <p className="text-center py-4 text-[12px] text-slate-400">Không tìm thấy</p>
+                                    : matched.map((p, i) => {
+                                        const kw = filterItem.toLowerCase(); const idx = p.toLowerCase().indexOf(kw);
+                                        return (
+                                          <button key={i} onClick={() => { setFilterItem(p); setShowItemDropdown(false); }}
+                                            className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterItem === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
+                                            <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterItem === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                            <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterItem.length)}</span>}{idx>=0?p.slice(idx+filterItem.length):''}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.item === p).length}</span>
+                                          </button>
+                                        );
+                                      })
+                                  }
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {/* Tên bộ phận */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tên bộ phận</label>
-                        <div className="relative">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={filterComponentName}
-                            onChange={e => setFilterComponentName(e.target.value)}
-                            placeholder="Tìm tên bộ phận..."
-                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                          />
+                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Tên bộ phận</label>
+                        <div className="relative border border-white/20 rounded-xl bg-white/10 focus-within:bg-white/20 focus-within:border-blue-300 transition-all">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                          <input value={filterComponentName} onChange={e => setFilterComponentName(e.target.value)} placeholder="Gõ để lọc tên bộ phận..."
+                            className="w-full pl-8 pr-8 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
+                          {filterComponentName && <button onClick={() => setFilterComponentName('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
                       {/* Biên bản số */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Biên bản số</label>
-                        <div className="relative">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={filterReportNumber}
-                            onChange={e => setFilterReportNumber(e.target.value)}
-                            placeholder="Tìm biên bản..."
-                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                          />
+                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Biên bản số</label>
+                        <div className="relative border border-white/20 rounded-xl bg-white/10 focus-within:bg-white/20 focus-within:border-blue-300 transition-all">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                          <input value={filterReportNumber} onChange={e => setFilterReportNumber(e.target.value)} placeholder="Gõ để lọc biên bản..."
+                            className="w-full pl-8 pr-8 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
+                          {filterReportNumber && <button onClick={() => setFilterReportNumber('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
-                      {/* Đường kính */}
+                      {/* Đường kính - Dropdown + Search */}
+                      {(() => {
+                        const opts = [...new Set(history.map(r => r.diameter).filter(Boolean))].sort();
+                        const matched = opts.filter(p => p.toLowerCase().includes(filterDiameter.toLowerCase()));
+                        return (
+                          <div className="space-y-1.5 relative" ref={diameterDropdownRef}>
+                            <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Đường kính</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white/10 focus-within:bg-white/20", showDiameterDropdown ? "border-blue-300" : "border-white/20")}>
+                              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-300 pointer-events-none" />
+                              <input value={filterDiameter} onChange={e => { setFilterDiameter(e.target.value); setShowDiameterDropdown(true); }} onFocus={() => setShowDiameterDropdown(true)}
+                                placeholder="Gõ để lọc đường kính..."
+                                className="w-full pl-8 pr-14 py-2 text-[12px] bg-transparent outline-none rounded-xl text-white placeholder-blue-300/60" />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {filterDiameter && <button onClick={() => { setFilterDiameter(''); setShowDiameterDropdown(false); }} className="text-blue-300 hover:text-red-300 transition-colors"><X size={12} /></button>}
+                                <button onClick={() => setShowDiameterDropdown(p => !p)} className="text-blue-300 hover:text-white transition-colors"><ChevronDown size={13} className={cn("transition-transform", showDiameterDropdown && "rotate-180")} /></button>
+                              </div>
+                            </div>
+                            {showDiameterDropdown && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                                <button onClick={() => { setFilterDiameter(''); setShowDiameterDropdown(false); }} className={cn("w-full text-left px-3 py-2 text-[12px] font-bold transition-colors flex items-center gap-2", !filterDiameter ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-50")}>
+                                  <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{!filterDiameter && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                  Tất cả ({opts.length} đường kính)
+                                </button>
+                                <div className="border-t border-slate-100 max-h-52 overflow-y-auto custom-scrollbar">
+                                  {matched.length === 0
+                                    ? <p className="text-center py-4 text-[12px] text-slate-400">Không tìm thấy</p>
+                                    : matched.map((p, i) => {
+                                        const kw = filterDiameter.toLowerCase(); const idx = p.toLowerCase().indexOf(kw);
+                                        return (
+                                          <button key={i} onClick={() => { setFilterDiameter(p); setShowDiameterDropdown(false); }}
+                                            className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterDiameter === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
+                                            <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterDiameter === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                            <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterDiameter.length)}</span>}{idx>=0?p.slice(idx+filterDiameter.length):''}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.diameter === p).length}</span>
+                                          </button>
+                                        );
+                                      })
+                                  }
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* Ngày kết thúc từ */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
-                        <div className="relative">
-                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            value={filterDiameter}
-                            onChange={e => setFilterDiameter(e.target.value)}
-                            placeholder="VD: D2000..."
-                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                          />
-                        </div>
+                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Ngày kết thúc từ</label>
+                        <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+                          className="w-full px-3 py-2 text-[12px] border border-white/20 rounded-xl bg-white/10 focus:bg-white/20 focus:border-blue-300 outline-none transition-all text-white [color-scheme:dark]" />
                       </div>
-                      {/* Ngày bắt đầu từ */}
+                      {/* Ngày kết thúc đến */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ngày bắt đầu từ</label>
-                        <input
-                          type="date"
-                          value={filterDateFrom}
-                          onChange={e => setFilterDateFrom(e.target.value)}
-                          className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                        />
-                      </div>
-                      {/* Ngày bắt đầu đến */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ngày bắt đầu đến</label>
-                        <input
-                          type="date"
-                          value={filterDateTo}
-                          onChange={e => setFilterDateTo(e.target.value)}
-                          className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
-                        />
+                        <label className="text-[12px] font-black text-blue-200 uppercase tracking-widest">Ngày kết thúc đến</label>
+                        <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+                          className="w-full px-3 py-2 text-[12px] border border-white/20 rounded-xl bg-white/10 focus:bg-white/20 focus:border-blue-300 outline-none transition-all text-white [color-scheme:dark]" />
                       </div>
                     </div>
                   </div>
