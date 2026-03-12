@@ -819,22 +819,18 @@ export default function App() {
       }
     };
 
+    // Chờ tất cả file xử lý xong
     for (let i = 0; i < Array.from(files).length; i++) {
       await processFile(newFiles[i], Array.from(files)[i]);
     }
 
-    // Tự động lưu tất cả kết quả đã quét và chuyển về bảng dữ liệu
+    // KHÔNG tự động lưu nữa, để người dùng kiểm tra và bấm "Lưu tất cả"
     setIsProcessing(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-
-    if (collectedResults.length > 0) {
-      for (const r of collectedResults) {
-        await saveResult(r);
-      }
-      setPendingResults([]);
-      setProcessingFiles([]);
-      setCurrentResult(null);
-      setActiveSheet('summary');
+    
+    // Tự động chọn file đầu tiên để hiển thị nếu chưa chọn file nào
+    if (collectedResults.length > 0 && !currentResult) {
+      setCurrentResult(collectedResults[0]);
     }
   };
 
@@ -923,6 +919,24 @@ export default function App() {
     setProcessingFiles(prev => prev.map(f => 
       f.result?.id === result.id ? { ...f, result: cleanResult } : f
     ));
+  };
+
+  const handleSaveAll = async () => {
+    if (pendingResults.length === 0) return;
+    
+    setIsProcessing(true);
+    const resultsToSave = [...pendingResults];
+    
+    for (const r of resultsToSave) {
+      await saveResult(r);
+    }
+    
+    setPendingResults([]);
+    setProcessingFiles([]);
+    setCurrentResult(null);
+    setIsProcessing(false);
+    setActiveSheet('summary');
+    alert(`✅ Đã lưu thành công ${resultsToSave.length} biên bản!`);
   };
 
   const cancelResult = (id: string) => {
@@ -1223,7 +1237,7 @@ export default function App() {
                       </div>
                       {!currentResult && processingFiles.length > 0 && (
                         <span className="text-[10px] font-bold text-blue-300/60 uppercase tracking-widest">
-                          Tự động lưu vào hệ thống
+                          Chờ kiểm tra và lưu
                         </span>
                       )}
                     </div>
@@ -1260,7 +1274,7 @@ export default function App() {
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-sm font-bold text-white truncate">{file.fileName}</p>
                               {file.status === 'completed' && !currentResult && (
-                                <span className="text-[9px] font-black text-emerald-400/80 uppercase tracking-tighter bg-emerald-500/10 px-1.5 py-0.5 rounded">Đã lưu</span>
+                                <span className="text-[9px] font-black text-orange-400/80 uppercase tracking-tighter bg-orange-500/10 px-1.5 py-0.5 rounded">Chờ lưu</span>
                               )}
                             </div>
                             <p className={cn(
@@ -1271,7 +1285,7 @@ export default function App() {
                             )}>
                               {file.status === 'pending' ? 'Đang chờ...' :
                                file.status === 'processing' ? `Phân tích... ${file.progress}%` :
-                               file.status === 'completed' ? 'Hoàn thành ✓' : 'Lỗi xử lý'}
+                               file.status === 'completed' ? 'Chờ lưu' : 'Lỗi xử lý'}
                             </p>
                           </div>
                           <button
@@ -1292,22 +1306,42 @@ export default function App() {
 
                   {/* Footer cột trái */}
                   <div className="p-6 border-t border-[#1e3a5f] bg-blue-950/20">
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40"
-                      >
-                        <Upload size={14} />
-                        Thêm file
-                      </button>
-                      {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && pendingResults.length === 0 && (
+                    <div className="flex flex-col gap-4">
+                      {pendingResults.length > 0 && (
                         <button
-                          onClick={() => setProcessingFiles([])}
-                          className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                          onClick={handleSaveAll}
+                          disabled={isProcessing}
+                          className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[13px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-emerald-900/40 border border-emerald-400/30"
                         >
-                          Xóa hết
+                          {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                          Lưu tất cả ({pendingResults.length})
                         </button>
                       )}
+                      
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40"
+                        >
+                          <Upload size={14} />
+                          Thêm file
+                        </button>
+                        {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && (
+                          <button
+                            onClick={() => {
+                              if (pendingResults.length > 0) {
+                                if (!window.confirm("Bạn có chắc chắn muốn hủy tất cả các file chưa lưu?")) return;
+                              }
+                              setProcessingFiles([]);
+                              setPendingResults([]);
+                              setCurrentResult(null);
+                            }}
+                            className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                          >
+                            Xóa hết
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1749,7 +1783,12 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.elevationTo)}</td>
                   <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.durationHours)}</td>
                   <td className="text-center font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.lengthMeters)}</td>
-                  <td className="text-center font-bold text-orange-700 px-4 py-3 text-[12px] bg-orange-50/30 border-r border-slate-200">{formatNumber(layer.speedMph)}</td>
+                  <td className={cn(
+                    "text-center font-bold px-4 py-3 text-[12px] border-r border-slate-200",
+                    layer.speedMph <= 1 ? "text-white bg-red-600" : "text-orange-700 bg-orange-50/30"
+                  )}>
+                    {formatNumber(layer.speedMph)}
+                  </td>
                   <td className="text-center text-slate-600 px-4 py-3 text-[12px] italic whitespace-normal leading-relaxed">{layer.notes}</td>
                 </tr>
               ))}
@@ -1991,6 +2030,11 @@ function SummaryView({
 
   const PIE_COLORS = ['#2563eb','#f97316','#10b981','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f59e0b'];
 
+  // Tìm các cọc có vận tốc khoan < 1m/h
+  const slowPiles = history.filter(r => 
+    r.layers.some(l => l.speedMph > 0 && l.speedMph < 1)
+  );
+
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
@@ -2034,6 +2078,53 @@ function SummaryView({
           </div>
         ))}
       </div>
+
+      {/* ── Cảnh báo vận tốc thấp (< 1m/h) ── */}
+      {slowPiles.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-1.5 bg-red-500 rounded-lg">
+              <AlertCircle size={16} className="text-white" />
+            </div>
+            <h4 className="text-[11px] font-black text-red-700 uppercase tracking-widest">
+              Cảnh báo vận tốc khoan thấp (&lt; 1m/h)
+            </h4>
+            <span className="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {slowPiles.length} cọc
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {slowPiles.map((pile) => {
+              const slowLayers = pile.layers.filter(l => l.speedMph > 0 && l.speedMph < 1);
+              return (
+                <button
+                  key={pile.id}
+                  onClick={() => onEdit(pile)}
+                  className="flex flex-col p-3 bg-white border border-red-100 rounded-xl hover:border-red-400 hover:shadow-md transition-all text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-black text-slate-900">Cọc: {pile.pileId || '—'}</span>
+                    <ChevronRight size={14} className="text-slate-300 group-hover:text-red-500 transition-colors" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase truncate">
+                      Dự án: {pile.project || '—'}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {slowLayers.map((l, idx) => (
+                        <span key={idx} className="text-[9px] font-black bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                          Lớp {l.layerNumber}: {l.speedMph.toFixed(2)} m/h
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Biểu đồ hàng 1 ── */}
       <div className="grid grid-cols-3 gap-4">
@@ -2849,9 +2940,13 @@ function EditSplitView({
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {formatNumber(layer.lengthMeters)}
                         </td>
-                        <td className="px-2 py-1 text-[12px] font-normal text-center bg-white align-middle border-r border-slate-200 whitespace-nowrap">
+                        <td className={cn(
+                          "px-2 py-1 text-[12px] font-normal text-center align-middle border-r border-slate-200 whitespace-nowrap",
+                          layer.speedMph <= 1 ? "bg-red-50" : "bg-white"
+                        )}>
                           <span className={cn(
                             "inline-flex items-center px-1 py-0.5 rounded-full text-[12px] font-normal",
+                            layer.speedMph <= 1 ? "text-white bg-red-600 font-black" : 
                             layer.speedMph > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                           )}>
                             {formatNumber(layer.speedMph)}
@@ -2967,15 +3062,20 @@ function EditSplitView({
                           <tr key={i} className="hover:opacity-90 transition-colors">
                             <td className={`px-3 py-2 text-[12px] font-bold text-center border-r border-slate-200 ${rowBg}`}>{i + 1}</td>
                             <td className={`px-3 py-2 text-[12px] text-black text-center border-r border-slate-200 ${rowBg}`}>{data.diameter}</td>
-                            <td className={`px-3 py-2 text-[12px] font-medium border-r border-slate-200 ${rowBg} text-black whitespace-pre-wrap break-words`}>{g.layerDesign}</td>
+                            <td className={`px-3 py-2 text-[12px] font-normal border-r border-slate-200 ${rowBg} text-black whitespace-pre-wrap break-words`}>{g.layerDesign}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationFrom)}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationTo)}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalDuration)}</td>
                             <td className={`px-3 py-2 text-[12px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalLength)}</td>
-                            <td className={`px-3 py-2 text-[12px] text-center ${rowBg}`}>
+                            <td className={cn(
+                              "px-3 py-2 text-[12px] text-center border-r border-slate-200",
+                              rowBg,
+                              g.avgSpeed <= 1 && "bg-red-50"
+                            )}>
                               <span className={cn(
                                 "inline-flex items-center px-2 py-0.5 rounded-full text-[12px] font-semibold",
+                                g.avgSpeed <= 1 ? "text-white bg-red-600 font-black" :
                                 g.avgSpeed > 5 ? "text-emerald-800 bg-emerald-100" : "text-orange-800 bg-orange-100"
                               )}>
                                 {formatNumber(g.avgSpeed)}
@@ -2992,11 +3092,11 @@ function EditSplitView({
                       <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {data.layers.length}
                       </td>
-                      <td className="px-3 py-2 text-[12px] text-center border-r border-slate-300">
-                        {data.layers.length > 0 ? data.layers[0].elevationFrom : '—'}
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
+                        {data.layers.length > 0 ? formatNumber(data.layers[0].elevationFrom) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-[12px] text-center border-r border-slate-300">
-                        {data.layers.length > 0 ? data.layers[data.layers.length - 1].elevationTo : '—'}
+                      <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
+                        {data.layers.length > 0 ? formatNumber(data.layers[data.layers.length - 1].elevationTo) : '—'}
                       </td>
                       <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {formatNumber(data.layers.reduce((s, l) => s + l.durationHours, 0))}
