@@ -1429,7 +1429,10 @@ export default function App() {
     // Lấy SHA của file hiện tại (nếu có) để ghi đè
     let sha: string | undefined;
     try {
-      const getRes = await fetch(apiUrl, { headers: { 'Authorization': headers['Authorization'], 'Accept': headers['Accept'] } });
+      // Thêm cache-busting query param để đảm bảo lấy SHA mới nhất
+      const getRes = await fetch(`${apiUrl}?t=${new Date().getTime()}`, { 
+        headers: { 'Authorization': headers['Authorization'], 'Accept': headers['Accept'] } 
+      });
       if (getRes.ok) {
         const fileData = await getRes.json();
         sha = fileData.sha;
@@ -1655,32 +1658,52 @@ export default function App() {
           if (uploadRes.ok) uploadData = await uploadRes.json();
         } catch (_) {}
 
-        // Client-side fallback
-        if (!uploadData && githubCreds) {
-          const { token, username, repo } = githubCreds;
-          const timestamp = new Date().getTime();
-          const safeFileName = (finalResult.fileName || 'file').replace(/[^a-zA-Z0-9.-]/g, '_');
-          const path = `SGC-CKN/${timestamp}_${safeFileName}`;
-          const content = base64.split(',')[1];
+          // Client-side fallback
+          if (!uploadData && githubCreds) {
+            const { token, username, repo } = githubCreds;
+            const timestamp = new Date().getTime();
+            const safeFileName = (finalResult.fileName || 'file').replace(/[^a-zA-Z0-9.-]/g, '_');
+            const path = `SGC-CKN/${timestamp}_${safeFileName}`;
+            const content = base64.split(',')[1];
+            const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
 
-          const ghRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token.trim()}`,
-              'Accept': 'application/vnd.github.v3+json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ message: `Upload ${finalResult.fileName} via SGC-CKN Web`, content })
-          });
+            // Check for SHA just in case, with cache-busting
+            let sha: string | undefined;
+            try {
+              const getRes = await fetch(`${apiUrl}?t=${timestamp}`, {
+                headers: {
+                  'Authorization': `Bearer ${token.trim()}`,
+                  'Accept': 'application/vnd.github.v3+json'
+                }
+              });
+              if (getRes.ok) {
+                const getData = await getRes.json();
+                sha = getData.sha;
+              }
+            } catch (_) {}
 
-          if (ghRes.ok) {
-            const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
-            uploadData = { fileUrl: rawUrl };
-          } else {
-            const err = await ghRes.json();
-            alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload file'}. Dữ liệu vẫn sẽ được lưu vào Supabase.`);
+            const ghRes = await fetch(apiUrl, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${token.trim()}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                message: `Upload ${finalResult.fileName} via SGC-CKN Web`, 
+                content,
+                sha: sha
+              })
+            });
+
+            if (ghRes.ok) {
+              const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
+              uploadData = { fileUrl: rawUrl };
+            } else {
+              const err = await ghRes.json();
+              alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload file'}. Dữ liệu vẫn sẽ được lưu vào Supabase.`);
+            }
           }
-        }
 
         if (uploadData?.fileUrl) {
           finalResult.fileUrl = uploadData.fileUrl;
@@ -3607,7 +3630,7 @@ function EditSplitView({
   const [rescanStatus, setRescanStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // ── Quét lại toàn bộ dữ liệu bằng AI từ ảnh biên bản ──
-  const rescanWithAI = async (apiKey?: string) => { // apiKey = userApiKey từ App
+  const rescanWithAI = async (apiKey?: string) => {
     setIsRescanning(true);
     setRescanStatus('idle');
     try {
@@ -3619,11 +3642,53 @@ function EditSplitView({
         return;
       }
 
-      // Bước 2: Gọi AI trích xuất lại
-      const base64Full = `data:image/${img.ext};base64,${img.base64}`;
-      const rawResult = await extractDataFromFile(base64Full, `image/${img.ext}`, apiKey);
+      // Bước 2: Chuẩn hóa ảnh qua Canvas (Làm sạch metadata, đảm bảo định dạng JPEG chuẩn)
+      const normalizeImage = (base64: string, ext: string): Promise<{base64: string, mime: string}> => {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => {
+            const canvas = document.createElement('canvas');
+            // Giới hạn kích thước tối đa để tránh lỗi API (Gemini thích ảnh rõ nhưng không quá khổng lồ)
+            const MAX_DIM = 3000;
+            let width = image.width;
+            let height = image.height;
+            if (width > MAX_DIM || height > MAX_DIM) {
+              if (width > height) {
+                height *= MAX_DIM / width;
+                width = MAX_DIM;
+              } else {
+                width *= MAX_DIM / height;
+                height = MAX_DIM;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error("Không thể tạo canvas context"));
+              return;
+            }
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(image, 0, 0, width, height);
+            // Xuất ra JPEG chất lượng cao (0.9) để AI đọc rõ chữ
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            resolve({
+              base64: dataUrl.split(',')[1],
+              mime: 'image/jpeg'
+            });
+          };
+          image.onerror = () => reject(new Error("Không thể tải dữ liệu hình ảnh"));
+          image.src = `data:image/${ext};base64,${base64}`;
+        });
+      };
 
-      // Bước 3: Merge kết quả mới vào data hiện tại (giữ nguyên id, timestamp, fileUrl, excelUrl)
+      const normalized = await normalizeImage(img.base64, img.ext);
+
+      // Bước 3: Gọi AI trích xuất lại với ảnh đã chuẩn hóa
+      const rawResult = await extractDataFromFile(normalized.base64, normalized.mime, apiKey);
+
+      // Bước 4: Merge kết quả mới vào data hiện tại
       setData(prev => ({
         ...rawResult,
         id: prev.id,
@@ -3637,7 +3702,12 @@ function EditSplitView({
       setRescanStatus('success');
     } catch (err: any) {
       console.error('rescanWithAI error:', err);
-      alert('❌ Lỗi quét lại AI: ' + (err?.message || String(err)));
+      // Trích xuất thông báo lỗi chi tiết nếu có
+      let msg = err?.message || String(err);
+      if (typeof err === 'object' && err !== null && 'error' in err) {
+        msg = JSON.stringify(err.error);
+      }
+      alert('❌ Lỗi quét lại AI: ' + msg);
       setRescanStatus('error');
     } finally {
       setIsRescanning(false);
@@ -3683,12 +3753,19 @@ function EditSplitView({
       const isPdf = cleanUrl.endsWith('.pdf') || url.includes('application/pdf');
       const ext = isPdf ? 'jpeg' : (cleanUrl.endsWith('.png') ? 'png' : 'jpeg');
 
-      // Helper: ArrayBuffer → base64
-      const toBase64 = (buf: ArrayBuffer): string => {
-        const bytes = new Uint8Array(buf);
-        let bin = '';
-        for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
-        return btoa(bin);
+      // Helper: ArrayBuffer → base64 (Sử dụng FileReader để xử lý an toàn với tệp lớn)
+      const toBase64 = (buf: ArrayBuffer): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const blob = new Blob([buf]);
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64String = reader.result as string;
+            // Loại bỏ prefix data:application/octet-stream;base64,
+            resolve(base64String.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
       };
 
       // Helper: Xử lý buffer (nếu là PDF thì convert sang ảnh)
@@ -3704,7 +3781,8 @@ function EditSplitView({
             throw e; 
           }
         }
-        return { base64: toBase64(buf), ext };
+        const base64 = await toBase64(buf);
+        return { base64, ext };
       };
 
       // ── Chiến lược 1: Cloudflare Proxy (đọc GITHUB_TOKEN từ server, không CORS) ──

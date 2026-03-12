@@ -47,12 +47,17 @@ app.post("/api/github/upload", async (req, res) => {
   try {
     // Convert base64 to raw content (remove data:image/jpeg;base64, prefix)
     const content = base64Data.split(',')[1];
-    const path = `SGC-CKN/${fileName}`;
     
-    // Check if file exists to get SHA (for updates, though here we mostly create new)
+    // Add timestamp to filename to ensure uniqueness and avoid SHA conflicts
+    const timestamp = Date.now();
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `SGC-CKN/${timestamp}_${safeFileName}`;
+    
+    // Check if file exists to get SHA (though with timestamp it's unlikely to exist)
     let sha: string | undefined;
     try {
-      const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}`, {
+      // Add cache-busting query param to ensure we get the latest SHA
+      const getRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${path}?t=${timestamp}`, {
         headers: {
           'Authorization': `token ${token}`,
           'Accept': 'application/vnd.github.v3+json'
