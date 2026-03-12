@@ -2507,6 +2507,7 @@ function EditSplitView({
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   const [zoom, setZoom] = useState(1);
+  const [isFetchingImage, setIsFetchingImage] = useState(false);
 
   // Màu nền cho từng nhóm lớp (khớp với bảng hiển thị)
   const GROUP_COLORS = [
@@ -2532,26 +2533,77 @@ function EditSplitView({
       const isPdf = url.toLowerCase().includes('.pdf');
       if (isPdf) return null;
 
-      // Parse path từ raw URL: https://raw.githubusercontent.com/owner/repo/branch/path
-      const match = url.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
-      if (!match) return null;
-      const [, owner, repo, branch, filePath] = match;
+      // Chuẩn hoá về raw URL
+      let rawUrl = url;
+      if (url.includes('github.com') && url.includes('/blob/')) {
+        rawUrl = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+      }
 
-      // Dùng token từ githubCreds nếu có, fallback sang fetch không token
-      const token = githubCreds?.token;
-      const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json' };
-      if (token) headers['Authorization'] = `token ${token}`;
+      // Xác định định dạng file
+      const cleanRaw = rawUrl.split('?')[0].toLowerCase();
+      const ext = cleanRaw.endsWith('.png') ? 'png' : 'jpeg';
 
-      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
-      const resp = await fetch(apiUrl, { headers });
-      if (!resp.ok) return null;
-      const json = await resp.json();
-      if (!json.content) return null;
+      // Helper: chuyển ArrayBuffer → base64
+      const bufferToBase64 = (buf: ArrayBuffer): string => {
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      };
 
-      // GitHub trả về base64 (có thể có \n), làm sạch
-      const b64 = json.content.replace(/\n/g, '');
-      const ext = filePath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
-      return { base64: b64, ext };
+      // ── Chiến lược 1: Cloudflare proxy (tránh CORS, hỗ trợ token phía server) ──
+      try {
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(rawUrl)}`;
+        const proxyResp = await fetch(proxyUrl);
+        if (proxyResp.ok) {
+          const buf = await proxyResp.arrayBuffer();
+          if (buf.byteLength > 0) {
+            return { base64: bufferToBase64(buf), ext };
+          }
+        }
+      } catch { /* tiếp tục chiến lược khác */ }
+
+      // ── Chiến lược 2: Fetch trực tiếp raw URL (hoạt động với repo public) ──
+      try {
+        const directResp = await fetch(rawUrl, { cache: 'no-store' });
+        if (directResp.ok) {
+          const buf = await directResp.arrayBuffer();
+          if (buf.byteLength > 0) {
+            return { base64: bufferToBase64(buf), ext };
+          }
+        }
+      } catch { /* tiếp tục chiến lược khác */ }
+
+      // ── Chiến lược 3: GitHub Contents API (giới hạn 1MB, có token) ──
+      const match = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
+      if (match) {
+        const [, owner, repo, branch, filePath] = match;
+        const token = githubCreds?.token;
+        const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json' };
+        if (token) headers['Authorization'] = `token ${token}`;
+
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
+        const resp = await fetch(apiUrl, { headers });
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.content) {
+            const b64 = json.content.replace(/\n/g, '');
+            return { base64: b64, ext };
+          }
+          // File > 1MB: dùng download_url từ API
+          if (json.download_url) {
+            try {
+              const dlResp = await fetch(json.download_url);
+              if (dlResp.ok) {
+                const buf = await dlResp.arrayBuffer();
+                if (buf.byteLength > 0) return { base64: bufferToBase64(buf), ext };
+              }
+            } catch { /* thất bại */ }
+          }
+        }
+      }
+
+      return null;
     } catch { return null; }
   };
 
@@ -2985,21 +3037,31 @@ function EditSplitView({
         </div>
         <div className="flex items-center gap-3">
           <button
+            disabled={isFetchingImage}
             onClick={async () => {
-              // Thử tự lấy ảnh từ GitHub trước
-              const autoImg = await fetchImageFromGitHub();
-              if (autoImg) {
-                // Có ảnh tự động → xuất luôn
-                exportToExcel(data, autoImg);
-              } else {
-                // Không lấy được (PDF hoặc lỗi) → mở dialog chọn tay
-                setShowImagePicker(true);
+              if (isFetchingImage) return;
+              setIsFetchingImage(true);
+              try {
+                // Thử tự lấy ảnh từ GitHub trước
+                const autoImg = await fetchImageFromGitHub();
+                if (autoImg) {
+                  // Có ảnh tự động → xuất luôn
+                  exportToExcel(data, autoImg);
+                } else {
+                  // Không lấy được (PDF hoặc lỗi) → mở dialog chọn tay
+                  setShowImagePicker(true);
+                }
+              } finally {
+                setIsFetchingImage(false);
               }
             }}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-emerald-400 flex items-center gap-2"
+            className={`px-4 py-2 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border flex items-center gap-2 ${isFetchingImage ? 'bg-emerald-300 border-emerald-200 cursor-wait' : 'bg-emerald-500 hover:bg-emerald-600 border-emerald-400'}`}
           >
-            <ArrowDownToLine size={14} />
-            Xuất Excel
+            {isFetchingImage ? (
+              <><svg className="animate-spin" width={14} height={14} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang lấy ảnh...</>
+            ) : (
+              <><ArrowDownToLine size={14} /> Xuất Excel</>
+            )}
           </button>
           <button 
             onClick={onClose}
