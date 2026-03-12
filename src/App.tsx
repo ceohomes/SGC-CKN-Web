@@ -37,7 +37,11 @@ import {
   Building2,
   TrendingUp,
   PieChart as PieChartIcon,
-  Scissors
+  Scissors,
+  Filter,
+  Search,
+  ChevronDown,
+  RotateCw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -462,6 +466,16 @@ export default function App() {
   const [githubRepoInput, setGithubRepoInput] = useState('construction-reports');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
+
+  // Bộ lọc Sheet 1
+  const [filterProject, setFilterProject] = useState('');
+  const [filterItem, setFilterItem] = useState('');
+  const [filterComponentName, setFilterComponentName] = useState('');
+  const [filterReportNumber, setFilterReportNumber] = useState('');
+  const [filterDiameter, setFilterDiameter] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -1377,13 +1391,59 @@ export default function App() {
               <div className="w-full space-y-12">
 
             {/* Main Data Table on Sheet 1 */}
-            {history.length > 0 && !currentResult && (
-              <div className="space-y-6">
+            {history.length > 0 && !currentResult && (() => {
+              // Parse date từ chuỗi "HH:mm DD/MM/YYYY"
+              const parseDate = (s: string): Date | null => {
+                const m = s?.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                if (!m) return null;
+                return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+              };
+              const parseFilterDate = (s: string): Date | null => {
+                if (!s) return null;
+                const [y, mo, d] = s.split('-');
+                return new Date(parseInt(y), parseInt(mo) - 1, parseInt(d));
+              };
+
+              const filtered = history.filter(item => {
+                if (filterProject && !item.project?.toLowerCase().includes(filterProject.toLowerCase())) return false;
+                if (filterItem && !item.item?.toLowerCase().includes(filterItem.toLowerCase())) return false;
+                if (filterComponentName && !item.componentName?.toLowerCase().includes(filterComponentName.toLowerCase())) return false;
+                if (filterReportNumber && !item.reportNumber?.toLowerCase().includes(filterReportNumber.toLowerCase())) return false;
+                if (filterDiameter && !item.diameter?.toLowerCase().includes(filterDiameter.toLowerCase())) return false;
+                if (filterDateFrom) {
+                  const from = parseFilterDate(filterDateFrom);
+                  const itemDate = parseDate(item.constructionStart);
+                  if (from && itemDate && itemDate < from) return false;
+                }
+                if (filterDateTo) {
+                  const to = parseFilterDate(filterDateTo);
+                  const itemDate = parseDate(item.constructionStart);
+                  if (to && itemDate && itemDate > to) return false;
+                }
+                return true;
+              });
+
+              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterReportNumber || filterDiameter || filterDateFrom || filterDateTo;
+
+              const resetFilters = () => {
+                setFilterProject(''); setFilterItem(''); setFilterComponentName('');
+                setFilterReportNumber(''); setFilterDiameter('');
+                setFilterDateFrom(''); setFilterDateTo('');
+              };
+
+              return (
+              <div className="space-y-4">
+                {/* Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <h3 className="text-[18px] font-black text-blue-900 tracking-tight flex items-center gap-3 uppercase">
                       <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
-                      Dữ liệu thi công mới nhất
+                      Dữ liệu thi công
+                      {hasActiveFilter && (
+                        <span className="text-[11px] font-black text-orange-500 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full normal-case">
+                          {filtered.length}/{history.length} bản ghi
+                        </span>
+                      )}
                     </h3>
                     {isGithubConnected ? (
                       <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
@@ -1397,14 +1457,136 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                  <button 
-                    onClick={() => setActiveSheet('summary')}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
-                  >
-                    Xem tất cả
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {hasActiveFilter && (
+                      <button
+                        onClick={resetFilters}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all"
+                      >
+                        <RotateCw size={12} />
+                        Xóa lọc
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowFilters(p => !p)}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                        showFilters
+                          ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                          : "bg-white text-blue-900 border-slate-200 hover:border-blue-400"
+                      )}
+                    >
+                      <Filter size={13} />
+                      Bộ lọc
+                      {hasActiveFilter && (
+                        <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                          {[filterProject, filterItem, filterComponentName, filterReportNumber, filterDiameter, filterDateFrom, filterDateTo].filter(Boolean).length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setActiveSheet('summary')}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
+                    >
+                      Dashboard →
+                    </button>
+                  </div>
                 </div>
-                
+
+                {/* Filter Panel */}
+                {showFilters && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {/* Dự án */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
+                        <div className="relative">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={filterProject}
+                            onChange={e => setFilterProject(e.target.value)}
+                            placeholder="Tìm dự án..."
+                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      {/* Hạng mục */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
+                        <div className="relative">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={filterItem}
+                            onChange={e => setFilterItem(e.target.value)}
+                            placeholder="Tìm hạng mục..."
+                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      {/* Tên bộ phận */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tên bộ phận</label>
+                        <div className="relative">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={filterComponentName}
+                            onChange={e => setFilterComponentName(e.target.value)}
+                            placeholder="Tìm tên bộ phận..."
+                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      {/* Biên bản số */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Biên bản số</label>
+                        <div className="relative">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={filterReportNumber}
+                            onChange={e => setFilterReportNumber(e.target.value)}
+                            placeholder="Tìm biên bản..."
+                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      {/* Đường kính */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
+                        <div className="relative">
+                          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            value={filterDiameter}
+                            onChange={e => setFilterDiameter(e.target.value)}
+                            placeholder="VD: D2000..."
+                            className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+                      {/* Ngày bắt đầu từ */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ngày bắt đầu từ</label>
+                        <input
+                          type="date"
+                          value={filterDateFrom}
+                          onChange={e => setFilterDateFrom(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                        />
+                      </div>
+                      {/* Ngày bắt đầu đến */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ngày bắt đầu đến</label>
+                        <input
+                          type="date"
+                          value={filterDateTo}
+                          onChange={e => setFilterDateTo(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:border-blue-400 outline-none transition-all bg-slate-50 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Table */}
                 <div className="modern-card overflow-hidden">
                   <div className="overflow-x-auto custom-scrollbar">
                     <table className="pro-table">
@@ -1425,10 +1607,20 @@ export default function App() {
                           <th className="text-center">Thao tác</th>
                         </tr>
                       </thead>
-                      <tbody className="">
-                        {history.slice(0, 10).map((item, index) => (
+                      <tbody>
+                        {filtered.length === 0 ? (
+                          <tr>
+                            <td colSpan={13} className="text-center py-16 text-slate-400">
+                              <div className="flex flex-col items-center gap-3">
+                                <Search size={32} className="opacity-30" />
+                                <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy kết quả</p>
+                                <button onClick={resetFilters} className="text-[10px] font-black text-blue-500 hover:underline uppercase tracking-widest">Xóa bộ lọc</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : filtered.map((item, index) => (
                           <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
-                            <td className="text-center font-bold text-blue-700 text-xs">{history.length - index}</td>
+                            <td className="text-center font-bold text-blue-700 text-xs">{filtered.length - index}</td>
                             <td className="font-normal text-blue-900">{item.project}</td>
                             <td className="text-slate-900 font-normal">{item.item}</td>
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
@@ -1463,14 +1655,14 @@ export default function App() {
                             </td>
                             <td className="text-center">
                               <div className="flex items-center justify-end gap-1.5">
-                                <button 
+                                <button
                                   onClick={() => handleEdit(item)}
                                   className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
                                   title="Chỉnh sửa"
                                 >
                                   <Edit2 size={14} />
                                 </button>
-                                <button 
+                                <button
                                   onClick={() => handleDelete(item.id)}
                                   className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm border border-red-100"
                                   title="Xóa"
@@ -1486,7 +1678,8 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
             )} {/* end else: không có file */}
           </div>
@@ -1997,18 +2190,18 @@ function SummaryView({
   }
   const duplicateMap: Record<string, ExtractionResult[]> = {};
   history.forEach(r => {
-    const item = (r.item || '').trim();
+    const componentName = (r.componentName || '').trim();
     const pileId = (r.pileId || '').trim();
-    if (!item && !pileId) return;
-    const key = `${item}|||${pileId}`;
+    if (!componentName && !pileId) return;
+    const key = `${componentName}|||${pileId}`;
     if (!duplicateMap[key]) duplicateMap[key] = [];
     duplicateMap[key].push(r);
   });
   const duplicateGroups: DuplicateGroup[] = Object.entries(duplicateMap)
     .filter(([, records]) => records.length > 1)
     .map(([key, records]) => {
-      const [item, pileId] = key.split('|||');
-      return { key, item, pileId, records };
+      const [componentName, pileId] = key.split('|||');
+      return { key, item: componentName, pileId, records };
     })
     .sort((a, b) => b.records.length - a.records.length);
 
@@ -2064,14 +2257,14 @@ function SummaryView({
               <AlertCircle size={16} className="text-white" />
             </div>
             <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-widest">
-              Cảnh báo trùng Hạng mục &amp; Số hiệu cọc
+              Cảnh báo trùng Tên bộ phận &amp; Số hiệu cọc
             </h4>
             <span className="ml-auto bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
               {duplicateGroups.length} nhóm trùng
             </span>
           </div>
           <p className="text-[11px] text-amber-700 font-medium mb-4">
-            Các biên bản dưới đây có cùng <strong>Hạng mục</strong> và <strong>Số hiệu cọc</strong>. Vui lòng kiểm tra lại để tránh nhập liệu trùng lặp.
+            Các biên bản dưới đây có cùng <strong>Tên bộ phận</strong> và <strong>Số hiệu cọc</strong>. Vui lòng kiểm tra lại để tránh nhập liệu trùng lặp.
           </p>
           <div className="space-y-3">
             {duplicateGroups.map((group) => (
@@ -2079,7 +2272,7 @@ function SummaryView({
                 {/* Group header */}
                 <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-100 border-b border-amber-200">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Hạng mục:</span>
+                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Tên bộ phận:</span>
                     <span className="text-[12px] font-bold text-amber-900 truncate">{group.item || '(Chưa có)'}</span>
                     <span className="mx-2 text-amber-400">|</span>
                     <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Số hiệu cọc:</span>
