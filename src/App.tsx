@@ -2521,13 +2521,23 @@ function EditSplitView({
   ];
 
   const exportToExcel = (result: ExtractionResult) => {
-    // Dynamic import xlsx
-    import('xlsx').then((XLSX) => {
+    const loadXLSX = (): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any).XLSX) { resolve((window as any).XLSX); return; }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        script.onload = () => resolve((window as any).XLSX);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    loadXLSX().then((XLSX) => {
       const wb = XLSX.utils.book_new();
 
       // ── SHEET 1: Chi tiết các lớp địa chất ──
       const headers = ['Địa chất thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
-      const infoRows = [
+      const infoRows: any[][] = [
         ['Dự án:', result.project],
         ['Hạng mục:', result.item],
         ['Tên bộ phận:', result.componentName],
@@ -2540,9 +2550,7 @@ function EditSplitView({
         headers,
       ];
 
-      // Tính màu theo nhóm layerDesign liên tiếp
-      let groupCount = 0;
-      let prevKey = '';
+      let groupCount = 0; let prevKey = '';
       const rowColorIdx: number[] = result.layers.map((layer) => {
         const key = layer.layerDesign?.trim() || '__empty__';
         if (key !== prevKey) { groupCount++; prevKey = key; }
@@ -2550,154 +2558,87 @@ function EditSplitView({
       });
 
       const dataRows = result.layers.map((layer) => [
-        layer.actualGeology,
-        result.diameter,
-        layer.layerDesign,
-        layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
-        layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
-        layer.elevationFrom,
-        layer.elevationTo,
+        layer.actualGeology, result.diameter, layer.layerDesign,
+        layer.timeFrom + (layer.dateFrom ? ' ' + layer.dateFrom : ''),
+        layer.timeTo + (layer.dateTo ? ' ' + layer.dateTo : ''),
+        layer.elevationFrom, layer.elevationTo,
         parseFloat(layer.durationHours.toFixed(2)),
         parseFloat(layer.lengthMeters.toFixed(2)),
         parseFloat(layer.speedMph.toFixed(2)),
         layer.notes || '',
       ]);
 
-      const ws1Data = [...infoRows, ...dataRows];
-      const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+      const ws1 = XLSX.utils.aoa_to_sheet([...infoRows, ...dataRows]);
+      ws1['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 45 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 }];
 
-      // Set column widths
-      ws1['!cols'] = [
-        { wch: 16 }, { wch: 12 }, { wch: 45 }, { wch: 14 }, { wch: 14 },
-        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 30 },
-      ];
-
-      // Style header row (row index 9 = infoRows.length - 1)
       const headerRowIdx = infoRows.length - 1;
-      headers.forEach((_, ci) => {
-        const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
-        if (!ws1[cellRef]) ws1[cellRef] = { v: headers[ci], t: 's' };
-        ws1[cellRef].s = {
-          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-          fill: { fgColor: { rgb: '1E3A6E' } },
-          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
-        };
+      headers.forEach((h, ci) => {
+        const ref = XLSX.utils.encode_cell({ r: headerRowIdx, c: ci });
+        if (!ws1[ref]) ws1[ref] = { v: h, t: 's' };
+        ws1[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A6E' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
       });
 
-      // Style data rows với màu nhóm
       dataRows.forEach((_, ri) => {
-        const sheetRowIdx = headerRowIdx + 1 + ri;
-        const colorIdx = rowColorIdx[ri];
-        const { bg, font } = GROUP_COLORS[colorIdx];
+        const sheetRow = headerRowIdx + 1 + ri;
+        const { bg, font } = GROUP_COLORS[rowColorIdx[ri]];
         headers.forEach((_, ci) => {
-          const cellRef = XLSX.utils.encode_cell({ r: sheetRowIdx, c: ci });
-          if (!ws1[cellRef]) ws1[cellRef] = { v: '', t: 's' };
-          const isSpeed = ci === 9;
-          const speedVal = result.layers[ri].speedMph;
-          ws1[cellRef].s = {
-            fill: { fgColor: { rgb: isSpeed && speedVal <= 1 ? 'DC2626' : bg } },
-            font: { color: { rgb: isSpeed && speedVal <= 1 ? 'FFFFFF' : font }, sz: 10, bold: isSpeed && speedVal <= 1 },
-            alignment: { horizontal: ci === 2 || ci === 10 ? 'left' : 'center', vertical: 'center', wrapText: true },
-            border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } },
-          };
+          const ref = XLSX.utils.encode_cell({ r: sheetRow, c: ci });
+          if (!ws1[ref]) ws1[ref] = { v: '', t: 's' };
+          const isSpeed = ci === 9; const spd = result.layers[ri].speedMph;
+          ws1[ref].s = { fill: { fgColor: { rgb: isSpeed && spd <= 1 ? 'DC2626' : bg } }, font: { color: { rgb: isSpeed && spd <= 1 ? 'FFFFFF' : font }, sz: 10, bold: isSpeed && spd <= 1 }, alignment: { horizontal: ci === 2 || ci === 10 ? 'left' : 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
         });
       });
-
       XLSX.utils.book_append_sheet(wb, ws1, 'Chi tiết địa chất');
 
-      // ── SHEET 2: Tổng hợp theo lớp thiết kế ──
+      // ── SHEET 2: Tổng hợp ──
       const headers2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
-
-      // Tính groups
       const groups: any[] = [];
       let gc = 0; let pk = '';
       result.layers.forEach((layer) => {
         const key = layer.layerDesign?.trim() || '(Chưa có)';
         if (key !== pk) { gc++; pk = key; }
-        const colorIdx2 = (gc - 1) % GROUP_COLORS.length;
+        const ci2 = (gc - 1) % GROUP_COLORS.length;
         const last = groups[groups.length - 1];
-        if (last && last.layerDesign === key) {
-          last.segments += 1;
-          last.elevationTo = layer.elevationTo;
-          last.totalDuration += layer.durationHours;
-          last.totalLength += layer.lengthMeters;
-          last.colorIdx = colorIdx2;
-        } else {
-          groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: colorIdx2 });
-        }
+        if (last && last.layerDesign === key) { last.segments++; last.elevationTo = layer.elevationTo; last.totalDuration += layer.durationHours; last.totalLength += layer.lengthMeters; }
+        else { groups.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: ci2 }); }
       });
       groups.forEach(g => { g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0; });
-
       const totalDur = groups.reduce((s, g) => s + g.totalDuration, 0);
-      const totalLen = groups.reduce((s, g) => s + g.totalLength, 0);
+      const totalLen2 = groups.reduce((s, g) => s + g.totalLength, 0);
 
       const ws2Rows = [
         headers2,
-        ...groups.map((g, i) => [
-          i + 1, result.diameter, g.layerDesign, g.segments,
-          parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)),
-          parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)),
-          parseFloat(g.avgSpeed.toFixed(2)),
-        ]),
-        ['Tổng cộng', '', '', result.layers.length,
-          result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
-          result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
-          parseFloat(totalDur.toFixed(2)), parseFloat(totalLen.toFixed(2)),
-          totalDur > 0 ? parseFloat((totalLen / totalDur).toFixed(2)) : '',
-        ],
+        ...groups.map((g, i) => [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))]),
+        ['Tổng cộng', '', '', result.layers.length, result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '', result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '', parseFloat(totalDur.toFixed(2)), parseFloat(totalLen2.toFixed(2)), totalDur > 0 ? parseFloat((totalLen2 / totalDur).toFixed(2)) : ''],
       ];
-
       const ws2 = XLSX.utils.aoa_to_sheet(ws2Rows);
       ws2['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 45 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
 
-      // Style header
-      headers2.forEach((_, ci) => {
-        const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
-        if (!ws2[cellRef]) ws2[cellRef] = { v: headers2[ci], t: 's' };
-        ws2[cellRef].s = {
-          font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-          fill: { fgColor: { rgb: '1E3A6E' } },
-          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
-        };
+      headers2.forEach((h, ci) => {
+        const ref = XLSX.utils.encode_cell({ r: 0, c: ci });
+        if (!ws2[ref]) ws2[ref] = { v: h, t: 's' };
+        ws2[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 }, fill: { fgColor: { rgb: '1E3A6E' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
       });
-
-      // Style data rows
       groups.forEach((g, ri) => {
         const { bg, font } = GROUP_COLORS[g.colorIdx];
         headers2.forEach((_, ci) => {
-          const cellRef = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
-          if (!ws2[cellRef]) ws2[cellRef] = { v: '', t: 's' };
-          const isSpeed = ci === 8;
-          ws2[cellRef].s = {
-            fill: { fgColor: { rgb: isSpeed && g.avgSpeed <= 1 ? 'DC2626' : bg } },
-            font: { color: { rgb: isSpeed && g.avgSpeed <= 1 ? 'FFFFFF' : font }, sz: 10 },
-            alignment: { horizontal: ci === 2 ? 'left' : 'center', vertical: 'center', wrapText: true },
-            border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } },
-          };
+          const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+          if (!ws2[ref]) ws2[ref] = { v: '', t: 's' };
+          const isSpd = ci === 8;
+          ws2[ref].s = { fill: { fgColor: { rgb: isSpd && g.avgSpeed <= 1 ? 'DC2626' : bg } }, font: { color: { rgb: isSpd && g.avgSpeed <= 1 ? 'FFFFFF' : font }, sz: 10 }, alignment: { horizontal: ci === 2 ? 'left' : 'center', vertical: 'center', wrapText: true }, border: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
         });
       });
-
-      // Style footer row
-      const footerRowIdx = groups.length + 1;
+      const footerRow = groups.length + 1;
       headers2.forEach((_, ci) => {
-        const cellRef = XLSX.utils.encode_cell({ r: footerRowIdx, c: ci });
-        if (!ws2[cellRef]) ws2[cellRef] = { v: ws2Rows[footerRowIdx][ci] ?? '', t: typeof ws2Rows[footerRowIdx][ci] === 'number' ? 'n' : 's' };
-        ws2[cellRef].s = {
-          font: { bold: true, sz: 11 },
-          fill: { fgColor: { rgb: 'E2E8F0' } },
-          alignment: { horizontal: 'center', vertical: 'center' },
-          border: { top: { style: 'medium' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } },
-        };
+        const ref = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+        if (!ws2[ref]) ws2[ref] = { v: ws2Rows[footerRow][ci] ?? '', t: typeof ws2Rows[footerRow][ci] === 'number' ? 'n' : 's' };
+        ws2[ref].s = { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: { style: 'medium' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
       });
-
       XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp lớp thiết kế');
 
-      // Xuất file
-      const fileName = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/[^a-zA-Z0-9_\-\.À-ỹ]/g, '_');
+      const fileName = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/\s+/g, '_');
       XLSX.writeFile(wb, fileName);
-    });
+    }).catch(() => alert('Không thể tải thư viện xuất Excel. Vui lòng kiểm tra kết nối mạng.'));
   };
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
