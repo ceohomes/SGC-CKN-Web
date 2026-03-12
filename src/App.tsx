@@ -166,6 +166,217 @@ interface ExtractionResult {
   _mimeType?: string;
 }
 
+const GROUP_COLORS = [
+  { bg: 'BFDFFF', font: '0D3B6E' },{ bg: 'FDE68A', font: '78350F' },
+  { bg: 'A7F3D0', font: '065F46' },{ bg: 'FECACA', font: '7F1D1D' },
+  { bg: 'DDD6FE', font: '4C1D95' },{ bg: 'D9F99D', font: '365314' },
+  { bg: 'FED7AA', font: '7C2D12' },{ bg: 'A5F3FC', font: '164E63' },
+  { bg: 'FBCFE8', font: '831843' },{ bg: '99F6E4', font: '134E4A' },
+  { bg: 'FECACA', font: '7F1D1D' },{ bg: 'C7D2FE', font: '312E81' },
+];
+
+const loadExcelJS = (): Promise<any> => new Promise((resolve, reject) => {
+  if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  s.onload = () => { resolve((window as any).ExcelJS); };
+  s.onerror = () => reject(new Error('Không tải được ExcelJS'));
+  document.head.appendChild(s);
+});
+
+const prepareFile = async (file: File): Promise<{ base64: string; mimeType: string; fileName: string }> => {
+  const getBase64 = (f: File): Promise<string> => new Promise((res, rej) => {
+    const r = new FileReader(); r.readAsDataURL(f);
+    r.onload = () => res(r.result as string); r.onerror = rej;
+  });
+
+  const compressImage = async (f: File): Promise<string> => {
+    try {
+      const bitmap = await createImageBitmap(f);
+      const MAX = 2000;
+      const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+      const w = Math.round(bitmap.width * scale);
+      const h = Math.round(bitmap.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      return canvas.toDataURL('image/jpeg', 0.82);
+    } catch {
+      return new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(f);
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.src = ev.target?.result as string;
+          img.onload = () => {
+            const MAX = 2000;
+            const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+            res(canvas.toDataURL('image/jpeg', 0.82));
+          };
+          img.onerror = rej;
+        };
+        reader.onerror = rej;
+      });
+    }
+  };
+
+  if (file.type === 'application/pdf') {
+    try {
+      const b = await convertPdfToImage(file);
+      return { base64: b, mimeType: 'image/jpeg', fileName: file.name.replace(/\.[^/.]+$/, '') + '.jpg' };
+    } catch {
+      return { base64: await getBase64(file), mimeType: 'application/pdf', fileName: file.name };
+    }
+  } else if (file.type.startsWith('image/')) {
+    return { base64: await compressImage(file), mimeType: 'image/jpeg', fileName: file.name };
+  }
+  throw new Error('Định dạng tệp không được hỗ trợ. Vui lòng sử dụng ảnh hoặc PDF.');
+};
+
+const buildExcelFileName = (result: ExtractionResult): string => {
+  const endDateRaw = result.constructionEnd || '';
+  const endDatePart = endDateRaw.includes(' ') ? endDateRaw.split(' ').slice(-1)[0] : endDateRaw;
+  const endDateForName = endDatePart.replace(/\//g, '-'); // DD-MM-YYYY
+  return [
+    result.componentName || 'BienBan',
+    result.pileId || '',
+    result.diameter || '',
+    endDateForName || '',
+  ].filter(Boolean).join('_').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9À-ɏḀ-ỿ_\-]/g, '_');
+};
+
+const exportAllToExcel = (rows: ExtractionResult[]) => {
+  loadExcelJS().then(async (ExcelJS) => {
+    const argb = (hex: string) => 'FF' + hex.toUpperCase();
+    const thin = (c = 'D1D5DB') => ({ style: 'thin' as const, color: { argb: argb(c) } });
+    const border = (c = 'D1D5DB') => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) });
+    const cell = (c: any, v: any, bg?: string, fc = '1E293B', bold = false, align: any = 'left', sz = 10, wrap = false) => {
+      c.value = v ?? '';
+      c.font = { name: 'Arial', size: sz, bold, color: { argb: argb(fc) } };
+      if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(bg) } };
+      c.alignment = { horizontal: align, vertical: 'middle', wrapText: wrap };
+      c.border = border();
+    };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'SGC-CKN'; wb.created = new Date();
+    const ws = wb.addWorksheet('Dữ liệu thi công');
+
+    ws.columns = [
+      { width: 6  },  // STT
+      { width: 40 },  // Dự án
+      { width: 34 },  // Hạng mục
+      { width: 30 },  // Tên bộ phận
+      { width: 11 },  // Số hiệu
+      { width: 13 },  // Biên bản số
+      { width: 11 },  // Đường kính
+      { width: 22 },  // Bắt đầu
+      { width: 22 },  // Kết thúc
+      { width: 14 },  // Chiều dài (m)
+      { width: 14 },  // T.Gian TC (h)
+      { width: 16 },  // Vận tốc TB (m/h)
+    ];
+
+    const NCOLS = 12;
+
+    const r1 = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG']);
+    r1.height = 30;
+    cell(r1.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG', '1A3A6B', 'FFFFFF', true, 'center', 14);
+    ws.mergeCells(r1.number, 1, r1.number, NCOLS);
+
+    const dateStr2 = new Date().toLocaleDateString('vi-VN');
+    const r2 = ws.addRow([`Ngày xuất: ${dateStr2}   |   Tổng số biên bản: ${rows.length}`]);
+    r2.height = 18;
+    cell(r2.getCell(1), r2.getCell(1).value, 'EFF6FF', '1E3A6E', false, 'center', 10);
+    ws.mergeCells(r2.number, 1, r2.number, NCOLS);
+
+    ws.addRow([]).height = 6;
+
+    const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)'];
+    const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center'];
+    const r4 = ws.addRow(HEADERS);
+    r4.height = 38;
+    HEADERS.forEach((h, ci) => {
+      cell(r4.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, HDR_ALIGN[ci], 11, true);
+      r4.getCell(ci + 1).border = border('FFFFFF');
+    });
+
+    const EVEN_BG = 'F8FAFC';
+    const ODD_BG  = 'EFF6FF';
+
+    rows.forEach((item, idx) => {
+      const totalLen  = (item.layers || []).reduce((s, l) => s + (Number(l.lengthMeters)  || 0), 0);
+      const totalHrs  = (item.layers || []).reduce((s, l) => s + (Number(l.durationHours) || 0), 0);
+      const spd       = totalHrs > 0 ? totalLen / totalHrs : 0;
+      const isSlow    = spd > 0 && spd <= 1;
+      const spdBg     = isSlow ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+      const spdFc     = isSlow ? 'FFFFFF' : 'C2410C';
+      const rowBg     = idx % 2 === 0 ? EVEN_BG : ODD_BG;
+
+      const vals = [
+        rows.length - idx,
+        item.project || '',
+        item.item || '',
+        item.componentName || '',
+        item.pileId || '',
+        item.reportNumber || '',
+        item.diameter || '',
+        item.constructionStart || '',
+        item.constructionEnd || '',
+        parseFloat(totalLen.toFixed(2)),
+        totalHrs > 0 ? parseFloat(totalHrs.toFixed(2)) : '—',
+        parseFloat(spd.toFixed(2)),
+      ];
+      const dr = ws.addRow(vals);
+      dr.height = 22;
+      vals.forEach((v, ci) => {
+        const isSpd = ci === 11;
+        const isLen = ci === 9;
+        cell(
+          dr.getCell(ci + 1), v,
+          isSpd ? spdBg : rowBg,
+          isSpd ? spdFc : isLen ? 'C2410C' : '1E293B',
+          (isSpd && isSlow) || isLen,
+          HDR_ALIGN[ci], 10
+        );
+      });
+    });
+
+    const sumLen = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.lengthMeters) || 0), 0), 0);
+    const sumHrs = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.durationHours) || 0), 0), 0);
+    const sumSpd = sumHrs > 0 ? sumLen / sumHrs : 0;
+    const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2))];
+    const sr = ws.addRow(sumVals);
+    sr.height = 26;
+    sumVals.forEach((v, ci) => {
+      const isNum = ci >= 9;
+      cell(sr.getCell(ci + 1), v, 'E2E8F0', '1E3A6E', true, ci === 8 ? 'right' : isNum ? 'center' : 'left', 11);
+      sr.getCell(ci + 1).border = { ...border('94A3B8'), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } };
+    });
+    ws.mergeCells(sr.number, 1, sr.number, 8);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.style.display = 'none';
+    const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
+    a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  }).catch((err: any) => {
+    console.error('exportAllToExcel error:', err);
+  });
+};
+
 interface ProcessingFile {
   id: string;
   fileName: string;
@@ -1087,62 +1298,6 @@ export default function App() {
     const collectedResults: ExtractionResult[] = [];
 
         // ── Chuẩn bị file: đọc + nén/convert (CPU-bound, chạy song song 100%) ──
-        const prepareFile = async (file: File): Promise<{ base64: string; mimeType: string; fileName: string }> => {
-          const getBase64 = (f: File): Promise<string> => new Promise((res, rej) => {
-            const r = new FileReader(); r.readAsDataURL(f);
-            r.onload = () => res(r.result as string); r.onerror = rej;
-          });
-
-          // Nén ảnh: dùng createImageBitmap (nhanh hơn ~3x so với new Image())
-          const compressImage = async (f: File): Promise<string> => {
-            try {
-              const bitmap = await createImageBitmap(f);
-              const MAX = 2000;
-              const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
-              const w = Math.round(bitmap.width * scale);
-              const h = Math.round(bitmap.height * scale);
-              const canvas = document.createElement('canvas');
-              canvas.width = w; canvas.height = h;
-              const ctx = canvas.getContext('2d')!;
-              ctx.drawImage(bitmap, 0, 0, w, h);
-              bitmap.close();
-              return canvas.toDataURL('image/jpeg', 0.82);
-            } catch {
-              // fallback nếu createImageBitmap không hỗ trợ
-              return new Promise((res, rej) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(f);
-                reader.onload = (ev) => {
-                  const img = new Image();
-                  img.src = ev.target?.result as string;
-                  img.onload = () => {
-                    const MAX = 2000;
-                    const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.round(img.width * scale);
-                    canvas.height = Math.round(img.height * scale);
-                    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    res(canvas.toDataURL('image/jpeg', 0.82));
-                  };
-                  img.onerror = rej;
-                };
-                reader.onerror = rej;
-              });
-            }
-          };
-
-          if (file.type === 'application/pdf') {
-            try {
-              const b = await convertPdfToImage(file);
-              return { base64: b, mimeType: 'image/jpeg', fileName: file.name.replace(/\.[^/.]+$/, '') + '.jpg' };
-            } catch {
-              return { base64: await getBase64(file), mimeType: 'application/pdf', fileName: file.name };
-            }
-          } else if (file.type.startsWith('image/')) {
-            return { base64: await compressImage(file), mimeType: 'image/jpeg', fileName: file.name };
-          }
-          throw new Error('Định dạng tệp không được hỗ trợ. Vui lòng sử dụng ảnh hoặc PDF.');
-        };
 
         const processFile = async (pFile: ProcessingFile, file: File) => {
           setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
@@ -1243,18 +1398,6 @@ export default function App() {
   // Helper: Upsert Excel lên GitHub — ghi đè file cũ nếu đã tồn tại (dùng SHA), tạo mới nếu chưa có
   // Path cố định: SGC-CKN/Excel/{id}.xlsx → mỗi biên bản CHỈ có đúng 1 file Excel duy nhất
   // Tạo tên file Excel chuẩn: TênBộPhận_SốHiệuCọc_ĐườngKính_NgàyKếtThúc
-  const buildExcelFileName = (result: ExtractionResult): string => {
-    const endDateRaw = result.constructionEnd || '';
-    const endDatePart = endDateRaw.includes(' ') ? endDateRaw.split(' ').slice(-1)[0] : endDateRaw;
-    const endDateForName = endDatePart.replace(/\//g, '-'); // DD-MM-YYYY
-    return [
-      result.componentName || 'BienBan',
-      result.pileId || '',
-      result.diameter || '',
-      endDateForName || '',
-    ].filter(Boolean).join('_').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9À-ɏḀ-ỿ_\-]/g, '_');
-  };
-
   const upsertExcelToGitHub = async (
     id: string,
     excelBase64: string,
@@ -1308,26 +1451,6 @@ export default function App() {
 
   // Hàm tạo Excel buffer (không download, chỉ trả về base64) để upload GitHub
   const generateExcelBase64 = async (result: ExtractionResult, imageData?: { base64: string; ext: string } | null): Promise<string | null> => {
-    const loadExcelJS = (): Promise<any> => {
-      return new Promise((resolve, reject) => {
-        if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-        script.onload = () => resolve((window as any).ExcelJS);
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    };
-
-    const GROUP_COLORS = [
-      { bg: 'BFDFFF', font: '0D3B6E' },{ bg: 'FDE68A', font: '78350F' },
-      { bg: 'A7F3D0', font: '065F46' },{ bg: 'FECACA', font: '7F1D1D' },
-      { bg: 'DDD6FE', font: '4C1D95' },{ bg: 'D9F99D', font: '365314' },
-      { bg: 'FED7AA', font: '7C2D12' },{ bg: 'A5F3FC', font: '164E63' },
-      { bg: 'FBCFE8', font: '831843' },{ bg: '99F6E4', font: '134E4A' },
-      { bg: 'FECACA', font: '7F1D1D' },{ bg: 'C7D2FE', font: '312E81' },
-    ];
-
     try {
       const ExcelJS = await loadExcelJS();
       const argb = (hex: string) => 'FF' + hex.toUpperCase();
@@ -1683,14 +1806,8 @@ export default function App() {
     if (itemToDelete?.fileUrl)  filesToDelete.push(`📄 File ảnh/PDF: ${itemToDelete.fileName || 'file gốc'}`);
     if (itemToDelete?.excelUrl) filesToDelete.push(`📊 File Excel: ${itemToDelete.excelUrl.split('/').pop()}`);
     const fileList = filesToDelete.length > 0
-      ? '
-
-Các file sẽ bị xóa trên GitHub:
-' + filesToDelete.join('
-')
-      : '
-
-(Không có file đính kèm trên GitHub)';
+      ? `\n\nCác file sẽ bị xóa trên GitHub:\n` + filesToDelete.join('\n')
+      : `\n\n(Không có file đính kèm trên GitHub)`;
 
     if (!window.confirm(
       `Bạn có chắc chắn muốn xóa biên bản này?
@@ -1750,11 +1867,7 @@ Các file sẽ bị xóa trên GitHub:
       // Báo lỗi nếu có
       if (errors.length > 0) {
         console.error('Lỗi xóa:', errors);
-        alert(`⚠️ Đã xóa khỏi giao diện nhưng có lỗi:
-${errors.join('
-')}
-
-Vui lòng kiểm tra thủ công trên GitHub/Supabase.`);
+        alert(`⚠️ Đã xóa khỏi giao diện nhưng có lỗi:\n${errors.join('\n')}\n\nVui lòng kiểm tra thủ công trên GitHub/Supabase.`);
       }
     })();
   };
@@ -3478,6 +3591,7 @@ function EditSplitView({
   onSave,
   embedded = false,
   githubCreds,
+  userApiKey,
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
@@ -3529,22 +3643,6 @@ function EditSplitView({
       setIsRescanning(false);
     }
   };
-
-  // Màu nền cho từng nhóm lớp (khớp với bảng hiển thị)
-  const GROUP_COLORS = [
-    { bg: 'BFDFFF', font: '0D3B6E' }, // sky-200
-    { bg: 'FDE68A', font: '78350F' }, // amber-200
-    { bg: 'A7F3D0', font: '065F46' }, // emerald-200
-    { bg: 'FECACA', font: '7F1D1D' }, // rose-200
-    { bg: 'DDD6FE', font: '4C1D95' }, // violet-200
-    { bg: 'D9F99D', font: '365314' }, // lime-200
-    { bg: 'FED7AA', font: '7C2D12' }, // orange-200
-    { bg: 'A5F3FC', font: '164E63' }, // cyan-200
-    { bg: 'FBCFE8', font: '831843' }, // pink-200
-    { bg: '99F6E4', font: '134E4A' }, // teal-200
-    { bg: 'FECACA', font: '7F1D1D' }, // red-200
-    { bg: 'C7D2FE', font: '312E81' }, // indigo-200
-  ];
 
   // Tự động lấy ảnh từ GitHub Contents API (hỗ trợ CORS)
   const fetchImageFromGitHub = async (): Promise<{ base64: string; ext: string } | null> => {
@@ -3652,163 +3750,8 @@ function EditSplitView({
     } catch { return null; }
   };
 
-  // ── Xuất toàn bộ dữ liệu bảng ra 1 file Excel (Sheet 1 tổng hợp) ──
-  const exportAllToExcel = (rows: ExtractionResult[]) => {
-    const loadExcelJS = (): Promise<any> => new Promise((resolve, reject) => {
-      if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-      s.onload = () => { resolve((window as any).ExcelJS); };
-      s.onerror = () => reject(new Error('Không tải được ExcelJS'));
-      document.head.appendChild(s);
-    });
-
-    loadExcelJS().then(async (ExcelJS) => {
-      const argb = (hex: string) => 'FF' + hex.toUpperCase();
-      const thin = (c = 'D1D5DB') => ({ style: 'thin' as const, color: { argb: argb(c) } });
-      const border = (c = 'D1D5DB') => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) });
-      const cell = (c: any, v: any, bg?: string, fc = '1E293B', bold = false, align: any = 'left', sz = 10, wrap = false) => {
-        c.value = v ?? '';
-        c.font = { name: 'Arial', size: sz, bold, color: { argb: argb(fc) } };
-        if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(bg) } };
-        c.alignment = { horizontal: align, vertical: 'middle', wrapText: wrap };
-        c.border = border();
-      };
-
-      const wb = new ExcelJS.Workbook();
-      wb.creator = 'SGC-CKN'; wb.created = new Date();
-      const ws = wb.addWorksheet('Dữ liệu thi công');
-
-      // Độ rộng cột — đúng thứ tự bảng web
-      ws.columns = [
-        { width: 6  },  // STT
-        { width: 40 },  // Dự án
-        { width: 34 },  // Hạng mục
-        { width: 30 },  // Tên bộ phận
-        { width: 11 },  // Số hiệu
-        { width: 13 },  // Biên bản số
-        { width: 11 },  // Đường kính
-        { width: 22 },  // Bắt đầu
-        { width: 22 },  // Kết thúc
-        { width: 14 },  // Chiều dài (m)
-        { width: 14 },  // T.Gian TC (h)
-        { width: 16 },  // Vận tốc TB (m/h)
-      ];
-
-      const NCOLS = 12;
-
-      // ── Dòng 1: Tiêu đề ──
-      const r1 = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG']);
-      r1.height = 30;
-      cell(r1.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG', '1A3A6B', 'FFFFFF', true, 'center', 14);
-      ws.mergeCells(r1.number, 1, r1.number, NCOLS);
-
-      // ── Dòng 2: Ngày xuất ──
-      const dateStr2 = new Date().toLocaleDateString('vi-VN');
-      const r2 = ws.addRow([`Ngày xuất: ${dateStr2}   |   Tổng số biên bản: ${rows.length}`]);
-      r2.height = 18;
-      cell(r2.getCell(1), r2.getCell(1).value, 'EFF6FF', '1E3A6E', false, 'center', 10);
-      ws.mergeCells(r2.number, 1, r2.number, NCOLS);
-
-      // ── Dòng 3: Trống ──
-      ws.addRow([]).height = 6;
-
-      // ── Dòng 4: Header bảng — màu nền xanh đậm y web ──
-      const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)'];
-      const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center'];
-      const r4 = ws.addRow(HEADERS);
-      r4.height = 38;
-      HEADERS.forEach((h, ci) => {
-        cell(r4.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, HDR_ALIGN[ci], 11, true);
-        r4.getCell(ci + 1).border = border('FFFFFF');
-      });
-
-      // ── Dữ liệu: zebra striping trắng/xanh nhạt y web ──
-      const EVEN_BG = 'F8FAFC';
-      const ODD_BG  = 'EFF6FF';
-
-      rows.forEach((item, idx) => {
-        const totalLen  = (item.layers || []).reduce((s, l) => s + (Number(l.lengthMeters)  || 0), 0);
-        const totalHrs  = (item.layers || []).reduce((s, l) => s + (Number(l.durationHours) || 0), 0);
-        const spd       = totalHrs > 0 ? totalLen / totalHrs : 0;
-        const isSlow    = spd > 0 && spd <= 1;
-        const spdBg     = isSlow ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
-        const spdFc     = isSlow ? 'FFFFFF' : 'C2410C';
-        const rowBg     = idx % 2 === 0 ? EVEN_BG : ODD_BG;
-
-        const vals = [
-          rows.length - idx,
-          item.project || '',
-          item.item || '',
-          item.componentName || '',
-          item.pileId || '',
-          item.reportNumber || '',
-          item.diameter || '',
-          item.constructionStart || '',
-          item.constructionEnd || '',
-          parseFloat(totalLen.toFixed(2)),
-          totalHrs > 0 ? parseFloat(totalHrs.toFixed(2)) : '—',
-          parseFloat(spd.toFixed(2)),
-        ];
-        const dr = ws.addRow(vals);
-        dr.height = 22;
-        vals.forEach((v, ci) => {
-          const isSpd = ci === 11;
-          const isLen = ci === 9;
-          cell(
-            dr.getCell(ci + 1), v,
-            isSpd ? spdBg : rowBg,
-            isSpd ? spdFc : isLen ? 'C2410C' : '1E293B',
-            (isSpd && isSlow) || isLen,
-            HDR_ALIGN[ci], 10
-          );
-        });
-      });
-
-      // ── Dòng tổng ──
-      const sumLen = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.lengthMeters) || 0), 0), 0);
-      const sumHrs = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.durationHours) || 0), 0), 0);
-      const sumSpd = sumHrs > 0 ? sumLen / sumHrs : 0;
-      const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2))];
-      const sr = ws.addRow(sumVals);
-      sr.height = 26;
-      sumVals.forEach((v, ci) => {
-        const isNum = ci >= 9;
-        cell(sr.getCell(ci + 1), v, 'E2E8F0', '1E3A6E', true, ci === 8 ? 'right' : isNum ? 'center' : 'left', 11);
-        sr.getCell(ci + 1).border = { ...border('94A3B8'), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } };
-      });
-      ws.mergeCells(sr.number, 1, sr.number, 8);
-
-      // ── Xuất file ──
-      const buffer = await wb.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.style.display = 'none';
-      const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
-      a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-    }).catch((err: any) => {
-      console.error('exportAllToExcel error:', err);
-      alert('Lỗi xuất Excel: ' + (err?.message || String(err)));
-    });
-  };
 
     const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
-    const loadExcelJS = (): Promise<any> => {
-      return new Promise((resolve, reject) => {
-        if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-        script.onload = () => resolve((window as any).ExcelJS);
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    };
-
     // Helper màu ExcelJS
     const argb = (hex: string) => 'FF' + hex.toUpperCase();
     const thinBorder = (color = 'CCCCCC') => ({
