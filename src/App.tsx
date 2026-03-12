@@ -2077,6 +2077,19 @@ export default function App() {
                       </button>
                     )}
                     <button
+                      onClick={() => exportAllToExcel(filtered)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-sm"
+                      title={`Xuất ${filtered.length} biên bản ra Excel`}
+                    >
+                      <ArrowDownToLine size={13} />
+                      Xuất Excel
+                      {hasActiveFilter && (
+                        <span className="bg-white/30 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                          {filtered.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
                       onClick={() => setShowFilters(p => !p)}
                       className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
@@ -3288,7 +3301,150 @@ function EditSplitView({
     } catch { return null; }
   };
 
-  const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
+  // ── Xuất toàn bộ dữ liệu bảng ra 1 file Excel (Sheet 1 tổng hợp) ──
+  const exportAllToExcel = (rows: ExtractionResult[]) => {
+    const loadExcelJS = (): Promise<any> => new Promise((resolve, reject) => {
+      if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      s.onload = () => resolve((window as any).ExcelJS);
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+
+    loadExcelJS().then(async (ExcelJS) => {
+      const argb = (hex: string) => 'FF' + hex.toUpperCase();
+      const thinBorder = (color = 'CCCCCC') => ({
+        top: { style: 'thin' as const, color: { argb: argb(color) } },
+        bottom: { style: 'thin' as const, color: { argb: argb(color) } },
+        left: { style: 'thin' as const, color: { argb: argb(color) } },
+        right: { style: 'thin' as const, color: { argb: argb(color) } },
+      });
+      const applyCell = (cell: any, value: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean; border?: any }) => {
+        cell.value = value;
+        cell.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
+        if (opts.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
+        cell.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
+        cell.border = opts.border ?? thinBorder();
+      };
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'SGC-CKN'; wb.created = new Date();
+
+      // ── Sheet 1: Tổng hợp tất cả biên bản ──
+      const ws = wb.addWorksheet('Tổng hợp dữ liệu thi công');
+      ws.columns = [
+        { width: 6  },  // STT
+        { width: 36 },  // Dự án
+        { width: 30 },  // Hạng mục
+        { width: 28 },  // Tên bộ phận
+        { width: 10 },  // Số hiệu cọc
+        { width: 10 },  // Biên bản số
+        { width: 10 },  // Đường kính
+        { width: 22 },  // Bắt đầu
+        { width: 22 },  // Kết thúc
+        { width: 12 },  // Chiều dài (m)
+        { width: 13 },  // T.gian TC (h)
+        { width: 15 },  // Vận tốc TB (m/h)
+      ];
+
+      // Tiêu đề file
+      const titleRow = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG - SGC-CKN']);
+      titleRow.height = 32;
+      applyCell(titleRow.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG - SGC-CKN', {
+        bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 14, align: 'center'
+      });
+      ws.mergeCells(1, 1, 1, 12);
+
+      // Ngày xuất
+      const dateRow = ws.addRow([`Ngày xuất: ${new Date().toLocaleDateString('vi-VN')} — Tổng số biên bản: ${rows.length}`]);
+      dateRow.height = 20;
+      applyCell(dateRow.getCell(1), dateRow.getCell(1).value, {
+        bg: 'EFF6FF', fontColor: '1E3A6E', bold: false, sz: 10, align: 'center'
+      });
+      ws.mergeCells(2, 1, 2, 12);
+
+      // Dòng trống
+      const blank = ws.addRow([]);
+      blank.height = 6;
+
+      // Header bảng
+      const headers = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đ.Kính', 'Bắt đầu TC', 'Kết thúc TC', 'Dài (m)', 'T.Gian (h)', 'V.Tốc (m/h)'];
+      const hdrRow = ws.addRow(headers);
+      hdrRow.height = 36;
+      headers.forEach((h, ci) => {
+        applyCell(hdrRow.getCell(ci + 1), h, {
+          bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11,
+          align: ci >= 9 ? 'center' : ci === 0 ? 'center' : 'left',
+          wrap: true, border: thinBorder('FFFFFF')
+        });
+      });
+
+      // Dữ liệu từng biên bản
+      const ROW_BG = ['F8FAFC', 'EFF6FF']; // zebra striping
+      rows.forEach((item, idx) => {
+        // Tính tổng chiều dài và thời gian từ layers
+        const totalLen = item.layers?.reduce((s, l) => s + (l.lengthMeters || 0), 0) ?? 0;
+        const totalHours = item.layers?.reduce((s, l) => s + (l.durationHours || 0), 0) ?? 0;
+        const avgSpeed = totalHours > 0 ? totalLen / totalHours : 0;
+        const isSlowSpeed = avgSpeed > 0 && avgSpeed <= 1;
+
+        const bg = ROW_BG[idx % 2];
+        const vals = [
+          rows.length - idx,
+          item.project || '',
+          item.item || '',
+          item.componentName || '',
+          item.pileId || '',
+          item.reportNumber || '',
+          item.diameter || '',
+          item.constructionStart || '',
+          item.constructionEnd || '',
+          parseFloat(totalLen.toFixed(2)),
+          parseFloat(totalHours.toFixed(2)),
+          parseFloat(avgSpeed.toFixed(2)),
+        ];
+        const dataRow = ws.addRow(vals);
+        dataRow.height = 24;
+        vals.forEach((v, ci) => {
+          const isSpd = ci === 11;
+          const spdBg = isSlowSpeed ? 'DC2626' : avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
+          applyCell(dataRow.getCell(ci + 1), v, {
+            bg: isSpd ? spdBg : bg,
+            fontColor: isSpd ? (isSlowSpeed ? 'FFFFFF' : 'C2410C') : '1E293B',
+            bold: isSpd && isSlowSpeed,
+            align: ci >= 9 ? 'center' : ci === 0 ? 'center' : 'left',
+            border: thinBorder(),
+          });
+        });
+      });
+
+      // Dòng tổng
+      const totalLen = rows.reduce((s, item) => s + (item.layers?.reduce((s2, l) => s2 + (l.lengthMeters || 0), 0) ?? 0), 0);
+      const totalHours = rows.reduce((s, item) => s + (item.layers?.reduce((s2, l) => s2 + (l.durationHours || 0), 0) ?? 0), 0);
+      const totalAvg = totalHours > 0 ? totalLen / totalHours : 0;
+      const sumRow = ws.addRow(['', '', '', '', '', '', 'TỔNG CỘNG', '', '', parseFloat(totalLen.toFixed(2)), parseFloat(totalHours.toFixed(2)), parseFloat(totalAvg.toFixed(2))]);
+      sumRow.height = 24;
+      sumRow.eachCell((cell: any, ci: number) => {
+        applyCell(cell, cell.value, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, align: ci >= 10 ? 'center' : 'left', border: thinBorder('FFFFFF') });
+      });
+      ws.mergeCells(sumRow.number, 1, sumRow.number, 6);
+      ws.mergeCells(sumRow.number, 7, sumRow.number, 9);
+
+      // Xuất file
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
+      a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }).catch((err) => { console.error(err); alert('Không thể tải thư viện xuất Excel.'); });
+  };
+
+    const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
     const loadExcelJS = (): Promise<any> => {
       return new Promise((resolve, reject) => {
         if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
@@ -3494,7 +3650,18 @@ function EditSplitView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/\s+/g, '_');
+      // Tên file: TênBộPhận_SốHiệuCọc_ĐườngKính_NgàyKếtThúc.xlsx
+      const endDateRaw = result.constructionEnd || '';
+      // constructionEnd: "HH:mm DD/MM/YYYY" → lấy phần ngày cuối
+      const endDatePart = endDateRaw.includes(' ') ? endDateRaw.split(' ').slice(-1)[0] : endDateRaw;
+      const endDateForName = endDatePart.replace(/\//g, '-'); // DD-MM-YYYY
+      const nameParts = [
+        result.componentName || 'BienBan',
+        result.pileId || '',
+        result.diameter || '',
+        endDateForName || '',
+      ].filter(Boolean).join('_').replace(/\s+/g, '_');
+      a.download = `${nameParts}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     }).catch((err) => { console.error(err); alert('Không thể tải thư viện xuất Excel. Vui lòng kiểm tra kết nối mạng.'); });
@@ -3728,27 +3895,6 @@ function EditSplitView({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            disabled={isFetchingImage}
-            onClick={async () => {
-              if (isFetchingImage) return;
-              setIsFetchingImage(true);
-              try {
-                const autoImg = await fetchImageFromGitHub();
-                // Xuất Excel luôn — có ảnh thì đính kèm, không có thì vẫn xuất (không cần ảnh)
-                exportToExcel(data, autoImg);
-              } finally {
-                setIsFetchingImage(false);
-              }
-            }}
-            className={`px-4 py-2 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border flex items-center gap-2 ${isFetchingImage ? 'bg-emerald-300 border-emerald-200 cursor-wait' : 'bg-emerald-500 hover:bg-emerald-600 border-emerald-400'}`}
-          >
-            {isFetchingImage ? (
-              <><svg className="animate-spin" width={14} height={14} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang lấy ảnh...</>
-            ) : (
-              <><ArrowDownToLine size={14} /> Xuất Excel</>
-            )}
-          </button>
           <button 
             onClick={onClose}
             className="px-4 py-2 bg-red-400 hover:bg-red-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-red-300"
