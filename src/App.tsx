@@ -2827,6 +2827,7 @@ function EditSplitView({
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT <br/> THỰC TẾ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
@@ -2876,6 +2877,14 @@ function EditSplitView({
                               placeholder="..."
                             />
                           </div>
+                        </td>
+                        <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
+                          <input
+                            value={data.diameter}
+                            readOnly
+                            className={`w-full bg-transparent border-none text-[12px] text-black font-normal px-2 py-1 text-center outline-none`}
+                            style={{ minWidth: '80px', width: '80px' }}
+                          />
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'160px'}}>
                           <AutoResizeTextarea 
