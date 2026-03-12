@@ -3332,89 +3332,84 @@ function EditSplitView({
       if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
       const s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-      s.onload = () => resolve((window as any).ExcelJS);
-      s.onerror = reject;
+      s.onload = () => { resolve((window as any).ExcelJS); };
+      s.onerror = () => reject(new Error('Không tải được ExcelJS'));
       document.head.appendChild(s);
     });
 
     loadExcelJS().then(async (ExcelJS) => {
       const argb = (hex: string) => 'FF' + hex.toUpperCase();
-      const thinBorder = (color = 'CCCCCC') => ({
-        top: { style: 'thin' as const, color: { argb: argb(color) } },
-        bottom: { style: 'thin' as const, color: { argb: argb(color) } },
-        left: { style: 'thin' as const, color: { argb: argb(color) } },
-        right: { style: 'thin' as const, color: { argb: argb(color) } },
-      });
-      const applyCell = (cell: any, value: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean; border?: any }) => {
-        cell.value = value;
-        cell.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
-        if (opts.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
-        cell.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
-        cell.border = opts.border ?? thinBorder();
+      const thin = (c = 'D1D5DB') => ({ style: 'thin' as const, color: { argb: argb(c) } });
+      const border = (c = 'D1D5DB') => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) });
+      const cell = (c: any, v: any, bg?: string, fc = '1E293B', bold = false, align: any = 'left', sz = 10, wrap = false) => {
+        c.value = v ?? '';
+        c.font = { name: 'Arial', size: sz, bold, color: { argb: argb(fc) } };
+        if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(bg) } };
+        c.alignment = { horizontal: align, vertical: 'middle', wrapText: wrap };
+        c.border = border();
       };
 
       const wb = new ExcelJS.Workbook();
       wb.creator = 'SGC-CKN'; wb.created = new Date();
+      const ws = wb.addWorksheet('Dữ liệu thi công');
 
-      // ── Sheet 1: Tổng hợp tất cả biên bản ──
-      const ws = wb.addWorksheet('Tổng hợp dữ liệu thi công');
+      // Độ rộng cột — đúng thứ tự bảng web
       ws.columns = [
         { width: 6  },  // STT
-        { width: 36 },  // Dự án
-        { width: 30 },  // Hạng mục
-        { width: 28 },  // Tên bộ phận
-        { width: 10 },  // Số hiệu cọc
-        { width: 10 },  // Biên bản số
-        { width: 10 },  // Đường kính
+        { width: 40 },  // Dự án
+        { width: 34 },  // Hạng mục
+        { width: 30 },  // Tên bộ phận
+        { width: 11 },  // Số hiệu
+        { width: 13 },  // Biên bản số
+        { width: 11 },  // Đường kính
         { width: 22 },  // Bắt đầu
         { width: 22 },  // Kết thúc
-        { width: 12 },  // Chiều dài (m)
-        { width: 13 },  // T.gian TC (h)
-        { width: 15 },  // Vận tốc TB (m/h)
+        { width: 14 },  // Chiều dài (m)
+        { width: 14 },  // T.Gian TC (h)
+        { width: 16 },  // Vận tốc TB (m/h)
       ];
 
-      // Tiêu đề file
-      const titleRow = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG - SGC-CKN']);
-      titleRow.height = 32;
-      applyCell(titleRow.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG - SGC-CKN', {
-        bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 14, align: 'center'
-      });
-      ws.mergeCells(1, 1, 1, 12);
+      const NCOLS = 12;
 
-      // Ngày xuất
-      const dateRow = ws.addRow([`Ngày xuất: ${new Date().toLocaleDateString('vi-VN')} — Tổng số biên bản: ${rows.length}`]);
-      dateRow.height = 20;
-      applyCell(dateRow.getCell(1), dateRow.getCell(1).value, {
-        bg: 'EFF6FF', fontColor: '1E3A6E', bold: false, sz: 10, align: 'center'
-      });
-      ws.mergeCells(2, 1, 2, 12);
+      // ── Dòng 1: Tiêu đề ──
+      const r1 = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG']);
+      r1.height = 30;
+      cell(r1.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG', '1A3A6B', 'FFFFFF', true, 'center', 14);
+      ws.mergeCells(r1.number, 1, r1.number, NCOLS);
 
-      // Dòng trống
-      const blank = ws.addRow([]);
-      blank.height = 6;
+      // ── Dòng 2: Ngày xuất ──
+      const dateStr2 = new Date().toLocaleDateString('vi-VN');
+      const r2 = ws.addRow([`Ngày xuất: ${dateStr2}   |   Tổng số biên bản: ${rows.length}`]);
+      r2.height = 18;
+      cell(r2.getCell(1), r2.getCell(1).value, 'EFF6FF', '1E3A6E', false, 'center', 10);
+      ws.mergeCells(r2.number, 1, r2.number, NCOLS);
 
-      // Header bảng
-      const headers = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đ.Kính', 'Bắt đầu TC', 'Kết thúc TC', 'Dài (m)', 'T.Gian (h)', 'V.Tốc (m/h)'];
-      const hdrRow = ws.addRow(headers);
-      hdrRow.height = 36;
-      headers.forEach((h, ci) => {
-        applyCell(hdrRow.getCell(ci + 1), h, {
-          bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11,
-          align: ci >= 9 ? 'center' : ci === 0 ? 'center' : 'left',
-          wrap: true, border: thinBorder('FFFFFF')
-        });
+      // ── Dòng 3: Trống ──
+      ws.addRow([]).height = 6;
+
+      // ── Dòng 4: Header bảng — màu nền xanh đậm y web ──
+      const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)'];
+      const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center'];
+      const r4 = ws.addRow(HEADERS);
+      r4.height = 38;
+      HEADERS.forEach((h, ci) => {
+        cell(r4.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, HDR_ALIGN[ci], 11, true);
+        r4.getCell(ci + 1).border = border('FFFFFF');
       });
 
-      // Dữ liệu từng biên bản
-      const ROW_BG = ['F8FAFC', 'EFF6FF']; // zebra striping
+      // ── Dữ liệu: zebra striping trắng/xanh nhạt y web ──
+      const EVEN_BG = 'F8FAFC';
+      const ODD_BG  = 'EFF6FF';
+
       rows.forEach((item, idx) => {
-        // Tính tổng chiều dài và thời gian từ layers
-        const totalLen = item.layers?.reduce((s, l) => s + (l.lengthMeters || 0), 0) ?? 0;
-        const totalHours = item.layers?.reduce((s, l) => s + (l.durationHours || 0), 0) ?? 0;
-        const avgSpeed = totalHours > 0 ? totalLen / totalHours : 0;
-        const isSlowSpeed = avgSpeed > 0 && avgSpeed <= 1;
+        const totalLen  = (item.layers || []).reduce((s, l) => s + (Number(l.lengthMeters)  || 0), 0);
+        const totalHrs  = (item.layers || []).reduce((s, l) => s + (Number(l.durationHours) || 0), 0);
+        const spd       = totalHrs > 0 ? totalLen / totalHrs : 0;
+        const isSlow    = spd > 0 && spd <= 1;
+        const spdBg     = isSlow ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+        const spdFc     = isSlow ? 'FFFFFF' : 'C2410C';
+        const rowBg     = idx % 2 === 0 ? EVEN_BG : ODD_BG;
 
-        const bg = ROW_BG[idx % 2];
         const vals = [
           rows.length - idx,
           item.project || '',
@@ -3426,37 +3421,39 @@ function EditSplitView({
           item.constructionStart || '',
           item.constructionEnd || '',
           parseFloat(totalLen.toFixed(2)),
-          parseFloat(totalHours.toFixed(2)),
-          parseFloat(avgSpeed.toFixed(2)),
+          totalHrs > 0 ? parseFloat(totalHrs.toFixed(2)) : '—',
+          parseFloat(spd.toFixed(2)),
         ];
-        const dataRow = ws.addRow(vals);
-        dataRow.height = 24;
+        const dr = ws.addRow(vals);
+        dr.height = 22;
         vals.forEach((v, ci) => {
           const isSpd = ci === 11;
-          const spdBg = isSlowSpeed ? 'DC2626' : avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
-          applyCell(dataRow.getCell(ci + 1), v, {
-            bg: isSpd ? spdBg : bg,
-            fontColor: isSpd ? (isSlowSpeed ? 'FFFFFF' : 'C2410C') : '1E293B',
-            bold: isSpd && isSlowSpeed,
-            align: ci >= 9 ? 'center' : ci === 0 ? 'center' : 'left',
-            border: thinBorder(),
-          });
+          const isLen = ci === 9;
+          cell(
+            dr.getCell(ci + 1), v,
+            isSpd ? spdBg : rowBg,
+            isSpd ? spdFc : isLen ? 'C2410C' : '1E293B',
+            (isSpd && isSlow) || isLen,
+            HDR_ALIGN[ci], 10
+          );
         });
       });
 
-      // Dòng tổng
-      const totalLen = rows.reduce((s, item) => s + (item.layers?.reduce((s2, l) => s2 + (l.lengthMeters || 0), 0) ?? 0), 0);
-      const totalHours = rows.reduce((s, item) => s + (item.layers?.reduce((s2, l) => s2 + (l.durationHours || 0), 0) ?? 0), 0);
-      const totalAvg = totalHours > 0 ? totalLen / totalHours : 0;
-      const sumRow = ws.addRow(['', '', '', '', '', '', 'TỔNG CỘNG', '', '', parseFloat(totalLen.toFixed(2)), parseFloat(totalHours.toFixed(2)), parseFloat(totalAvg.toFixed(2))]);
-      sumRow.height = 24;
-      sumRow.eachCell((cell: any, ci: number) => {
-        applyCell(cell, cell.value, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, align: ci >= 10 ? 'center' : 'left', border: thinBorder('FFFFFF') });
+      // ── Dòng tổng ──
+      const sumLen = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.lengthMeters) || 0), 0), 0);
+      const sumHrs = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.durationHours) || 0), 0), 0);
+      const sumSpd = sumHrs > 0 ? sumLen / sumHrs : 0;
+      const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2))];
+      const sr = ws.addRow(sumVals);
+      sr.height = 26;
+      sumVals.forEach((v, ci) => {
+        const isNum = ci >= 9;
+        cell(sr.getCell(ci + 1), v, 'E2E8F0', '1E3A6E', true, ci === 8 ? 'right' : isNum ? 'center' : 'left', 11);
+        sr.getCell(ci + 1).border = { ...border('94A3B8'), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } };
       });
-      ws.mergeCells(sumRow.number, 1, sumRow.number, 6);
-      ws.mergeCells(sumRow.number, 7, sumRow.number, 9);
+      ws.mergeCells(sr.number, 1, sr.number, 8);
 
-      // Xuất file
+      // ── Xuất file ──
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
@@ -3467,8 +3464,11 @@ function EditSplitView({
       a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-    }).catch((err) => { console.error(err); alert('Lỗi xuất Excel: ' + (err?.message || err)); });
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    }).catch((err: any) => {
+      console.error('exportAllToExcel error:', err);
+      alert('Lỗi xuất Excel: ' + (err?.message || String(err)));
+    });
   };
 
     const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
