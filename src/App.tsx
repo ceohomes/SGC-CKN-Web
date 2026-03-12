@@ -1393,6 +1393,7 @@ export default function App() {
                           result={currentResult}
                           embedded={true}
                           onClose={() => setCurrentResult(null)}
+                          githubCreds={githubCreds}
                           onSave={(updated) => {
                             setCurrentResult(updated);
                             setPendingResults(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -1941,6 +1942,7 @@ export default function App() {
           result={editingResult} 
           onClose={() => { setIsEditModalOpen(false); setEditingResult(null); }}
           onSave={handleSaveEdit}
+          githubCreds={githubCreds}
         />
       )}
     </div>
@@ -2494,12 +2496,14 @@ function EditSplitView({
   result, 
   onClose, 
   onSave,
-  embedded = false
+  embedded = false,
+  githubCreds,
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
   onSave: (res: ExtractionResult) => void;
   embedded?: boolean;
+  githubCreds?: { token: string; username: string; repo: string } | null;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   const [zoom, setZoom] = useState(1);
@@ -2520,7 +2524,36 @@ function EditSplitView({
     { bg: 'C7D2FE', font: '312E81' }, // indigo-200
   ];
 
-  const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
+  // Tự động lấy ảnh từ GitHub Contents API (hỗ trợ CORS)
+  const fetchImageFromGitHub = async (): Promise<{ base64: string; ext: string } | null> => {
+    try {
+      const url = data.fileUrl;
+      if (!url) return null;
+      const isPdf = url.toLowerCase().includes('.pdf');
+      if (isPdf) return null;
+
+      // Parse path từ raw URL: https://raw.githubusercontent.com/owner/repo/branch/path
+      const match = url.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
+      if (!match) return null;
+      const [, owner, repo, branch, filePath] = match;
+
+      // Dùng token từ githubCreds nếu có, fallback sang fetch không token
+      const token = githubCreds?.token;
+      const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json' };
+      if (token) headers['Authorization'] = `token ${token}`;
+
+      const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
+      const resp = await fetch(apiUrl, { headers });
+      if (!resp.ok) return null;
+      const json = await resp.json();
+      if (!json.content) return null;
+
+      // GitHub trả về base64 (có thể có \n), làm sạch
+      const b64 = json.content.replace(/\n/g, '');
+      const ext = filePath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+      return { base64: b64, ext };
+    } catch { return null; }
+  };
     const loadExcelJS = (): Promise<any> => {
       return new Promise((resolve, reject) => {
         if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
@@ -2950,7 +2983,17 @@ function EditSplitView({
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowImagePicker(true)}
+            onClick={async () => {
+              // Thử tự lấy ảnh từ GitHub trước
+              const autoImg = await fetchImageFromGitHub();
+              if (autoImg) {
+                // Có ảnh tự động → xuất luôn
+                exportToExcel(data, autoImg);
+              } else {
+                // Không lấy được (PDF hoặc lỗi) → mở dialog chọn tay
+                setShowImagePicker(true);
+              }
+            }}
             className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-emerald-400 flex items-center gap-2"
           >
             <ArrowDownToLine size={14} />
