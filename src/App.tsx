@@ -2529,10 +2529,10 @@ function EditSplitView({
   const fetchImageFromGitHub = async (): Promise<{ base64: string; ext: string } | null> => {
     try {
       const url = data.fileUrl;
-      if (!url) return null;
+      if (!url) { console.warn('[IMG] Không có fileUrl'); return null; }
 
       // Bỏ qua PDF — không thể đưa vào Excel dạng ảnh
-      if (url.toLowerCase().includes('.pdf')) return null;
+      if (url.toLowerCase().includes('.pdf')) { console.warn('[IMG] File là PDF, bỏ qua'); return null; }
 
       // Chuẩn hoá URL về dạng raw.githubusercontent.com
       let rawUrl = url;
@@ -2542,6 +2542,7 @@ function EditSplitView({
 
       const cleanUrl = rawUrl.split('?')[0].toLowerCase();
       const ext = cleanUrl.endsWith('.png') ? 'png' : 'jpeg';
+      console.log('[IMG] rawUrl:', rawUrl, '| ext:', ext);
 
       // Helper: ArrayBuffer → base64
       const toBase64 = (buf: ArrayBuffer): string => {
@@ -2551,31 +2552,38 @@ function EditSplitView({
         return btoa(bin);
       };
 
-      // ── Chiến lược 1: Cloudflare Proxy (đọc GITHUB_TOKEN từ server, không CORS) ──
+      // ── Chiến lược 1: Cloudflare Proxy (token server-side, không CORS) ──
       try {
+        console.log('[IMG] Thử proxy /api/proxy-image ...');
         const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(rawUrl)}`);
+        console.log('[IMG] Proxy status:', proxyResp.status, proxyResp.headers.get('content-type'));
         if (proxyResp.ok) {
           const buf = await proxyResp.arrayBuffer();
-          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+          console.log('[IMG] Proxy bytes:', buf.byteLength);
+          if (buf.byteLength > 100) { console.log('[IMG] ✅ Proxy thành công'); return { base64: toBase64(buf), ext }; }
         }
-      } catch { /* thử cách khác */ }
+      } catch (e) { console.warn('[IMG] Proxy lỗi:', e); }
 
-      // ── Chiến lược 2: Fetch thẳng raw URL với token client (public repo) ──
+      // ── Chiến lược 2: Fetch thẳng raw URL với token client ──
       try {
+        console.log('[IMG] Thử fetch trực tiếp raw URL...');
         const headers: Record<string, string> = {};
         if (githubCreds?.token) headers['Authorization'] = `token ${githubCreds.token}`;
         const directResp = await fetch(rawUrl, { headers, cache: 'no-store' });
+        console.log('[IMG] Direct fetch status:', directResp.status);
         if (directResp.ok) {
           const buf = await directResp.arrayBuffer();
-          if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+          console.log('[IMG] Direct bytes:', buf.byteLength);
+          if (buf.byteLength > 100) { console.log('[IMG] ✅ Direct fetch thành công'); return { base64: toBase64(buf), ext }; }
         }
-      } catch { /* thử cách khác */ }
+      } catch (e) { console.warn('[IMG] Direct fetch lỗi:', e); }
 
       // ── Chiến lược 3: GitHub Contents API (Accept: raw) ──
       const m = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
       if (m) {
         const [, owner, repo, branch, filePath] = m;
         const token = githubCreds?.token;
+        console.log('[IMG] Thử GitHub Contents API...', { owner, repo, branch, filePath });
         const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3.raw' };
         if (token) headers['Authorization'] = `token ${token}`;
         try {
@@ -2583,15 +2591,18 @@ function EditSplitView({
             `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
             { headers }
           );
+          console.log('[IMG] GitHub API status:', apiResp.status);
           if (apiResp.ok) {
             const buf = await apiResp.arrayBuffer();
-            if (buf.byteLength > 100) return { base64: toBase64(buf), ext };
+            console.log('[IMG] GitHub API bytes:', buf.byteLength);
+            if (buf.byteLength > 100) { console.log('[IMG] ✅ GitHub API thành công'); return { base64: toBase64(buf), ext }; }
           }
-        } catch { /* thất bại */ }
+        } catch (e) { console.warn('[IMG] GitHub API lỗi:', e); }
       }
 
+      console.error('[IMG] ❌ Tất cả chiến lược đều thất bại');
       return null;
-    } catch { return null; }
+    } catch (e) { console.error('[IMG] Exception:', e); return null; }
   };
 
   const exportToExcel = (result: ExtractionResult, imageData?: { base64: string; ext: string } | null) => {
@@ -2710,22 +2721,31 @@ function EditSplitView({
       // Nhúng ảnh biên bản (nếu là ảnh, không phải PDF)
       if (imageData) {
         const imgData = imageData;
-        if (imgData) {
-          const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
-          const startRow = 11 + result.layers.length + 2; // sau bảng data
-          // Thêm tiêu đề ảnh
-          const titleRow = ws1.getRow(startRow);
-          titleRow.height = 20;
-          applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
-          ws1.mergeCells(startRow, 1, startRow, 11);
+        if (imgData?.base64) {
+          try {
+            const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
 
-          ws1.addImage(imgId, {
-            tl: { col: 0, row: startRow }, // bắt đầu từ cột A
-            ext: { width: 900, height: 1200 }, // kích thước ảnh A4
-          });
-          // Giãn các dòng để chứa ảnh (~1200px / 72dpi * 72 ≈ 900pt)
-          for (let i = startRow + 1; i <= startRow + 50; i++) {
-            ws1.getRow(i).height = 18;
+            // startRow là row number (1-based), ExcelJS image coords dùng 0-based
+            const startRow = 11 + result.layers.length + 2;
+            const titleRow = ws1.getRow(startRow);
+            titleRow.height = 20;
+            applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
+            ws1.mergeCells(startRow, 1, startRow, 11);
+
+            // Giãn 60 dòng tiếp theo để chứa ảnh
+            for (let i = startRow + 1; i <= startRow + 60; i++) {
+              ws1.getRow(i).height = 20;
+            }
+
+            // ExcelJS: tl/br dùng 0-based row/col, nativeSize=false để dùng ext
+            const imgRowStart = startRow; // 1-based row của ảnh (sau title)
+            ws1.addImage(imgId, {
+              tl: { col: 0, row: imgRowStart },       // 0-based: row sau title
+              br: { col: 11, row: imgRowStart + 60 }, // 0-based: kéo dài 60 dòng
+              editAs: 'oneCell',
+            } as any);
+          } catch (imgErr) {
+            console.error('Lỗi nhúng ảnh vào Excel:', imgErr);
           }
         }
       }
