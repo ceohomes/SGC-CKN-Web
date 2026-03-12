@@ -1676,37 +1676,85 @@ export default function App() {
   };
 
   const handleDelete = (id: string) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa?\n\nDữ liệu trên Supabase và file trên GitHub sẽ bị xóa vĩnh viễn.")) return;
-
     const itemToDelete = history.find(item => item.id === id);
 
-    // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
+    // Liệt kê file sẽ bị xóa để hiện trong confirm
+    const filesToDelete: string[] = [];
+    if (itemToDelete?.fileUrl)  filesToDelete.push(`📄 File ảnh/PDF: ${itemToDelete.fileName || 'file gốc'}`);
+    if (itemToDelete?.excelUrl) filesToDelete.push(`📊 File Excel: ${itemToDelete.excelUrl.split('/').pop()}`);
+    const fileList = filesToDelete.length > 0
+      ? '
+
+Các file sẽ bị xóa trên GitHub:
+' + filesToDelete.join('
+')
+      : '
+
+(Không có file đính kèm trên GitHub)';
+
+    if (!window.confirm(
+      `Bạn có chắc chắn muốn xóa biên bản này?
+` +
+      `Biên bản: ${itemToDelete?.componentName || ''} - ${itemToDelete?.pileId || ''}` +
+      fileList +
+      `
+
+⚠️ Hành động này KHÔNG THỂ hoàn tác.`
+    )) return;
+
+    // ✅ Optimistic UI
     setHistory(prev => prev.filter(item => item.id !== id));
     if (currentResult?.id === id) setCurrentResult(null);
 
-    // Gọi API ngầm (không chặn UI)
+    // Gọi API ngầm
     (async () => {
+      const errors: string[] = [];
+
       // 1. Xóa Supabase
       if (supabase) {
         try {
           const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
-          if (error) console.error("Lỗi xóa Supabase:", error.message);
+          if (error) errors.push(`Supabase: ${error.message}`);
         } catch (e: any) {
-          console.error("Lỗi kết nối Supabase:", e?.message);
+          errors.push(`Supabase: ${e?.message}`);
         }
       }
 
-      // 2. Xóa tất cả file liên quan trên GitHub (ảnh gốc + Excel)
+      // 2. Xóa TẤT CẢ file trên GitHub: ảnh gốc + Excel
       const creds = githubCreds;
-      if (creds) {
-        const urlsToDelete = [itemToDelete?.fileUrl, itemToDelete?.excelUrl].filter(Boolean) as string[];
+      if (creds && itemToDelete) {
+        const urlsToDelete = [
+          itemToDelete.fileUrl,   // ảnh gốc hoặc PDF
+          itemToDelete.excelUrl,  // file Excel tự động
+        ].filter(Boolean) as string[];
+
         for (const url of urlsToDelete) {
           try {
             await deleteGithubFile(url, creds);
           } catch (e: any) {
-            console.error("Lỗi xóa GitHub:", url, e?.message);
+            errors.push(`GitHub (${url.split('/').pop()}): ${e?.message}`);
           }
         }
+      }
+
+      // 3. Đồng bộ localStorage
+      try {
+        const saved = localStorage.getItem('pile_drill_history');
+        if (saved) {
+          const parsed: ExtractionResult[] = JSON.parse(saved);
+          const updated = parsed.filter(r => r.id !== id);
+          localStorage.setItem('pile_drill_history', JSON.stringify(updated));
+        }
+      } catch (_) {}
+
+      // Báo lỗi nếu có
+      if (errors.length > 0) {
+        console.error('Lỗi xóa:', errors);
+        alert(`⚠️ Đã xóa khỏi giao diện nhưng có lỗi:
+${errors.join('
+')}
+
+Vui lòng kiểm tra thủ công trên GitHub/Supabase.`);
       }
     })();
   };
