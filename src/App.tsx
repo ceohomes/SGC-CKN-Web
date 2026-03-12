@@ -2521,114 +2521,177 @@ function EditSplitView({
   ];
 
   const exportToExcel = (result: ExtractionResult) => {
-    const loadXLSX = (): Promise<any> => {
+    const loadExcelJS = (): Promise<any> => {
       return new Promise((resolve, reject) => {
-        if ((window as any).XLSXStyle) { resolve((window as any).XLSXStyle); return; }
-        // xlsx-js-style hỗ trợ cell styling đầy đủ
+        if ((window as any).ExcelJS) { resolve((window as any).ExcelJS); return; }
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
-        script.onload = () => {
-          const X = (window as any).XLSXStyle || (window as any).XLSX;
-          resolve(X);
-        };
+        script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        script.onload = () => resolve((window as any).ExcelJS);
         script.onerror = reject;
         document.head.appendChild(script);
       });
     };
 
-    // Helper tạo cell có style
-    const cell = (v: any, s: any) => ({ v, t: typeof v === 'number' ? 'n' : 's', s });
+    // Fetch ảnh → base64 (chỉ với ảnh, không phải PDF)
+    const fetchImageBase64 = async (url: string): Promise<{ base64: string; ext: string } | null> => {
+      try {
+        const isPdfUrl = url.toLowerCase().includes('.pdf') || url.includes('application/pdf');
+        if (isPdfUrl) return null;
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        if (!blob.type.startsWith('image/')) return null;
+        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'png' : 'jpeg';
+        return new Promise((res) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const b64 = (reader.result as string).split(',')[1];
+            res({ base64: b64, ext });
+          };
+          reader.readAsDataURL(blob);
+        });
+      } catch { return null; }
+    };
 
-    const borderThin = (color = 'CCCCCC') => ({
-      top: { style: 'thin', color: { rgb: color } },
-      bottom: { style: 'thin', color: { rgb: color } },
-      left: { style: 'thin', color: { rgb: color } },
-      right: { style: 'thin', color: { rgb: color } },
+    // Helper màu ExcelJS
+    const argb = (hex: string) => 'FF' + hex.toUpperCase();
+    const thinBorder = (color = 'CCCCCC') => ({
+      top: { style: 'thin' as const, color: { argb: argb(color) } },
+      bottom: { style: 'thin' as const, color: { argb: argb(color) } },
+      left: { style: 'thin' as const, color: { argb: argb(color) } },
+      right: { style: 'thin' as const, color: { argb: argb(color) } },
     });
 
-    loadXLSX().then((XLSX) => {
-      const wb = XLSX.utils.book_new();
+    const applyCell = (cell: any, value: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean; border?: any }) => {
+      cell.value = value;
+      cell.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
+      if (opts.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
+      cell.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
+      cell.border = opts.border ?? thinBorder();
+    };
 
-      // ── Tính groupColor index cho từng layer ──
+    loadExcelJS().then(async (ExcelJS) => {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'SGC-CKN'; wb.created = new Date();
+
+      // Tính groupColor index
       let gc = 0; let pk = '';
-      const rowColorIdx: number[] = result.layers.map((layer) => {
+      const rowColorIdx = result.layers.map((layer) => {
         const key = layer.layerDesign?.trim() || '__';
         if (key !== pk) { gc++; pk = key; }
         return (gc - 1) % GROUP_COLORS.length;
       });
 
       // ════════════════════════════════════════
-      // SHEET 1: Chi tiết các lớp địa chất
+      // SHEET 1: Chi tiết địa chất
       // ════════════════════════════════════════
-      const HDR_STYLE = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Arial' }, fill: { fgColor: { rgb: '1A3A6B' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderThin('FFFFFF') };
-      const INFO_KEY = { font: { bold: true, sz: 10, name: 'Arial' }, fill: { fgColor: { rgb: 'EFF6FF' } }, border: borderThin('DBEAFE') };
-      const INFO_VAL = { font: { sz: 10, name: 'Arial' }, fill: { fgColor: { rgb: 'FFFFFF' } }, border: borderThin('DBEAFE') };
+      const ws1 = wb.addWorksheet('Chi tiết địa chất');
 
-      // Dòng thông tin header
-      const infoData: any[][] = [
-        [cell('Dự án', INFO_KEY), cell(result.project, INFO_VAL)],
-        [cell('Hạng mục', INFO_KEY), cell(result.item, INFO_VAL)],
-        [cell('Tên bộ phận', INFO_KEY), cell(result.componentName, INFO_VAL)],
-        [cell('Số hiệu cọc', INFO_KEY), cell(result.pileId, INFO_VAL)],
-        [cell('Biên bản số', INFO_KEY), cell(result.reportNumber, INFO_VAL)],
-        [cell('Đường kính', INFO_KEY), cell(result.diameter, INFO_VAL)],
-        [cell('Bắt đầu thi công', INFO_KEY), cell(result.constructionStart, INFO_VAL)],
-        [cell('Kết thúc thi công', INFO_KEY), cell(result.constructionEnd, INFO_VAL)],
-        Array(11).fill(cell('', {})),
+      // Cột widths (characters)
+      ws1.columns = [
+        { width: 14 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 },
+        { width: 11 }, { width: 11 }, { width: 11 }, { width: 9 }, { width: 9 }, { width: 28 },
       ];
 
-      // Dòng header bảng
-      const headers1 = ['Địa chất TT', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
-      const hdrRow1 = headers1.map(h => cell(h, HDR_STYLE));
-
-      // Dòng dữ liệu
-      const dataRows1 = result.layers.map((layer, ri) => {
-        const { bg, font } = GROUP_COLORS[rowColorIdx[ri]];
-        const spd = layer.speedMph;
-        const isSlowSpeed = spd > 0 && spd <= 1;
-        const mkCell = (v: any, align: 'center' | 'left' = 'center') => cell(v, {
-          font: { sz: 10, name: 'Arial', color: { rgb: font } },
-          fill: { fgColor: { rgb: bg } },
-          alignment: { horizontal: align, vertical: 'center', wrapText: true },
-          border: borderThin(),
-        });
-        const spdCell = cell(parseFloat(spd.toFixed(2)), {
-          font: { bold: true, sz: 10, name: 'Arial', color: { rgb: isSlowSpeed ? 'FFFFFF' : 'C2410C' } },
-          fill: { fgColor: { rgb: isSlowSpeed ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED' } },
-          alignment: { horizontal: 'center', vertical: 'center' },
-          border: borderThin(),
-        });
-        return [
-          mkCell(layer.actualGeology),
-          mkCell(result.diameter),
-          mkCell(layer.layerDesign, 'left'),
-          mkCell(layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : '')),
-          mkCell(layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : '')),
-          cell(layer.elevationFrom, { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(layer.elevationTo, { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(parseFloat(layer.durationHours.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(parseFloat(layer.lengthMeters.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          spdCell,
-          mkCell(layer.notes || '', 'left'),
-        ];
+      // Block thông tin
+      const infoItems = [
+        ['Dự án', result.project], ['Hạng mục', result.item],
+        ['Tên bộ phận', result.componentName], ['Số hiệu cọc', result.pileId],
+        ['Biên bản số', result.reportNumber], ['Đường kính', result.diameter],
+        ['Bắt đầu thi công', result.constructionStart], ['Kết thúc thi công', result.constructionEnd],
+      ];
+      infoItems.forEach(([k, v]) => {
+        const row = ws1.addRow([k, v]);
+        row.height = 18;
+        applyCell(row.getCell(1), k, { bg: 'EFF6FF', fontColor: '1E3A6E', bold: true, align: 'left', border: thinBorder('DBEAFE') });
+        applyCell(row.getCell(2), v, { bg: 'FFFFFF', fontColor: '374151', align: 'left', border: thinBorder('DBEAFE') });
+        // Merge B-K cho value
+        ws1.mergeCells(row.number, 2, row.number, 11);
       });
 
-      const ws1 = XLSX.utils.aoa_to_sheet([...infoData, hdrRow1, ...dataRows1]);
-      ws1['!cols'] = [{ wch: 14 }, { wch: 11 }, { wch: 48 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 28 }];
-      // Set row heights
-      ws1['!rows'] = [
-        ...Array(9).fill({ hpt: 18 }),
-        { hpt: 4 }, // blank row
-        { hpt: 30 }, // header
-        ...result.layers.map(() => ({ hpt: 32 })),
-      ];
-      XLSX.utils.book_append_sheet(wb, ws1, 'Chi tiết địa chất');
+      // Dòng trống
+      const blankRow = ws1.addRow([]);
+      blankRow.height = 6;
+
+      // Header bảng
+      const hdrCols = ['Địa chất TT', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const hdrRow = ws1.addRow(hdrCols);
+      hdrRow.height = 36;
+      hdrCols.forEach((h, ci) => {
+        applyCell(hdrRow.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 || ci === 10 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
+
+      // Dữ liệu các lớp
+      result.layers.forEach((layer, ri) => {
+        const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
+        const spd = layer.speedMph;
+        const isSlowSpd = spd > 0 && spd <= 1;
+        const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+        const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
+
+        const vals = [
+          layer.actualGeology, result.diameter, layer.layerDesign,
+          layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
+          layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
+          layer.elevationFrom, layer.elevationTo,
+          parseFloat(layer.durationHours.toFixed(2)),
+          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(spd.toFixed(2)),
+          layer.notes || '',
+        ];
+        const dataRow = ws1.addRow(vals);
+        dataRow.height = 36;
+        vals.forEach((v, ci) => {
+          const isSpd = ci === 9;
+          applyCell(dataRow.getCell(ci + 1), v, {
+            bg: isSpd ? spdBg : bg,
+            fontColor: isSpd ? spdFontColor : fontColor,
+            bold: isSpd && isSlowSpd,
+            align: ci === 2 || ci === 10 ? 'left' : 'center',
+            wrap: ci === 2 || ci === 3 || ci === 4 || ci === 10,
+            border: thinBorder(),
+          });
+        });
+      });
+
+      // Nhúng ảnh biên bản (nếu là ảnh, không phải PDF)
+      if (result.fileUrl) {
+        const imgData = await fetchImageBase64(result.fileUrl);
+        if (imgData) {
+          const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
+          const startRow = 11 + result.layers.length + 2; // sau bảng data
+          // Thêm tiêu đề ảnh
+          const titleRow = ws1.getRow(startRow);
+          titleRow.height = 20;
+          applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
+          ws1.mergeCells(startRow, 1, startRow, 11);
+
+          ws1.addImage(imgId, {
+            tl: { col: 0, row: startRow }, // bắt đầu từ cột A
+            ext: { width: 900, height: 1200 }, // kích thước ảnh A4
+          });
+          // Giãn các dòng để chứa ảnh (~1200px / 72dpi * 72 ≈ 900pt)
+          for (let i = startRow + 1; i <= startRow + 50; i++) {
+            ws1.getRow(i).height = 18;
+          }
+        }
+      }
 
       // ════════════════════════════════════════
-      // SHEET 2: Tổng hợp theo lớp thiết kế
+      // SHEET 2: Tổng hợp lớp thiết kế
       // ════════════════════════════════════════
-      const headers2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
-      const hdrRow2 = headers2.map(h => cell(h, HDR_STYLE));
+      const ws2 = wb.addWorksheet('Tổng hợp lớp thiết kế');
+      ws2.columns = [
+        { width: 6 }, { width: 11 }, { width: 46 }, { width: 10 },
+        { width: 14 }, { width: 14 }, { width: 14 }, { width: 12 }, { width: 12 },
+      ];
+
+      const hdr2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
+      const hdrRow2 = ws2.addRow(hdr2);
+      hdrRow2.height = 36;
+      hdr2.forEach((h, ci) => {
+        applyCell(hdrRow2.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
 
       // Tính groups
       const groups: any[] = [];
@@ -2650,55 +2713,42 @@ function EditSplitView({
       const totalLen2 = groups.reduce((s, g) => s + g.totalLength, 0);
       const totalAvgSpd = totalDur > 0 ? totalLen2 / totalDur : 0;
 
-      const dataRows2 = groups.map((g, i) => {
-        const { bg, font } = GROUP_COLORS[g.colorIdx];
+      groups.forEach((g, i) => {
+        const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
         const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
-        const mkC = (v: any, align: 'center' | 'left' = 'center') => cell(v, {
-          font: { sz: 10, name: 'Arial', color: { rgb: font } },
-          fill: { fgColor: { rgb: bg } },
-          alignment: { horizontal: align, vertical: 'center', wrapText: true },
-          border: borderThin(),
+        const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
+        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const r2 = ws2.addRow(vals2);
+        r2.height = 32;
+        vals2.forEach((v, ci) => {
+          const isSpd = ci === 8;
+          applyCell(r2.getCell(ci + 1), v, { bg: isSpd ? spdBg : bg, fontColor: isSpd ? (isSlowSpd ? 'FFFFFF' : 'C2410C') : fontColor, bold: isSpd && isSlowSpd, align: ci === 2 ? 'left' : 'center', wrap: ci === 2, border: thinBorder() });
         });
-        const spdC = cell(parseFloat(g.avgSpeed.toFixed(2)), {
-          font: { bold: true, sz: 10, name: 'Arial', color: { rgb: isSlowSpd ? 'FFFFFF' : 'C2410C' } },
-          fill: { fgColor: { rgb: isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED' } },
-          alignment: { horizontal: 'center', vertical: 'center' },
-          border: borderThin(),
-        });
-        return [
-          mkC(i + 1), mkC(result.diameter), mkC(g.layerDesign, 'left'), mkC(g.segments),
-          cell(parseFloat(g.elevationFrom.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(parseFloat(g.elevationTo.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(parseFloat(g.totalDuration.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          cell(parseFloat(g.totalLength.toFixed(2)), { font: { sz: 10, name: 'Arial', color: { rgb: font } }, fill: { fgColor: { rgb: bg } }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderThin() }),
-          spdC,
-        ];
       });
 
-      const FOOTER_STYLE = { font: { bold: true, sz: 11, name: 'Arial', color: { rgb: '1E3A6E' } }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: { style: 'medium', color: { rgb: '1E3A6E' } }, bottom: { style: 'thin', color: { rgb: 'CCCCCC' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } } };
-      const footerRow = [
-        cell('TỔNG CỘNG', { ...FOOTER_STYLE, alignment: { horizontal: 'left', vertical: 'center' } }),
-        cell('', FOOTER_STYLE), cell('', FOOTER_STYLE),
-        cell(result.layers.length, FOOTER_STYLE),
-        cell(result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '', FOOTER_STYLE),
-        cell(result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '', FOOTER_STYLE),
-        cell(parseFloat(totalDur.toFixed(2)), FOOTER_STYLE),
-        cell(parseFloat(totalLen2.toFixed(2)), FOOTER_STYLE),
-        cell(parseFloat(totalAvgSpd.toFixed(2)), FOOTER_STYLE),
-      ];
+      // Dòng tổng
+      const totVals = ['TỔNG CỘNG', '', '', result.layers.length,
+        result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
+        parseFloat(totalDur.toFixed(2)), parseFloat(totalLen2.toFixed(2)), parseFloat(totalAvgSpd.toFixed(2))];
+      const totRow = ws2.addRow(totVals);
+      totRow.height = 28;
+      totVals.forEach((v, ci) => {
+        applyCell(totRow.getCell(ci + 1), v, { bg: 'E2E8F0', fontColor: '1E3A6E', bold: true, sz: 11, align: ci === 0 ? 'left' : 'center', border: { ...thinBorder(), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } } });
+      });
 
-      const ws2 = XLSX.utils.aoa_to_sheet([hdrRow2, ...dataRows2, footerRow]);
-      ws2['!cols'] = [{ wch: 6 }, { wch: 11 }, { wch: 48 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-      ws2['!rows'] = [{ hpt: 30 }, ...groups.map(() => ({ hpt: 28 })), { hpt: 24 }];
-      XLSX.utils.book_append_sheet(wb, ws2, 'Tổng hợp lớp thiết kế');
-
-      const fileName = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/\s+/g, '_');
-      XLSX.writeFile(wb, fileName);
-    }).catch(() => alert('Không thể tải thư viện xuất Excel. Vui lòng kiểm tra kết nối mạng.'));
+      // Xuất file
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${result.componentName || 'BienBan'}_${result.pileId || ''}_${result.diameter || ''}.xlsx`.replace(/\s+/g, '_');
+      a.click();
+      URL.revokeObjectURL(url);
+    }).catch((err) => { console.error(err); alert('Không thể tải thư viện xuất Excel. Vui lòng kiểm tra kết nối mạng.'); });
   };
-  const [isDragging, setIsDragging] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   const [displayUrl, setDisplayUrl] = useState<string | null>(result.fileUrl || null);
   const [isPdf, setIsPdf] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -2915,18 +2965,18 @@ function EditSplitView({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 bg-red-400 hover:bg-red-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-red-300"
-          >
-            Hủy bỏ
-          </button>
           <button
             onClick={() => exportToExcel(data)}
             className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-emerald-400 flex items-center gap-2"
           >
             <ArrowDownToLine size={14} />
             Xuất Excel
+          </button>
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 bg-red-400 hover:bg-red-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors border border-red-300"
+          >
+            Hủy bỏ
           </button>
           <button 
             onClick={() => onSave(data)}
