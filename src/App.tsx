@@ -2642,6 +2642,9 @@ export default function App() {
               layers: finalResult.layers,
             };
             if (finalResult.excelUrl) minimalUpdate.excelUrl = finalResult.excelUrl;
+            // Lưu fileUrl và fileName mới khi đã thay thế file trên GitHub
+            if (finalResult.fileUrl) minimalUpdate.fileUrl = finalResult.fileUrl;
+            if (finalResult.fileName) minimalUpdate.fileName = finalResult.fileName;
 
             const { error } = await supabase
               .from('drill_extractions')
@@ -5196,6 +5199,17 @@ function EditSplitView({
         let newFileUrl = data.fileUrl;
         if (putRes.ok) {
           newFileUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
+          // Cập nhật fileUrl và fileName mới lên Supabase ngay sau khi upload GitHub thành công
+          try {
+            if (supabase) {
+              await supabase
+                .from('drill_extractions')
+                .update({ fileUrl: newFileUrl, fileName: file.name })
+                .eq('id', data.id);
+            }
+          } catch (sbErr) {
+            console.warn('[replaceFile] Không thể cập nhật fileUrl lên Supabase:', sbErr);
+          }
         } else {
           const err = await putRes.json();
           alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload'}. Vẫn tiếp tục quét AI với file mới.`);
