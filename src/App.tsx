@@ -4343,6 +4343,7 @@ function SummaryView({
   };
 
 
+  if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
       <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
