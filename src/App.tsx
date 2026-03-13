@@ -255,363 +255,6 @@ const buildExcelFileName = (result: ExtractionResult): string => {
   ].filter(Boolean).join('_').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9À-ɏḀ-ỿ_\-]/g, '_');
 };
 
-const exportAllToExcel = (rows: ExtractionResult[]) => {
-  loadExcelJS().then(async (ExcelJS) => {
-    const argb = (hex: string) => 'FF' + hex.toUpperCase();
-    const thin = (c = 'D1D5DB') => ({ style: 'thin' as const, color: { argb: argb(c) } });
-    const border = (c = 'D1D5DB') => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) });
-    const cell = (c: any, v: any, bg?: string, fc = '1E293B', bold = false, align: any = 'left', sz = 10, wrap = false) => {
-      c.value = v ?? '';
-      c.font = { name: 'Arial', size: sz, bold, color: { argb: argb(fc) } };
-      if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(bg) } };
-      c.alignment = { horizontal: align, vertical: 'middle', wrapText: wrap };
-      c.border = border();
-    };
-
-    const wb = new ExcelJS.Workbook();
-    wb.creator = 'SGC-CKN'; wb.created = new Date();
-    const dateStr2 = new Date().toLocaleDateString('vi-VN');
-
-    // ── Sheet 0: Dữ liệu thi công (Bảng tổng hợp như UI) ──
-    const ws0 = wb.addWorksheet('Dữ liệu thi công');
-    ws0.columns = [
-      { width: 8 },   // STT
-      { width: 30 },  // Dự án
-      { width: 25 },  // Hạng mục
-      { width: 25 },  // Tên bộ phận
-      { width: 12 },  // Số hiệu
-      { width: 15 },  // Biên bản số
-      { width: 12 },  // Đường kính
-      { width: 18 },  // Bắt đầu
-      { width: 18 },  // Kết thúc
-      { width: 15 },  // Chiều dài (m)
-      { width: 15 },  // T.Gian TC (h)
-      { width: 15 },  // Vận tốc TB (m/h)
-      { width: 25 },  // File Dữ Liệu
-    ];
-
-    const r0_1 = ws0.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
-    r0_1.height = 30;
-    cell(r0_1.getCell(1), r0_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws0.mergeCells(r0_1.number, 1, r0_1.number, 13);
-
-    const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'File Dữ Liệu'];
-    const r0_2 = ws0.addRow(HDRS0);
-    r0_2.height = 25;
-    HDRS0.forEach((h, ci) => cell(r0_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws0.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
-
-    rows.forEach((res, idx) => {
-      const reportStt = (res as any).displayStt || (rows.length - idx);
-      const totalLen = (res.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0);
-      const totalDur = (res.layers || []).reduce((acc, l) => acc + l.durationHours, 0);
-      const avgSpeed = totalDur > 0 ? totalLen / totalDur : 0;
-
-      const excelUrl = res.excelUrl || '';
-      const row = ws0.addRow([
-        reportStt,
-        res.project,
-        res.item,
-        res.componentName,
-        res.pileId,
-        res.reportNumber,
-        res.diameter,
-        res.constructionStart,
-        res.constructionEnd,
-        parseFloat(totalLen.toFixed(2)),
-        parseFloat(totalDur.toFixed(2)),
-        parseFloat(avgSpeed.toFixed(2)),
-        excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
-      ]);
-      
-      for (let ci = 1; ci <= 13; ci++) {
-        const c = row.getCell(ci);
-        const isText = [2, 3, 4, 6].includes(ci);
-        const isLink = ci === 13;
-        cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, isText ? 'left' : 'center', 9, isText);
-        if (isLink && excelUrl) {
-          c.font = { ...c.font, underline: true };
-        }
-      }
-    });
-
-    // ── Sheet 1: Chi tiết Các lớp địa chất ──
-    const ws1 = wb.addWorksheet('Chi tiết Các lớp địa chất');
-    ws1.columns = [
-      { width: 6 },   // STT
-      { width: 25 },  // Dự án
-      { width: 25 },  // Hạng mục
-      { width: 25 },  // Tên bộ phận
-      { width: 10 },  // Số hiệu
-      { width: 12 },  // Biên bản số
-      { width: 10 },  // ĐC thực tế
-      { width: 12 },  // Đường kính
-      { width: 40 },  // Mô tả lớp thiết kế
-      { width: 18 },  // Từ (h)
-      { width: 18 },  // Đến (h)
-      { width: 12 },  // Cao độ từ
-      { width: 12 },  // Cao độ đến
-      { width: 10 },  // T.Gian (h)
-      { width: 10 },  // Dài (m)
-      { width: 10 },  // V (m/h)
-      { width: 20 },  // Ghi chú
-      { width: 25 },  // File Dữ Liệu
-    ];
-
-    const r1_1 = ws1.addRow(['CHI TIẾT CÁC LỚP ĐỊA CHẤT - TẤT CẢ BIÊN BẢN']);
-    r1_1.height = 30;
-    cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws1.mergeCells(r1_1.number, 1, r1_1.number, 18);
-
-    const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú', 'File Dữ Liệu'];
-    const r2_1 = ws1.addRow(HDRS1);
-    r2_1.height = 25;
-    HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws1.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 18 } };
-    // Thiết lập Wrap Text cho các cột chứa văn bản dài
-    [2, 3, 4, 6, 9, 17].forEach(col => {
-      ws1.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-    });
-
-    rows.forEach((res, idx) => {
-      const reportStt = (res as any).displayStt || (rows.length - idx);
-      const excelUrl = res.excelUrl || '';
-      (res.layers || []).forEach((layer) => {
-        const row = ws1.addRow([
-          reportStt,
-          res.project,
-          res.item,
-          res.componentName,
-          res.pileId,
-          res.reportNumber,
-          layer.actualGeology,
-          res.diameter,
-          layer.layerDesign,
-          layer.timeFrom + ' ' + layer.dateFrom,
-          layer.timeTo + ' ' + layer.dateTo,
-          layer.elevationFrom,
-          layer.elevationTo,
-          parseFloat(layer.durationHours.toFixed(2)),
-          parseFloat(layer.lengthMeters.toFixed(2)),
-          parseFloat(layer.speedMph.toFixed(2)),
-          layer.notes,
-          excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
-        ]);
-        const wrapCols = [2, 3, 4, 6, 9, 17];
-        for (let ci = 1; ci <= 18; ci++) {
-          const c = row.getCell(ci);
-          const shouldWrap = wrapCols.includes(ci);
-          const isLink = ci === 18;
-          cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, shouldWrap ? 'left' : 'center', 9, shouldWrap);
-          if (isLink && excelUrl) {
-            c.font = { ...c.font, underline: true };
-          }
-        }
-      });
-    });
-
-    // ── Sheet 2: Thống kê theo từng biên bản ──
-    const ws2 = wb.addWorksheet('Thống kê theo từng biên bản');
-    ws2.columns = [
-      { width: 6 },   // STT
-      { width: 20 },  // Dự án
-      { width: 20 },  // Hạng mục
-      { width: 20 },  // Tên bộ phận
-      { width: 10 },  // Số hiệu
-      { width: 12 },  // Biên bản số
-      { width: 12 },  // Đường kính
-      { width: 12 },  // Ký hiệu ĐC
-      { width: 40 },  // Mô tả lớp thiết kế
-      { width: 10 },  // Số mẫu
-      { width: 12 },  // Tổng Dài (m)
-      { width: 12 },  // Tổng T.Gian (h)
-      { width: 12 },  // V.TB (m/h)
-      { width: 25 },  // File Dữ Liệu
-    ];
-
-    const r1_2 = ws2.addRow(['THỐNG KÊ THEO LỚP THIẾT KẾ - TỪNG BIÊN BẢN']);
-    r1_2.height = 30;
-    cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws2.mergeCells(r1_2.number, 1, r1_2.number, 14);
-
-    const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)', 'File Dữ Liệu'];
-    const r2_2 = ws2.addRow(HDRS2);
-    r2_2.height = 25;
-    HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 14 } };
-    // Thiết lập Wrap Text cho các cột chứa văn bản dài
-    [2, 3, 4, 6, 9].forEach(col => {
-      ws2.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-    });
-
-    rows.forEach((res, idx) => {
-      const reportStt = (res as any).displayStt || (rows.length - idx);
-      const perReportStats: Record<string, any> = {};
-      (res.layers || []).forEach(layer => {
-        const key = `${layer.designLayerCode}|||${layer.layerDesign}`;
-        if (!perReportStats[key]) {
-          perReportStats[key] = {
-            code: layer.designLayerCode,
-            design: layer.layerDesign,
-            segments: 0,
-            totalLen: 0,
-            totalDur: 0
-          };
-        }
-        perReportStats[key].segments++;
-        perReportStats[key].totalLen += layer.lengthMeters;
-        perReportStats[key].totalDur += layer.durationHours;
-      });
-
-      const excelUrl = res.excelUrl || '';
-      Object.values(perReportStats).forEach((stat: any) => {
-        const avg = stat.totalDur > 0 ? stat.totalLen / stat.totalDur : 0;
-        const row = ws2.addRow([
-          reportStt,
-          res.project,
-          res.item,
-          res.componentName,
-          res.pileId,
-          res.reportNumber,
-          res.diameter,
-          stat.code,
-          stat.design,
-          stat.segments,
-          parseFloat(stat.totalLen.toFixed(2)),
-          parseFloat(stat.totalDur.toFixed(2)),
-          parseFloat(avg.toFixed(2)),
-          excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
-        ]);
-        const wrapCols = [2, 3, 4, 6, 9];
-        for (let ci = 1; ci <= 14; ci++) {
-          const c = row.getCell(ci);
-          const shouldWrap = wrapCols.includes(ci);
-          const isLink = ci === 14;
-          cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, shouldWrap ? 'left' : 'center', 9, shouldWrap);
-          if (isLink && excelUrl) {
-            c.font = { ...c.font, underline: true };
-          }
-        }
-      });
-    });
-
-    // ── Sheet 3: Tổng hợp lớp thiết kế (Toàn bộ) ──
-    const ws3 = wb.addWorksheet('Tổng hợp lớp thiết kế');
-    ws3.columns = [
-      { width: 6  },  // STT
-      { width: 15 },  // Đường kính
-      { width: 15 },  // Ký hiệu ĐC
-      { width: 45 },  // Mô tả lớp thiết kế tương ứng
-      { width: 10 },  // Số cọc
-      { width: 10 },  // Số mẫu
-      { width: 15 },  // Tổng Dài (m)
-      { width: 15 },  // Tổng T.Gian (h)
-      { width: 15 },  // V.Min (m/h)
-      { width: 15 },  // V.Max (m/h)
-      { width: 15 },  // V.TB (m/h)
-    ];
-
-    const r1_3 = ws3.addRow(['TỔNG HỢP THỐNG KÊ THEO LỚP THIẾT KẾ - TOÀN BỘ']);
-    r1_3.height = 30;
-    cell(r1_3.getCell(1), r1_3.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws3.mergeCells(r1_3.number, 1, r1_3.number, 11);
-
-    const HDRS3 = ['STT', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế tương ứng', 'Số cọc', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.Min (m/h)', 'V.Max (m/h)', 'V.TB (m/h)'];
-    const r2_3 = ws3.addRow(HDRS3);
-    r2_3.height = 25;
-    HDRS3.forEach((h, ci) => cell(r2_3.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws3.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 11 } };
-    // Thiết lập Wrap Text cho cột mô tả lớp thiết kế
-    ws3.getColumn(4).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-
-    const excelStatsMap: Record<string, any> = {};
-    const normalizeForGrouping = (str: string) => {
-      if (!str) return '';
-      return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]/g, '');
-    };
-
-    rows.forEach(res => {
-      (res.layers || []).forEach(layer => {
-        const code = (layer.designLayerCode || '').trim();
-        const design = (layer.layerDesign || 'Chưa xác định').trim();
-        const dia = (res.diameter || '—').trim();
-        const key = `${normalizeForGrouping(code)}|||${normalizeForGrouping(design)}|||${normalizeForGrouping(dia)}`;
-        
-        if (!excelStatsMap[key]) {
-          excelStatsMap[key] = { code, design, dia, pileIds: new Set(), segments: 0, minSpeed: Infinity, maxSpeed: -Infinity, totalDuration: 0, totalLength: 0 };
-        }
-        const s = excelStatsMap[key];
-        s.pileIds.add((res.pileId || res.id).trim());
-        s.segments += 1;
-        s.totalDuration += layer.durationHours;
-        s.totalLength += layer.lengthMeters;
-        if (layer.speedMph > 0) {
-          if (layer.speedMph < s.minSpeed) s.minSpeed = layer.speedMph;
-          if (layer.speedMph > s.maxSpeed) s.maxSpeed = layer.speedMph;
-        }
-      });
-    });
-
-    const excelStats = Object.values(excelStatsMap).sort((a, b) => {
-      if (a.code && b.code) return a.code.localeCompare(b.code, undefined, { numeric: true });
-      return a.design.localeCompare(b.design);
-    });
-
-    excelStats.forEach((stat, idx) => {
-      const avg = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
-      const row = ws3.addRow([
-        idx + 1,
-        stat.dia,
-        stat.code || '—',
-        stat.design,
-        stat.pileIds.size,
-        stat.segments,
-        parseFloat(stat.totalLength.toFixed(2)),
-        parseFloat(stat.totalDuration.toFixed(2)),
-        stat.minSpeed === Infinity ? '—' : parseFloat(stat.minSpeed.toFixed(2)),
-        stat.maxSpeed === -Infinity ? '—' : parseFloat(stat.maxSpeed.toFixed(2)),
-        parseFloat(avg.toFixed(2))
-      ]);
-      // row.height = 20; // Remove fixed height to allow auto-fit
-      row.eachCell((c, ci) => {
-        const shouldWrap = ci === 4;
-        cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
-      });
-    });
-
-    const totalPilesCount3 = rows.length;
-    let totalSegs3 = 0, totalLen3 = 0, totalDur3 = 0, gMin3 = Infinity, gMax3 = -Infinity;
-    excelStats.forEach(s => {
-      totalSegs3 += s.segments; totalLen3 += s.totalLength; totalDur3 += s.totalDuration;
-      if (s.minSpeed < gMin3) gMin3 = s.minSpeed;
-      if (s.maxSpeed > gMax3) gMax3 = s.maxSpeed;
-    });
-    const totalAvg3 = totalDur3 > 0 ? totalLen3 / totalDur3 : 0;
-
-    const footer3 = ws3.addRow(['TỔNG CỘNG', '', '', '', totalPilesCount3, totalSegs3, parseFloat(totalLen3.toFixed(2)), parseFloat(totalDur3.toFixed(2)), gMin3 === Infinity ? '—' : parseFloat(gMin3.toFixed(2)), gMax3 === -Infinity ? '—' : parseFloat(gMax3.toFixed(2)), parseFloat(totalAvg3.toFixed(2))]);
-    footer3.height = 24;
-    ws3.mergeCells(footer3.number, 1, footer3.number, 4);
-    footer3.eachCell((c, ci) => {
-      cell(c, c.value, 'E2E8F0', '1E3A6E', true, 'center', 10);
-      if (ci === 1) c.alignment = { horizontal: 'right', vertical: 'middle' };
-    });
-
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.style.display = 'none';
-    const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
-    a.download = `SGC-CKN_TongHop_3Sheets_${dateStr}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-  }).catch((err: any) => {
-    console.error('exportAllToExcel error:', err);
-  });
-};
-
 interface ProcessingFile {
   id: string;
   fileName: string;
@@ -1182,6 +825,7 @@ export default function App() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
   const [downloadingExcelId, setDownloadingExcelId] = useState<string | null>(null);
+  const [isExportingAll, setIsExportingAll] = useState(false);
 
   // Bộ lọc Sheet 1
   const [filterProject, setFilterProject] = useState('');
@@ -2149,7 +1793,8 @@ export default function App() {
     // 2. Lưu vào Supabase — nếu lỗi thì dọn dẹp file Excel trên GitHub để tránh mất đồng bộ
     if (supabase) {
       try {
-        const { id, _base64, _mimeType, designLayerMap, ...dataToSave } = finalResult as any;
+        // QUAN TRỌNG: phải giữ `id` để sau này update().eq('id', ...) tìm được record
+        const { _base64, _mimeType, designLayerMap, ...dataToSave } = finalResult as any;
         const { error: supabaseError } = await supabase.from('drill_extractions').insert([dataToSave]);
         if (supabaseError) {
           // Rollback: xóa Excel vừa upload trên GitHub nếu Supabase thất bại
@@ -2517,52 +2162,425 @@ export default function App() {
     }
   };
 
-  const handleSaveEdit = (updatedResult: ExtractionResult) => {
+  // Xuất Excel tổng hợp — nhúng ảnh của từng biên bản vào sheet riêng
+  const exportAllToExcel = async (rows: ExtractionResult[]) => {
+    setIsExportingAll(true);
+    try {
+      const ExcelJS = await loadExcelJS();
+      const argb = (hex: string) => 'FF' + hex.toUpperCase();
+      const thin = (c = 'D1D5DB') => ({ style: 'thin' as const, color: { argb: argb(c) } });
+      const border = (c = 'D1D5DB') => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) });
+      const cell = (c: any, v: any, bg?: string, fc = '1E293B', bold = false, align: any = 'left', sz = 10, wrap = false) => {
+        c.value = v ?? '';
+        c.font = { name: 'Arial', size: sz, bold, color: { argb: argb(fc) } };
+        if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(bg) } };
+        c.alignment = { horizontal: align, vertical: 'middle', wrapText: wrap };
+        c.border = border();
+      };
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'SGC-CKN'; wb.created = new Date();
+
+      // ── Sheet 0: Dữ liệu thi công ──
+      const ws0 = wb.addWorksheet('Dữ liệu thi công');
+      ws0.columns = [
+        { width: 8 }, { width: 30 }, { width: 25 }, { width: 25 }, { width: 12 },
+        { width: 15 }, { width: 12 }, { width: 18 }, { width: 18 }, { width: 15 },
+        { width: 15 }, { width: 15 }, { width: 20 },
+      ];
+      const r0_1 = ws0.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
+      r0_1.height = 30;
+      cell(r0_1.getCell(1), r0_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+      ws0.mergeCells(r0_1.number, 1, r0_1.number, 13);
+      const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'Sheet ảnh'];
+      const r0_2 = ws0.addRow(HDRS0);
+      r0_2.height = 25;
+      HDRS0.forEach((h, ci) => cell(r0_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+      ws0.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+
+      rows.forEach((res, idx) => {
+        const reportStt = (res as any).displayStt || (rows.length - idx);
+        const totalLen = (res.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0);
+        const totalDur = (res.layers || []).reduce((acc, l) => acc + l.durationHours, 0);
+        const avgSpeed = totalDur > 0 ? totalLen / totalDur : 0;
+        // Tên sheet ảnh cho biên bản này
+        const sheetName = `BB${reportStt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
+        const row = ws0.addRow([
+          reportStt, res.project, res.item, res.componentName, res.pileId,
+          res.reportNumber, res.diameter, res.constructionStart, res.constructionEnd,
+          parseFloat(totalLen.toFixed(2)), parseFloat(totalDur.toFixed(2)), parseFloat(avgSpeed.toFixed(2)),
+          { text: `→ ${sheetName}`, hyperlink: `#'${sheetName}'!A1` }
+        ]);
+        for (let ci = 1; ci <= 13; ci++) {
+          const c = row.getCell(ci);
+          const isText = [2, 3, 4, 6].includes(ci);
+          const isLink = ci === 13;
+          cell(c, c.value, undefined, isLink ? '2563EB' : '1E293B', isLink, isText ? 'left' : 'center', 9, isText);
+          if (isLink) c.font = { ...c.font, underline: true };
+        }
+      });
+
+      // ── Sheet 1: Chi tiết Các lớp địa chất ──
+      const ws1 = wb.addWorksheet('Chi tiết Các lớp địa chất');
+      ws1.columns = [
+        { width: 6 }, { width: 25 }, { width: 25 }, { width: 25 }, { width: 10 },
+        { width: 12 }, { width: 10 }, { width: 12 }, { width: 40 }, { width: 18 },
+        { width: 18 }, { width: 12 }, { width: 12 }, { width: 10 }, { width: 10 },
+        { width: 10 }, { width: 20 },
+      ];
+      const r1_1 = ws1.addRow(['CHI TIẾT CÁC LỚP ĐỊA CHẤT - TẤT CẢ BIÊN BẢN']);
+      r1_1.height = 30;
+      cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+      ws1.mergeCells(r1_1.number, 1, r1_1.number, 17);
+      const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const r2_1 = ws1.addRow(HDRS1);
+      r2_1.height = 25;
+      HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+      ws1.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 17 } };
+      [2, 3, 4, 6, 9, 17].forEach(col => {
+        ws1.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      });
+      rows.forEach((res, idx) => {
+        const reportStt = (res as any).displayStt || (rows.length - idx);
+        (res.layers || []).forEach((layer) => {
+          const row = ws1.addRow([
+            reportStt, res.project, res.item, res.componentName, res.pileId,
+            res.reportNumber, layer.actualGeology, res.diameter, layer.layerDesign,
+            layer.timeFrom + ' ' + layer.dateFrom, layer.timeTo + ' ' + layer.dateTo,
+            layer.elevationFrom, layer.elevationTo,
+            parseFloat(layer.durationHours.toFixed(2)), parseFloat(layer.lengthMeters.toFixed(2)),
+            parseFloat(layer.speedMph.toFixed(2)), layer.notes,
+          ]);
+          const wrapCols = [2, 3, 4, 6, 9, 17];
+          for (let ci = 1; ci <= 17; ci++) {
+            const c = row.getCell(ci);
+            const shouldWrap = wrapCols.includes(ci);
+            cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+          }
+        });
+      });
+
+      // ── Sheet 2: Thống kê theo từng biên bản ──
+      const ws2 = wb.addWorksheet('Thống kê theo từng biên bản');
+      ws2.columns = [
+        { width: 6 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 10 },
+        { width: 12 }, { width: 12 }, { width: 12 }, { width: 40 }, { width: 10 },
+        { width: 12 }, { width: 12 }, { width: 12 },
+      ];
+      const r1_2 = ws2.addRow(['THỐNG KÊ THEO LỚP THIẾT KẾ - TỪNG BIÊN BẢN']);
+      r1_2.height = 30;
+      cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+      ws2.mergeCells(r1_2.number, 1, r1_2.number, 13);
+      const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
+      const r2_2 = ws2.addRow(HDRS2);
+      r2_2.height = 25;
+      HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+      ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+      [2, 3, 4, 6, 9].forEach(col => {
+        ws2.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      });
+      rows.forEach((res, idx) => {
+        const reportStt = (res as any).displayStt || (rows.length - idx);
+        const perReportStats: Record<string, any> = {};
+        (res.layers || []).forEach(layer => {
+          const key = `${layer.designLayerCode}|||${layer.layerDesign}`;
+          if (!perReportStats[key]) {
+            perReportStats[key] = { code: layer.designLayerCode, design: layer.layerDesign, segments: 0, totalLen: 0, totalDur: 0 };
+          }
+          perReportStats[key].segments++;
+          perReportStats[key].totalLen += layer.lengthMeters;
+          perReportStats[key].totalDur += layer.durationHours;
+        });
+        Object.values(perReportStats).forEach((stat: any) => {
+          const avg = stat.totalDur > 0 ? stat.totalLen / stat.totalDur : 0;
+          const row = ws2.addRow([
+            reportStt, res.project, res.item, res.componentName, res.pileId,
+            res.reportNumber, res.diameter, stat.code, stat.design, stat.segments,
+            parseFloat(stat.totalLen.toFixed(2)), parseFloat(stat.totalDur.toFixed(2)), parseFloat(avg.toFixed(2)),
+          ]);
+          const wrapCols = [2, 3, 4, 6, 9];
+          for (let ci = 1; ci <= 13; ci++) {
+            const c = row.getCell(ci);
+            const shouldWrap = wrapCols.includes(ci);
+            cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+          }
+        });
+      });
+
+      // ── Sheet 3: Tổng hợp lớp thiết kế ──
+      const ws3 = wb.addWorksheet('Tổng hợp lớp thiết kế');
+      ws3.columns = [
+        { width: 6 }, { width: 15 }, { width: 15 }, { width: 45 }, { width: 10 },
+        { width: 10 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
+      ];
+      const r1_3 = ws3.addRow(['TỔNG HỢP THỐNG KÊ THEO LỚP THIẾT KẾ - TOÀN BỘ']);
+      r1_3.height = 30;
+      cell(r1_3.getCell(1), r1_3.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+      ws3.mergeCells(r1_3.number, 1, r1_3.number, 11);
+      const HDRS3 = ['STT', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế tương ứng', 'Số cọc', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.Min (m/h)', 'V.Max (m/h)', 'V.TB (m/h)'];
+      const r2_3 = ws3.addRow(HDRS3);
+      r2_3.height = 25;
+      HDRS3.forEach((h, ci) => cell(r2_3.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+      ws3.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 11 } };
+      ws3.getColumn(4).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      const excelStatsMap: Record<string, any> = {};
+      const normalizeForGrouping = (str: string) => {
+        if (!str) return '';
+        return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]/g, '');
+      };
+      rows.forEach(res => {
+        (res.layers || []).forEach(layer => {
+          const code = (layer.designLayerCode || '').trim();
+          const design = (layer.layerDesign || 'Chưa xác định').trim();
+          const dia = (res.diameter || '—').trim();
+          const key = `${normalizeForGrouping(code)}|||${normalizeForGrouping(design)}|||${normalizeForGrouping(dia)}`;
+          if (!excelStatsMap[key]) {
+            excelStatsMap[key] = { code, design, dia, pileIds: new Set(), segments: 0, minSpeed: Infinity, maxSpeed: -Infinity, totalDuration: 0, totalLength: 0 };
+          }
+          const s = excelStatsMap[key];
+          s.pileIds.add((res.pileId || res.id).trim());
+          s.segments += 1; s.totalDuration += layer.durationHours; s.totalLength += layer.lengthMeters;
+          if (layer.speedMph > 0) {
+            if (layer.speedMph < s.minSpeed) s.minSpeed = layer.speedMph;
+            if (layer.speedMph > s.maxSpeed) s.maxSpeed = layer.speedMph;
+          }
+        });
+      });
+      const excelStats = Object.values(excelStatsMap).sort((a, b) => {
+        if (a.code && b.code) return a.code.localeCompare(b.code, undefined, { numeric: true });
+        return a.design.localeCompare(b.design);
+      });
+      excelStats.forEach((stat, idx) => {
+        const avg = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
+        const row = ws3.addRow([
+          idx + 1, stat.dia, stat.code || '—', stat.design, stat.pileIds.size, stat.segments,
+          parseFloat(stat.totalLength.toFixed(2)), parseFloat(stat.totalDuration.toFixed(2)),
+          stat.minSpeed === Infinity ? '—' : parseFloat(stat.minSpeed.toFixed(2)),
+          stat.maxSpeed === -Infinity ? '—' : parseFloat(stat.maxSpeed.toFixed(2)),
+          parseFloat(avg.toFixed(2))
+        ]);
+        row.eachCell((c, ci) => {
+          const shouldWrap = ci === 4;
+          cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+        });
+      });
+      const totalPilesCount3 = rows.length;
+      let totalSegs3 = 0, totalLen3 = 0, totalDur3 = 0, gMin3 = Infinity, gMax3 = -Infinity;
+      excelStats.forEach(s => {
+        totalSegs3 += s.segments; totalLen3 += s.totalLength; totalDur3 += s.totalDuration;
+        if (s.minSpeed < gMin3) gMin3 = s.minSpeed;
+        if (s.maxSpeed > gMax3) gMax3 = s.maxSpeed;
+      });
+      const totalAvg3 = totalDur3 > 0 ? totalLen3 / totalDur3 : 0;
+      const footer3 = ws3.addRow(['TỔNG CỘNG', '', '', '', totalPilesCount3, totalSegs3, parseFloat(totalLen3.toFixed(2)), parseFloat(totalDur3.toFixed(2)), gMin3 === Infinity ? '—' : parseFloat(gMin3.toFixed(2)), gMax3 === -Infinity ? '—' : parseFloat(gMax3.toFixed(2)), parseFloat(totalAvg3.toFixed(2))]);
+      footer3.height = 24;
+      ws3.mergeCells(footer3.number, 1, footer3.number, 4);
+      footer3.eachCell((c, ci) => {
+        cell(c, c.value, 'E2E8F0', '1E3A6E', true, 'center', 10);
+        if (ci === 1) c.alignment = { horizontal: 'right', vertical: 'middle' };
+      });
+
+      // ── Sheet ảnh riêng cho từng biên bản (fetch ảnh song song, giới hạn 5 cùng lúc) ──
+      const applySheetCell = (c: any, v: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean }) => {
+        c.value = v;
+        c.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
+        if (opts.bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
+        c.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
+        c.border = { top: thin(), bottom: thin(), left: thin(), right: thin() };
+      };
+      const thinB = (color = 'CCCCCC') => ({
+        top: { style: 'thin' as const, color: { argb: argb(color) } },
+        bottom: { style: 'thin' as const, color: { argb: argb(color) } },
+        left: { style: 'thin' as const, color: { argb: argb(color) } },
+        right: { style: 'thin' as const, color: { argb: argb(color) } },
+      });
+
+      // Fetch ảnh song song (tối đa 5 cùng lúc để không bị rate limit)
+      const CHUNK = 5;
+      const imageResults: ({ base64: string; ext: string } | null)[] = new Array(rows.length).fill(null);
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+        const fetched = await Promise.all(chunk.map(res => ensureImageData(res, githubCreds).catch(() => null)));
+        fetched.forEach((img, j) => { imageResults[i + j] = img; });
+      }
+
+      // Tạo sheet cho từng biên bản
+      rows.forEach((res, idx) => {
+        const reportStt = (res as any).displayStt || (rows.length - idx);
+        // Tên sheet: tối đa 31 ký tự, không có ký tự đặc biệt
+        const rawName = `BB${reportStt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
+        const sheetName = rawName.slice(0, 31);
+        const wsImg = wb.addWorksheet(sheetName);
+        wsImg.columns = [
+          { width: 14 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 },
+          { width: 11 }, { width: 11 }, { width: 11 }, { width: 9 }, { width: 9 }, { width: 28 },
+        ];
+
+        // Thông tin biên bản
+        const infoItems = [
+          ['Dự án', res.project], ['Hạng mục', res.item],
+          ['Tên bộ phận', res.componentName], ['Số hiệu cọc', res.pileId],
+          ['Biên bản số', res.reportNumber], ['Đường kính', res.diameter],
+          ['Bắt đầu thi công', res.constructionStart], ['Kết thúc thi công', res.constructionEnd],
+        ];
+        infoItems.forEach(([k, v]) => {
+          const row = wsImg.addRow([k, v]);
+          row.height = 18;
+          applySheetCell(row.getCell(1), k, { bg: 'EFF6FF', fontColor: '1E3A6E', bold: true, align: 'left' });
+          applySheetCell(row.getCell(2), v, { bg: 'FFFFFF', fontColor: '374151', align: 'left' });
+          wsImg.mergeCells(row.number, 2, row.number, 11);
+        });
+        const blankR = wsImg.addRow([]); blankR.height = 6;
+
+        // Header bảng lớp địa chất
+        const hdrCols = ['Địa chất TT', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+        const hdrRow = wsImg.addRow(hdrCols);
+        hdrRow.height = 36;
+        hdrCols.forEach((h, ci) => {
+          applySheetCell(hdrRow.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 || ci === 10 ? 'left' : 'center', wrap: true });
+        });
+
+        // Dữ liệu lớp địa chất
+        let gc = 0; let pk = '';
+        const rowColorIdx = (res.layers || []).map((layer) => {
+          const key = layer.layerDesign?.trim() || '__';
+          if (key !== pk) { gc++; pk = key; }
+          return (gc - 1) % GROUP_COLORS.length;
+        });
+        (res.layers || []).forEach((layer, ri) => {
+          const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
+          const spd = layer.speedMph;
+          const isSlowSpd = spd > 0 && spd <= 1;
+          const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+          const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
+          const vals = [
+            layer.actualGeology, res.diameter, layer.layerDesign,
+            layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
+            layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
+            layer.elevationFrom, layer.elevationTo,
+            parseFloat(layer.durationHours.toFixed(2)),
+            parseFloat(layer.lengthMeters.toFixed(2)),
+            parseFloat(spd.toFixed(2)),
+            layer.notes || '',
+          ];
+          const dataRow = wsImg.addRow(vals);
+          dataRow.height = 36;
+          vals.forEach((v, ci) => {
+            const isSpd = ci === 9;
+            const c = dataRow.getCell(ci + 1);
+            c.value = v;
+            c.font = { name: 'Arial', size: 10, bold: isSpd && isSlowSpd, color: { argb: argb(isSpd ? spdFontColor : fontColor) } };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(isSpd ? spdBg : bg) } };
+            c.alignment = { horizontal: (ci === 2 || ci === 10 ? 'left' : 'center') as any, vertical: 'middle', wrapText: ci === 2 || ci === 3 || ci === 4 || ci === 10 };
+            c.border = thinB();
+          });
+        });
+
+        // Nhúng ảnh biên bản
+        const imgData = imageResults[idx];
+        const startRow = 11 + (res.layers || []).length + 2;
+        if (imgData) {
+          try {
+            const imgId = wb.addImage({ base64: imgData.base64, extension: imgData.ext as any });
+            const titleRow = wsImg.getRow(startRow);
+            titleRow.height = 25;
+            applySheetCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center' });
+            wsImg.mergeCells(startRow, 1, startRow, 11);
+            wsImg.addImage(imgId, { tl: { col: 0, row: startRow }, ext: { width: 850, height: 1100 } });
+            for (let i = startRow + 1; i <= startRow + 60; i++) wsImg.getRow(i).height = 20;
+          } catch (imgErr) {
+            console.error(`[exportAllToExcel] Lỗi nhúng ảnh biên bản ${res.pileId}:`, imgErr);
+          }
+        } else {
+          const titleRow = wsImg.getRow(startRow);
+          titleRow.height = 25;
+          applySheetCell(titleRow.getCell(1), '⚠️ CẢNH BÁO: THIẾU HÌNH ẢNH BIÊN BẢN GỐC', { bg: 'FEE2E2', fontColor: '991B1B', bold: true, sz: 12, align: 'center' });
+          wsImg.mergeCells(startRow, 1, startRow, 11);
+        }
+      });
+
+      // Xuất file
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.style.display = 'none';
+      const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
+      a.download = `SGC-CKN_TongHop_${dateStr}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    } catch (err: any) {
+      console.error('exportAllToExcel error:', err);
+      alert('❌ Lỗi khi xuất Excel tổng hợp: ' + (err?.message || 'Vui lòng thử lại.'));
+    } finally {
+      setIsExportingAll(false);
+    }
+  };
+
+  const handleSaveEdit = async (updatedResult: ExtractionResult) => {
     // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
     setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
     setIsEditModalOpen(false);
     setEditingResult(null);
 
-    // Gọi API ngầm (không chặn UI)
-    (async () => {
-      let finalResult = { ...updatedResult };
+    let finalResult = { ...updatedResult };
 
-      // Tái tạo Excel và ghi đè file cũ trên GitHub (path cố định theo id)
-      if (isGithubConnected && githubCreds) {
-        try {
-          // Lấy ảnh (từ cache hoặc fetch từ GitHub) để nhúng vào Excel
-          const autoImg = await ensureImageData(finalResult, githubCreds);
-          
-          if ((finalResult._base64 || finalResult.fileUrl) && !autoImg) {
-            const confirmMsg = `⚠️ [Chỉnh sửa] Không thể trích xuất hình ảnh từ biên bản "${finalResult.fileName || 'này'}". \n\nFile Excel cập nhật sẽ KHÔNG có hình ảnh đính kèm. Bạn có chắc chắn muốn tiếp tục không?`;
-            if (!window.confirm(confirmMsg)) return;
+    // 1. Tái tạo Excel và ghi đè file cũ trên GitHub
+    if (isGithubConnected && githubCreds) {
+      try {
+        const autoImg = await ensureImageData(finalResult, githubCreds);
+        const excelBase64 = await generateExcelBase64(finalResult, autoImg);
+        if (excelBase64) {
+          const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
+          if (newUrl) {
+            finalResult = { ...finalResult, excelUrl: newUrl };
+            setHistory(prev => prev.map(item => item.id === finalResult.id ? { ...item, excelUrl: newUrl } : item));
           }
-
-          const excelBase64 = await generateExcelBase64(finalResult, autoImg);
-          if (excelBase64) {
-            const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
-            if (newUrl) {
-              finalResult.excelUrl = newUrl;
-              // Cập nhật lại UI với excelUrl mới (giữ nguyên nếu không đổi)
-              setHistory(prev => prev.map(item => item.id === finalResult.id ? { ...item, excelUrl: newUrl } : item));
-            }
-          }
-        } catch (e) {
-          console.error('Re-generate Excel on edit failed:', e);
         }
+      } catch (e) {
+        console.error('Re-generate Excel on edit failed:', e);
+        // Không dừng lại — vẫn tiếp tục lưu Supabase
       }
+    }
 
-      // Lưu vào Supabase
-      if (supabase) {
-        try {
-          const { designLayerMap: _dlm, _base64: _b, _mimeType: _m, ...updateData } = finalResult as any;
-          const { error } = await supabase.from('drill_extractions').update(updateData).eq('id', finalResult.id);
-          if (error) console.error("Lỗi cập nhật Supabase:", error.message);
-        } catch (e: any) {
-          console.error("Lỗi kết nối Supabase:", e?.message);
+    // 2. Lưu vào Supabase — luôn chạy dù GitHub thành công hay thất bại
+    if (supabase) {
+      try {
+        // Loại bỏ các field không lưu được vào Supabase
+        const { designLayerMap: _dlm, _base64: _b, _mimeType: _m, ...updateData } = finalResult as any;
+        console.log('[handleSaveEdit] Đang lưu vào Supabase, id:', finalResult.id);
+        const { error } = await supabase
+          .from('drill_extractions')
+          .update(updateData)
+          .eq('id', finalResult.id);
+        if (error) {
+          console.error('[handleSaveEdit] Lỗi cập nhật Supabase:', error.message, error.details, error.hint);
+          alert(`⚠️ Dữ liệu đã cập nhật trên màn hình nhưng lưu Supabase thất bại:\n${error.message}\n\nHãy thử lại hoặc kiểm tra kết nối.`);
+        } else {
+          console.log('[handleSaveEdit] Lưu Supabase thành công');
         }
+      } catch (e: any) {
+        console.error('[handleSaveEdit] Lỗi kết nối Supabase:', e?.message);
+        alert(`⚠️ Lỗi kết nối Supabase: ${e?.message || 'Không xác định'}. Dữ liệu chỉ lưu tạm trên màn hình.`);
       }
-    })();
+    } else {
+      console.warn('[handleSaveEdit] Supabase chưa được khởi tạo — dữ liệu chỉ lưu local.');
+    }
+
+    // 3. Đồng bộ localStorage (backup offline)
+    try {
+      setHistory(prev => {
+        const updated = prev.map(item => item.id === finalResult.id ? finalResult : item);
+        localStorage.setItem('pile_drill_history', JSON.stringify(
+          updated.map(({ _base64: _b, _mimeType: _m, designLayerMap: _d, ...rest }: any) => rest)
+        ));
+        return updated;
+      });
+    } catch (e) {
+      console.warn('[handleSaveEdit] Lỗi lưu localStorage:', e);
+    }
   };
 
   return (
@@ -2965,13 +2983,22 @@ export default function App() {
                       </button>
                     )}
                     <button
-                      onClick={() => exportAllToExcel(filtered)}
-                      className="flex items-center gap-3 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-white/10 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/30 active:scale-95"
-                      title={`Xuất ${filtered.length} biên bản ra Excel`}
+                      onClick={() => !isExportingAll && exportAllToExcel(filtered)}
+                      disabled={isExportingAll}
+                      className={cn(
+                        "flex items-center gap-3 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-white/10 text-white shadow-lg active:scale-95",
+                        isExportingAll
+                          ? "bg-slate-400 cursor-not-allowed shadow-slate-300/30"
+                          : "bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 shadow-emerald-500/30"
+                      )}
+                      title={isExportingAll ? 'Đang tải ảnh và tạo Excel...' : `Xuất ${filtered.length} biên bản ra Excel`}
                     >
-                      <ArrowDownToLine size={16} strokeWidth={2.5} />
-                      Xuất Excel
-                      {hasActiveFilter && (
+                      {isExportingAll ? (
+                        <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>Đang xuất...</>
+                      ) : (
+                        <><ArrowDownToLine size={16} strokeWidth={2.5} />Xuất Excel</>
+                      )}
+                      {!isExportingAll && hasActiveFilter && (
                         <span className="bg-white/20 backdrop-blur-md text-white text-[10px] font-black px-2.5 py-0.5 rounded-full border border-white/20">
                           {filtered.length}
                         </span>
@@ -3277,13 +3304,7 @@ export default function App() {
                                       <><ArrowDownToLine size={12} />Excel</>
                                     )}
                                   </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleRefreshExcel(item); }}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-                                    title="Làm mới file Excel trên GitHub (nhúng lại ảnh)"
-                                  >
-                                    <RefreshCw size={12} />
-                                  </button>
+
                                 </div>
                               ) : (
                                 <span className="text-[11px] text-slate-300 font-medium">—</span>
@@ -4374,11 +4395,18 @@ function SummaryView({
             </h4>
           </div>
           <button
-            onClick={() => exportAllToExcel(history)}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md"
+            onClick={() => !isExportingAll && exportAllToExcel(history)}
+            disabled={isExportingAll}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md",
+              isExportingAll ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
+            )}
           >
-            <FileDown size={14} />
-            Xuất Excel
+            {isExportingAll ? (
+              <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>Đang xuất...</>
+            ) : (
+              <><FileDown size={14} />Xuất Excel</>
+            )}
           </button>
         </div>
         <div className="overflow-x-auto">
