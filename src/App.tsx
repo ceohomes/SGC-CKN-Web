@@ -5103,6 +5103,157 @@ function EditSplitView({
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isRescanning, setIsRescanning] = useState(false);
   const [rescanStatus, setRescanStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isReplacingFile, setIsReplacingFile] = useState(false);
+
+  // ── Thay thế File: upload PDF mới → thay trên GitHub → quét lại AI → cập nhật data ──
+  const replaceFile = async () => {
+    if (!githubCreds) {
+      alert('❌ Chưa kết nối GitHub. Vui lòng cấu hình GitHub trước.');
+      return;
+    }
+    // Mở hộp chọn file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.jpg,.jpeg,.png';
+    input.onchange = async (e: any) => {
+      const file: File = e.target.files?.[0];
+      if (!file) return;
+      setIsReplacingFile(true);
+      setRescanStatus('idle');
+      try {
+        // Đọc file thành base64
+        const readBase64 = (f: File): Promise<string> => new Promise((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result as string);
+          reader.onerror = rej;
+          reader.readAsDataURL(f);
+        });
+        const base64DataUrl = await readBase64(file);
+        const base64Content = base64DataUrl.split(',')[1];
+
+        // Upload lên GitHub — thay file cũ nếu có, hoặc tạo mới
+        const { token, username, repo } = githubCreds;
+        const timestamp = Date.now();
+        const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const path = data.fileUrl
+          ? (() => {
+              const cleanUrl = decodeURIComponent(data.fileUrl.split('?')[0]);
+              const m = cleanUrl.match(/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
+              return m ? m[1] : `SGC-CKN/${timestamp}_${safeFileName}`;
+            })()
+          : `SGC-CKN/${timestamp}_${safeFileName}`;
+
+        const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
+        const headers = {
+          'Authorization': `Bearer ${token.trim()}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+        };
+
+        // Lấy SHA nếu file đã tồn tại (để ghi đè)
+        let sha: string | undefined;
+        try {
+          const getRes = await fetch(`${apiUrl}?t=${timestamp}`, { headers });
+          if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
+        } catch (_) {}
+
+        const putRes = await fetch(apiUrl, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            message: `Replace file: ${safeFileName} via SGC-CKN Web`,
+            content: base64Content,
+            sha,
+          }),
+        });
+
+        let newFileUrl = data.fileUrl;
+        if (putRes.ok) {
+          newFileUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
+        } else {
+          const err = await putRes.json();
+          alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload'}. Vẫn tiếp tục quét AI với file mới.`);
+        }
+
+        // Cập nhật _base64 và fileUrl trong data để quét lại
+        setData(prev => ({
+          ...prev,
+          _base64: base64DataUrl,
+          _mimeType: file.type,
+          fileName: file.name,
+          fileUrl: newFileUrl || prev.fileUrl,
+        }));
+
+        // Quét lại AI ngay với file mới (truyền base64 trực tiếp)
+        setIsReplacingFile(false);
+        setIsRescanning(true);
+        try {
+          const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+          let imgBase64: string;
+          let imgMime = 'image/jpeg';
+          if (isPdf) {
+            const converted = await convertPdfToImage(base64DataUrl);
+            imgBase64 = converted.split(',')[1];
+          } else {
+            imgBase64 = base64Content;
+            imgMime = file.type || 'image/jpeg';
+          }
+
+          // Chuẩn hóa ảnh
+          const normalized = await new Promise<{base64: string, mime: string}>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX = 3000;
+              let w = img.width, h = img.height;
+              if (w > MAX || h > MAX) { if (w > h) { h *= MAX/w; w = MAX; } else { w *= MAX/h; h = MAX; } }
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext('2d')!;
+              ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
+              ctx.drawImage(img, 0, 0, w, h);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+              resolve({ base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+            };
+            img.onerror = () => reject(new Error('Không thể tải ảnh'));
+            img.src = `data:${imgMime};base64,${imgBase64}`;
+          });
+
+          const rawResult = await extractDataFromFile(normalized.base64, normalized.mime, userApiKey);
+          const map = rawResult.designLayerMap || {};
+          const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
+            const geoCode = (layer.actualGeology || '').trim();
+            const currentDesign = (layer.layerDesign || '').trim();
+            if (geoCode && map[geoCode] && (!currentDesign || currentDesign.length < 5)) {
+              return { ...layer, layerDesign: map[geoCode] };
+            }
+            return layer;
+          });
+
+          setData(prev => ({
+            ...rawResult,
+            layers: normalizedLayers,
+            id: prev.id,
+            timestamp: prev.timestamp,
+            fileUrl: newFileUrl || prev.fileUrl,
+            excelUrl: prev.excelUrl,
+            fileName: file.name,
+            _base64: base64DataUrl,
+            _mimeType: file.type,
+          }));
+          setRescanStatus('success');
+        } catch (err: any) {
+          alert('❌ Lỗi quét AI: ' + (err?.message || String(err)));
+          setRescanStatus('error');
+        } finally {
+          setIsRescanning(false);
+        }
+      } catch (err: any) {
+        alert('❌ Lỗi thay thế file: ' + (err?.message || String(err)));
+        setIsReplacingFile(false);
+      }
+    };
+    input.click();
+  };
 
   // ── Quét lại toàn bộ dữ liệu bằng AI từ ảnh biên bản ──
   const rescanWithAI = async (apiKey?: string) => {
@@ -5749,25 +5900,27 @@ function EditSplitView({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Nút Quét lại AI */}
+          {/* Nút Thay thế File */}
           <button
-            disabled={isRescanning}
-            onClick={() => rescanWithAI(userApiKey)}
+            disabled={isReplacingFile || isRescanning}
+            onClick={replaceFile}
             className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
-              isRescanning
+              isReplacingFile || isRescanning
                 ? 'bg-purple-300 border-purple-200 text-white cursor-wait'
                 : rescanStatus === 'success'
                 ? 'bg-emerald-500 border-emerald-400 text-white hover:bg-emerald-600'
                 : 'bg-purple-500 border-purple-400 text-white hover:bg-purple-600'
             }`}
-            title="Gửi lại ảnh biên bản cho AI trích xuất lại toàn bộ dữ liệu"
+            title="Upload file PDF mới để thay thế file cũ, tự động quét lại bằng AI"
           >
-            {isRescanning ? (
-              <><svg className="animate-spin" width={13} height={13} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang quét...</>
+            {isReplacingFile ? (
+              <><svg className="animate-spin" width={13} height={13} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang upload...</>
+            ) : isRescanning ? (
+              <><svg className="animate-spin" width={13} height={13} viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang quét AI...</>
             ) : rescanStatus === 'success' ? (
               <><CheckCircle2 size={13} /> Đã quét xong — Kiểm tra & Lưu</>
             ) : (
-              <><RotateCcw size={13} /> Quét lại AI</>
+              <><Upload size={13} /> Thay thế File</>
             )}
           </button>
           <button 
