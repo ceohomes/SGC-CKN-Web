@@ -2649,89 +2649,72 @@ export default function App() {
   // ── GeologyView: Cấu tạo lớp địa chất ──
   const GeologyView = () => {
     const [searchText, setSearchText] = React.useState('');
-    // editingKey = "geoCode|oldDesign", editValue = new layerDesign text
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [editValue, setEditValue] = React.useState('');
     const [savingKey, setSavingKey] = React.useState<string | null>(null);
     const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
     const [syncCount, setSyncCount] = React.useState(0);
 
-    // Tạo danh sách UNIQUE theo (actualGeology + layerDesign), kèm số lượng xuất hiện
-    type UniqueLayer = {
-      actualGeology: string;
-      layerDesign: string;
-      count: number; // số lớp trong toàn bộ data có cùng key này
-    };
+    // UNIQUE chỉ theo layerDesign (trim, lowercase để so sánh)
+    type UniqueLayer = { layerDesign: string; count: number; };
 
     const uniqueLayers: UniqueLayer[] = React.useMemo(() => {
+      // Map key = layerDesign.trim() (case-sensitive để giữ nguyên chữ)
       const map = new Map<string, UniqueLayer>();
       history.forEach(res => {
         (res.layers || []).forEach(layer => {
-          const geo = (layer.actualGeology || '').trim();
           const design = (layer.layerDesign || '').trim();
-          const key = `${geo}|||${design}`;
+          if (!design) return;
+          const key = design;
           if (map.has(key)) {
             map.get(key)!.count++;
           } else {
-            map.set(key, { actualGeology: geo, layerDesign: design, count: 1 });
+            map.set(key, { layerDesign: design, count: 1 });
           }
         });
       });
-      // Sắp xếp: theo actualGeology (số) tăng dần, nếu bằng thì theo layerDesign A-Z
-      return Array.from(map.values()).sort((a, b) => {
-        const numA = parseInt(a.actualGeology) || 0;
-        const numB = parseInt(b.actualGeology) || 0;
-        if (numA !== numB) return numA - numB;
-        return (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' });
-      });
+      // Sắp xếp A-Z theo layerDesign
+      return Array.from(map.values()).sort((a, b) =>
+        (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' })
+      );
     }, [history]);
 
     const filtered = React.useMemo(() => {
       if (!searchText.trim()) return uniqueLayers;
       const q = searchText.toLowerCase();
-      return uniqueLayers.filter(r =>
-        (r.layerDesign || '').toLowerCase().includes(q) ||
-        (r.actualGeology || '').toLowerCase().includes(q)
-      );
+      return uniqueLayers.filter(r => (r.layerDesign || '').toLowerCase().includes(q));
     }, [uniqueLayers, searchText]);
 
-    const startEdit = (actualGeology: string, layerDesign: string) => {
-      setEditingKey(`${actualGeology}|||${layerDesign}`);
+    const startEdit = (layerDesign: string) => {
+      setEditingKey(layerDesign);
       setEditValue(layerDesign);
     };
     const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
 
-    // Khi lưu: cập nhật TẤT CẢ biên bản có cùng (actualGeology + layerDesign cũ)
-    const commitEdit = async (oldGeo: string, oldDesign: string) => {
+    // Khi lưu: cập nhật TẤT CẢ layers trong TẤT CẢ biên bản có cùng layerDesign cũ
+    const commitEdit = async (oldDesign: string) => {
       const newDesign = editValue.trim();
       if (!newDesign || newDesign === oldDesign) { cancelEdit(); return; }
 
-      // Tìm tất cả kết quả + index layer cần update
       type ToUpdate = { result: ExtractionResult; newLayers: DrillLayer[] };
       const toUpdateList: ToUpdate[] = [];
       history.forEach(res => {
-        const hasMatch = (res.layers || []).some(
-          l => l.actualGeology?.trim() === oldGeo && l.layerDesign?.trim() === oldDesign
-        );
+        const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === oldDesign);
         if (!hasMatch) return;
         const newLayers = res.layers.map(l =>
-          l.actualGeology?.trim() === oldGeo && l.layerDesign?.trim() === oldDesign
-            ? { ...l, layerDesign: newDesign }
-            : l
+          (l.layerDesign || '').trim() === oldDesign ? { ...l, layerDesign: newDesign } : l
         );
         toUpdateList.push({ result: res, newLayers });
       });
 
-      // Cập nhật local state ngay
+      // Cập nhật local state ngay lập tức
       setHistory(prev => prev.map(res => {
         const found = toUpdateList.find(u => u.result.id === res.id);
         return found ? { ...res, layers: found.newLayers } : res;
       }));
       cancelEdit();
 
-      // Sync Supabase cho từng biên bản
-      const key = `${oldGeo}|||${oldDesign}`;
-      setSavingKey(key);
+      setSavingKey(newDesign);
       setSyncStatus('syncing');
       setSyncCount(toUpdateList.length);
       let errorCount = 0;
@@ -2743,7 +2726,6 @@ export default function App() {
               if (error) errorCount++;
             } catch { errorCount++; }
           }));
-          // Cập nhật localStorage
           try {
             const savedHistory = localStorage.getItem('pile_drill_history');
             if (savedHistory) {
@@ -2773,6 +2755,8 @@ export default function App() {
         setTimeout(() => setSyncStatus('idle'), 3500);
       }
     };
+
+    const totalAppearances = uniqueLayers.reduce((s, r) => s + r.count, 0);
 
     return (
       <div className="w-full space-y-6">
@@ -2809,7 +2793,7 @@ export default function App() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[
             { label: 'Tổng lớp unique', value: uniqueLayers.length, color: '#1a3a6b' },
-            { label: 'Tổng lượt xuất hiện', value: uniqueLayers.reduce((s, r) => s + r.count, 0), color: '#4f46e5' },
+            { label: 'Tổng lượt xuất hiện', value: totalAppearances, color: '#4f46e5' },
             { label: 'Số biên bản', value: history.length, color: '#059669' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
@@ -2825,13 +2809,13 @@ export default function App() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 bg-slate-50"
-              placeholder="Tìm theo mô tả lớp thiết kế hoặc số địa chất TT..."
+              placeholder="Tìm theo mô tả lớp thiết kế..."
               value={searchText} onChange={e => setSearchText(e.target.value)}
             />
           </div>
           <p className="text-xs text-slate-400 mt-2">
             Hiển thị <span className="font-semibold text-blue-600">{filtered.length}</span> / {uniqueLayers.length} lớp unique.
-            <span className="ml-2 text-amber-600">💡 Click vào tên lớp để sửa — tất cả biên bản có cùng lớp đó sẽ được cập nhật.</span>
+            <span className="ml-2 text-amber-600">💡 Click vào tên lớp để sửa — tất cả biên bản có cùng lớp đó sẽ được cập nhật đồng loạt.</span>
           </p>
         </div>
 
@@ -2844,78 +2828,69 @@ export default function App() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr style={{ background: '#1a3a6b' }}>
-                    <th className="px-4 py-3 text-xs font-bold text-white text-center w-12 border-r border-blue-800/30">#</th>
-                    <th className="px-4 py-3 text-xs font-bold text-white text-center w-28 border-r border-blue-800/30">Địa chất TT</th>
-                    <th className="px-4 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">Mô tả lớp thiết kế</th>
-                    <th className="px-4 py-3 text-xs font-bold text-white text-center w-32">Số lần xuất hiện</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((row, idx) => {
-                    const key = `${row.actualGeology}|||${row.layerDesign}`;
-                    const isEditing = editingKey === key;
-                    const isSaving = savingKey === key;
-                    const rowBg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
-                    return (
-                      <tr key={key} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
-                        <td className="px-4 py-3 text-xs text-center text-slate-400 font-mono">{idx + 1}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-black text-white" style={{ background: '#1a3a6b' }}>
-                            {row.actualGeology || '?'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                autoFocus
-                                className="flex-1 border-2 border-blue-400 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') commitEdit(row.actualGeology, row.layerDesign);
-                                  if (e.key === 'Escape') cancelEdit();
-                                }}
-                              />
-                              <button onClick={() => commitEdit(row.actualGeology, row.layerDesign)}
-                                className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
-                                <CheckCircle2 size={13} /> Lưu
-                              </button>
-                              <button onClick={cancelEdit}
-                                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
-                                <X size={13} /> Hủy
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => !isSaving && startEdit(row.actualGeology, row.layerDesign)}>
-                              {isSaving ? (
-                                <span className="flex items-center gap-2 text-blue-600 text-sm">
-                                  <Loader2 size={14} className="animate-spin" /> Đang lưu...
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="text-sm text-slate-700">{row.layerDesign || <em className="text-slate-400">Chưa có mô tả</em>}</span>
-                                  <Edit2 size={13} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-3 py-1 rounded-full border border-blue-200">
-                            {row.count} biên bản
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr style={{ background: '#1a3a6b' }}>
+                  <th className="px-4 py-3 text-xs font-bold text-white text-center w-14 border-r border-blue-800/30">#</th>
+                  <th className="px-4 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">Mô tả lớp thiết kế</th>
+                  <th className="px-4 py-3 text-xs font-bold text-white text-center w-36">Số lần xuất hiện</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, idx) => {
+                  const isEditing = editingKey === row.layerDesign;
+                  const isSaving = savingKey === row.layerDesign;
+                  const rowBg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
+                  return (
+                    <tr key={row.layerDesign} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
+                      <td className="px-4 py-3.5 text-xs text-center text-slate-400 font-mono">{idx + 1}</td>
+                      <td className="px-4 py-3.5">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              autoFocus
+                              className="flex-1 border-2 border-blue-400 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                              value={editValue}
+                              onChange={e => setEditValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') commitEdit(row.layerDesign);
+                                if (e.key === 'Escape') cancelEdit();
+                              }}
+                            />
+                            <button onClick={() => commitEdit(row.layerDesign)}
+                              className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors whitespace-nowrap">
+                              <CheckCircle2 size={13} /> Lưu
+                            </button>
+                            <button onClick={cancelEdit}
+                              className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                              <X size={13} /> Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => !isSaving && startEdit(row.layerDesign)}>
+                            {isSaving ? (
+                              <span className="flex items-center gap-2 text-blue-600 text-sm">
+                                <Loader2 size={14} className="animate-spin" /> Đang lưu...
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-sm text-slate-700">{row.layerDesign}</span>
+                                <Edit2 size={13} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-3 py-1 rounded-full border border-blue-200">
+                          {row.count} lần
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
