@@ -6862,6 +6862,14 @@ function EditSplitView({
                   Tải xuống
                 </a>
               </div>
+              {/* Tên file — hiển thị giữa thanh toolbar */}
+              <div className="flex-1 mx-3 min-w-0">
+                <p className="text-[11px] font-black text-slate-600 uppercase tracking-widest truncate text-center"
+                   title={data.fileName || ''}>
+                  {data.fileName || '—'}
+                </p>
+              </div>
+
               <div className="flex items-center gap-1">
                 {isPdf && numPages > 0 && (
                   <div className="flex items-center gap-1 mr-2">
