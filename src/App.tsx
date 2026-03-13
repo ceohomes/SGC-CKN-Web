@@ -3009,12 +3009,12 @@ export default function App() {
         <div className="p-8 h-full flex flex-col">
           <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-[#1e4070]">
+              <div className="w-16 h-16 rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-[#1e4070]">
                 {customLogo ? (
                   <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="bg-blue-600 w-full h-full flex items-center justify-center">
-                    <Construction className="text-white w-5 h-5" />
+                    <Construction className="text-white w-8 h-8" />
                   </div>
                 )}
               </div>
@@ -3029,7 +3029,7 @@ export default function App() {
           </div>
 
           <nav className="space-y-1 flex-1">
-            <p className="text-[10px] font-bold text-blue-300/70 uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
+            <p className="text-[13px] font-black text-white uppercase tracking-widest mb-4 px-4">Danh mục chính</p>
             <button 
               onClick={() => { setActiveSheet('upload'); setIsSidebarOpen(false); }}
               className={cn(
@@ -3676,18 +3676,18 @@ export default function App() {
                             <td className="text-slate-900 font-normal text-center">{item.constructionStart}</td>
                             <td className="text-slate-900 font-normal text-center">{item.constructionEnd}</td>
                             <td className="text-center font-bold text-orange-600">
-                              {formatNumber(item.layers.reduce((acc, l) => acc + l.lengthMeters, 0))}
+                              {formatNumber((item.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0))}
                             </td>
                             <td className="text-center text-slate-700">
                               {(() => {
-                                const h = item.layers.reduce((acc, l) => acc + l.durationHours, 0);
+                                const h = (item.layers || []).reduce((acc, l) => acc + l.durationHours, 0);
                                 return h > 0 ? formatNumber(h) : '—';
                               })()}
                             </td>
                             <td className="text-center">
                               {(() => {
-                                const totalLen = item.layers.reduce((acc, l) => acc + l.lengthMeters, 0);
-                                const h = item.layers.reduce((acc, l) => acc + l.durationHours, 0);
+                                const totalLen = (item.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0);
+                                const h = (item.layers || []).reduce((acc, l) => acc + l.durationHours, 0);
                                 const v = h > 0 ? totalLen / h : 0;
                                 return (
                                   <span className={cn(
@@ -4115,7 +4115,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
         <StatCard title="Biên bản số" value={result.reportNumber} icon={<FileText className="text-blue-600" />} />
         <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
-        <StatCard title="Tổng chiều sâu" value={`${formatNumber(result.layers.reduce((acc, l) => acc + l.lengthMeters, 0))} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
+        <StatCard title="Tổng chiều sâu" value={`${formatNumber((result.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0))} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
         <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
         <StatCard title="Kết thúc" value={result.constructionEnd} icon={<Calendar className="text-blue-600" />} />
       </div>
@@ -4130,10 +4130,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
         <div className="flex gap-2">
           <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
-            {result.layers.length} Lớp
+            {(result.layers || []).length} Lớp
           </div>
           <div className="px-3 py-1.5 bg-slate-50 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest border border-slate-300">
-            TB: {formatNumber(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length)} m/h
+            TB: {formatNumber((result.layers || []).reduce((acc, l) => acc + l.speedMph, 0) / ((result.layers || []).length || 1))} m/h
           </div>
         </div>
       </div>
@@ -4197,14 +4197,14 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           <h4 className="text-slate-900 font-bold uppercase tracking-widest text-[10px] mb-4">Tốc độ khoan trung bình</h4>
           <div className="flex items-baseline gap-2">
             <span className="text-6xl font-bold text-black tracking-tighter">
-              {formatNumber(result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length)}
+              {formatNumber((result.layers || []).reduce((acc, l) => acc + l.speedMph, 0) / ((result.layers || []).length || 1))}
             </span>
             <span className="text-slate-900 font-bold uppercase tracking-widest text-xs">m/h</span>
           </div>
           <div className="mt-8 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <div 
               className="h-full bg-orange-500 transition-all duration-1000" 
-              style={{ width: `${Math.min(100, (result.layers.reduce((acc, l) => acc + l.speedMph, 0) / result.layers.length) * 10)}%` }} 
+              style={{ width: `${Math.min(100, ((result.layers || []).reduce((acc, l) => acc + l.speedMph, 0) / ((result.layers || []).length || 1)) * 10)}%` }} 
             />
           </div>
         </div>
@@ -5038,7 +5038,7 @@ function SummaryView({
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#f1f5f9', borderTop: '2px solid #1a3a6b' }}>
+              <tr style={{ background: '#f1f5f9', borderTop: '2px solid #94a3b8' }}>
                 <td colSpan={3} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
                 <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{allPileIdsCount}</td>
                 <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalSegments}</td>
