@@ -5103,26 +5103,50 @@ function SummaryView({
 
   const availableYears = React.useMemo(() => {
     const years = new Set<number>();
+    // Luôn có năm hiện tại
+    years.add(new Date().getFullYear());
+    // Thêm các năm có dữ liệu
     Object.keys(weeklyData).forEach(k => {
       years.add(getWeekStartDate(k).getFullYear());
     });
-    if (years.size === 0) years.add(new Date().getFullYear());
     return Array.from(years).sort((a,b) => b - a);
   }, [weeklyData]);
 
+  // Sinh tất cả các tuần (T6–T5) trong năm đang chọn — không phụ thuộc vào có dữ liệu hay không
   const weekKeys = React.useMemo(() => {
-    return Object.keys(weeklyData)
-      .filter(k => {
-        const d = getWeekStartDate(k);
-        return d.getFullYear() === weeklyYear;
-      })
-      .sort((a,b) => a.localeCompare(b));
-  }, [weeklyData, weeklyYear]);
+    const keys: string[] = [];
+    // Tìm T6 đầu tiên của năm (hoặc T6 cuối năm trước nếu ngày 1/1 chưa đến T6)
+    const jan1 = new Date(weeklyYear, 0, 1);
+    // Lùi về T6 gần nhất trước hoặc đúng ngày 1/1
+    const day = jan1.getDay();
+    const daysSinceFri = (day + 2) % 7;
+    const firstFri = new Date(weeklyYear, 0, 1 - daysSinceFri);
+    // Sinh tuần cho đến hết năm
+    const cur = new Date(firstFri);
+    while (cur.getFullYear() <= weeklyYear) {
+      const key = toLocalDateKey(cur);
+      // Chỉ giữ tuần thuộc năm weeklyYear (T6 trong năm hoặc T5 trong năm)
+      const thu5 = new Date(cur); thu5.setDate(thu5.getDate() + 6);
+      if (cur.getFullYear() === weeklyYear || thu5.getFullYear() === weeklyYear) {
+        keys.push(key);
+      }
+      cur.setDate(cur.getDate() + 7);
+      if (cur.getFullYear() > weeklyYear + 1) break; // safety
+    }
+    return keys;
+  }, [weeklyYear]);
 
-  // Auto-select latest week when year changes or data loads
+  // Auto-select tuần hiện tại khi đổi năm hoặc load lần đầu
   React.useEffect(() => {
-    if (weekKeys.length > 0 && (!selectedWeekKey || !weekKeys.includes(selectedWeekKey))) {
-      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
+    if (weekKeys.length === 0) return;
+    // Tìm tuần hiện tại
+    const todayKey = getWeekKey(new Date());
+    if (weekKeys.includes(todayKey)) {
+      setSelectedWeekKey(todayKey);
+    } else if (!selectedWeekKey || !weekKeys.includes(selectedWeekKey)) {
+      // Nếu không có tuần hiện tại (năm khác), chọn tuần cuối có dữ liệu hoặc tuần cuối cùng
+      const lastWithData = [...weekKeys].reverse().find(k => (weeklyData[k]||[]).length > 0);
+      setSelectedWeekKey(lastWithData || weekKeys[weekKeys.length - 1]);
     }
   }, [weekKeys]);
 
@@ -5256,38 +5280,43 @@ function SummaryView({
               </div>
             </div>
 
-            {/* Week pills — dải pills cho tổng quan nhanh */}
-            {weekKeys.length === 0 ? (
-              <div className="flex items-center justify-center gap-3 py-5 bg-white/5 rounded-xl border border-white/10">
-                <AlertCircle size={16} className="text-blue-300"/>
-                <span className="text-blue-200 text-[12px] font-medium">Không có dữ liệu thi công trong năm {weeklyYear}. Hãy chọn năm khác.</span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {weekKeys.map((key) => {
-                  const recs = weeklyData[key] || [];
-                  const weekStart = getWeekStartDate(key);
-                  // Calculate ISO week number
-                  const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
-                  const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-                  const isSelected = key === selectedWeekKey;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => setSelectedWeekKey(key)}
-                      className={`flex flex-col items-center px-3 py-2 rounded-xl border transition-all text-left ${isSelected ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-900/30 scale-105' : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/20'}`}
-                    >
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-orange-100' : 'text-blue-300'}`}>Tuần {weekNo}</span>
-                      <span className={`text-[11px] font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-blue-100'}`}>{getWeekLabel(weekStart)}</span>
-                      <span className={`text-[9px] font-black mt-0.5 px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-orange-600 text-white' : 'bg-white/15 text-blue-200'}`}>{recs.length} cọc</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Week pills — tất cả các tuần trong năm */}
+            <div className="flex flex-wrap gap-2">
+              {weekKeys.map((key) => {
+                const recs = weeklyData[key] || [];
+                const weekStart = getWeekStartDate(key);
+                const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
+                const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                const isSelected = key === selectedWeekKey;
+                const hasData = recs.length > 0;
+                const isCurrentWeek = key === getWeekKey(new Date());
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setSelectedWeekKey(key)}
+                    className={`flex flex-col items-center px-3 py-2 rounded-xl border transition-all text-left
+                      ${isSelected
+                        ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-900/30 scale-105'
+                        : hasData
+                          ? 'bg-white/15 border-white/30 text-blue-100 hover:bg-white/25'
+                          : 'bg-white/5 border-white/10 text-blue-300/60 hover:bg-white/10'
+                      }`}
+                  >
+                    <span className={`text-[9px] font-black uppercase tracking-widest flex items-center gap-1 ${isSelected ? 'text-orange-100' : isCurrentWeek ? 'text-yellow-300' : 'text-blue-300'}`}>
+                      Tuần {weekNo}{isCurrentWeek && !isSelected ? ' ★' : ''}
+                    </span>
+                    <span className={`text-[10px] font-bold mt-0.5 ${isSelected ? 'text-white' : hasData ? 'text-blue-100' : 'text-blue-300/50'}`}>{getWeekLabel(weekStart)}</span>
+                    <span className={`text-[9px] font-black mt-0.5 px-1.5 py-0.5 rounded-full
+                      ${isSelected ? 'bg-orange-600 text-white' : hasData ? 'bg-white/20 text-blue-100' : 'bg-white/5 text-blue-300/40'}`}>
+                      {hasData ? `${recs.length} cọc` : '—'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Selected week content */}
+          {/* Selected week content — có dữ liệu */}
           {selectedWeekKey && selectedWeekRecords.length > 0 && (() => {
             const weekStart = getWeekStartDate(selectedWeekKey);
             const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6); weekEnd.setHours(23,59,59,999);
@@ -5299,12 +5328,10 @@ function SummaryView({
             const projectCount = [...new Set(selectedWeekRecords.map(r=>r.project).filter(Boolean))].length;
 
             // ── Lũy kế ──
-            // Tất cả các bản ghi có ngày kết thúc TRƯỚC tuần này (< weekStart)
             const prevRecords = history.filter(r => {
               const d = parseViDate(r.constructionEnd);
               return d && d.getTime() < weekStart.getTime();
             });
-            // Lũy kế đến tuần này = prevRecords + selectedWeekRecords
             const cumRecords = history.filter(r => {
               const d = parseViDate(r.constructionEnd);
               return d && d.getTime() <= weekEnd.getTime();
@@ -5597,18 +5624,20 @@ function SummaryView({
                             const depth = (r.layers||[]).reduce((s,l)=>s+(l.lengthMeters||0),0);
                             const dur = (r.layers||[]).reduce((s,l)=>s+(l.durationHours||0),0);
                             const spd = dur > 0 ? depth/dur : 0;
+                            const hasSlowLayer = (r.layers||[]).some(l => l.speedMph > 0 && l.speedMph < 1);
                             return (
-                              <div key={r.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors group">
+                              <div key={r.id} className={`px-4 py-2.5 flex items-center gap-3 transition-colors group ${hasSlowLayer ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}>
                                 <span className="text-[9px] font-black text-slate-400 w-4 shrink-0">{ri+1}</span>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[11px] font-black text-slate-800 truncate">{r.pileId || r.componentName || '—'}</span>
                                     {r.diameter && <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.diameter}</span>}
+                                    {hasSlowLayer && <span className="text-[9px] font-black text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full shrink-0">⚠ Chậm</span>}
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                     {r.constructionEnd && <span className="text-[9px] text-slate-400 font-medium">{r.constructionEnd}</span>}
                                     <span className="text-[9px] font-bold text-slate-600">{formatNumber(depth,1)}m</span>
-                                    {spd > 0 && <span className={`text-[9px] font-bold ${spd >= 1 ? 'text-emerald-600' : 'text-amber-600'}`}>{formatNumber(spd,2)} m/h</span>}
+                                    {spd > 0 && <span className={`text-[9px] font-bold ${spd >= 1 ? 'text-emerald-600' : 'text-red-600'}`}>{formatNumber(spd,2)} m/h</span>}
                                   </div>
                                 </div>
                                 <button onClick={()=>onEdit(r)} className="opacity-0 group-hover:opacity-100 text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-600 hover:text-white transition-all">Xem</button>
@@ -5620,13 +5649,187 @@ function SummaryView({
                     );
                   })}
                 </div>
+
+                {/* ── Cảnh báo vận tốc thấp trong tuần ── */}
+                {(() => {
+                  const slowInWeek = selectedWeekRecords.filter(r =>
+                    (r.layers||[]).some(l => l.speedMph > 0 && l.speedMph < 1)
+                  );
+                  if (slowInWeek.length === 0) return null;
+                  return (
+                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl overflow-hidden shadow-md animate-in fade-in duration-300">
+                      {/* Header */}
+                      <div className="px-5 py-3 bg-red-600 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-white/20 rounded-lg">
+                            <AlertCircle size={15} className="text-white" />
+                          </div>
+                          <div>
+                            <h5 className="text-[11px] font-black text-white uppercase tracking-widest">
+                              Cảnh báo vận tốc khoan thấp &lt; 1 m/h — Tuần {weekNo}
+                            </h5>
+                            <p className="text-[9px] text-red-100 font-medium mt-0.5">
+                              Các cọc dưới đây có ít nhất 1 đoạn khoan với vận tốc &lt; 1 m/h trong tuần này
+                            </p>
+                          </div>
+                        </div>
+                        <span className="bg-white text-red-600 text-[11px] font-black px-3 py-1 rounded-full shrink-0">
+                          {slowInWeek.length} cọc
+                        </span>
+                      </div>
+
+                      {/* Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-red-100 border-b border-red-200">
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">#</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Dự án</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Số hiệu cọc</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Đường kính</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Ngày kết thúc</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Đoạn chậm (Lớp — Vận tốc)</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest text-center">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {slowInWeek.map((r, si) => {
+                              const slowLayers = (r.layers||[]).filter(l => l.speedMph > 0 && l.speedMph < 1);
+                              return (
+                                <tr key={r.id} className={`border-b border-red-100 ${si % 2 === 0 ? 'bg-white' : 'bg-red-50'} hover:bg-red-100 transition-colors`}>
+                                  <td className="px-4 py-3">
+                                    <span className="w-6 h-6 rounded-lg bg-red-500 text-white text-[10px] font-black flex items-center justify-center">{si+1}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <p className="text-[11px] font-black text-slate-800 max-w-[180px] truncate">{r.project || '—'}</p>
+                                    <p className="text-[9px] text-slate-400 font-medium truncate max-w-[180px]">{r.item || r.componentName || ''}</p>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-[12px] font-black text-red-700">{r.pileId || '—'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">{r.diameter || '—'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-[10px] font-bold text-slate-600">{r.constructionEnd || '—'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {slowLayers.map((l, li) => (
+                                        <div key={li} className="flex items-center gap-1 bg-red-100 border border-red-200 rounded-lg px-2 py-1">
+                                          <span className="text-[9px] font-black text-red-800">
+                                            Lớp {l.layerNumber}
+                                          </span>
+                                          <span className="text-[9px] text-red-500 font-medium">·</span>
+                                          <span className="text-[10px] font-black text-red-700">{l.speedMph.toFixed(2)} m/h</span>
+                                          {l.layerDesign && (
+                                            <span className="text-[8px] text-red-500 font-medium ml-0.5 max-w-[80px] truncate" title={l.layerDesign}>
+                                              · {l.layerDesign}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <button
+                                      onClick={() => onEdit(r)}
+                                      className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1 mx-auto"
+                                    >
+                                      <Edit2 size={10} /> Xem
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-red-100 border-t-2 border-red-300">
+                              <td colSpan={7} className="px-4 py-2.5">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <span className="text-[9px] font-black text-red-700 uppercase tracking-widest">Tổng kết tuần {weekNo}:</span>
+                                  <span className="text-[10px] font-bold text-red-700">
+                                    {slowInWeek.length}/{selectedWeekRecords.length} cọc có đoạn chậm
+                                  </span>
+                                  <span className="text-[9px] text-red-500 font-medium">·</span>
+                                  <span className="text-[10px] font-bold text-red-700">
+                                    {slowInWeek.reduce((s,r)=>(r.layers||[]).filter(l=>l.speedMph>0&&l.speedMph<1).length+s, 0)} đoạn &lt; 1 m/h
+                                  </span>
+                                  <span className="text-[9px] text-red-500 font-medium">·</span>
+                                  <span className="text-[10px] font-bold text-red-700">
+                                    Tốc độ thấp nhất: {Math.min(...slowInWeek.flatMap(r=>(r.layers||[]).filter(l=>l.speedMph>0&&l.speedMph<1).map(l=>l.speedMph))).toFixed(2)} m/h
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
 
-          {selectedWeekKey && selectedWeekRecords.length === 0 && (
-            <div className="text-center py-12 text-slate-400 text-[12px] font-medium">Không có cọc nào trong tuần này.</div>
-          )}
+          {selectedWeekKey && selectedWeekRecords.length === 0 && (() => {
+            const weekStart = getWeekStartDate(selectedWeekKey);
+            const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+            const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
+            const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+            const fmtDate = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+            const isCurrentWeek = selectedWeekKey === getWeekKey(new Date());
+            // Lũy kế đến cuối tuần này (dù không có cọc mới)
+            const cumRecords = history.filter(r => {
+              const d = parseViDate(r.constructionEnd);
+              return d && d.getTime() <= weekEnd.getTime();
+            });
+            const cumDepth = cumRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0);
+            return (
+              <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm animate-in fade-in duration-300">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-5 bg-slate-300 rounded-full"/>
+                    <div>
+                      <h4 className="text-[13px] font-black text-slate-600 uppercase tracking-wide">
+                        Tuần {weekNo} · {fmtDate(weekStart)} – {fmtDate(weekEnd)}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-medium mt-0.5">Thứ 6 → Thứ 5</p>
+                    </div>
+                  </div>
+                  {isCurrentWeek && (
+                    <span className="text-[10px] font-black text-orange-600 bg-orange-50 border border-orange-200 px-3 py-1 rounded-full">★ Tuần hiện tại</span>
+                  )}
+                </div>
+                <div className="p-8 flex flex-col items-center gap-4 text-center">
+                  <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+                    <Calendar size={24} className="text-slate-300"/>
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-black text-slate-500">Tuần này chưa có biên bản thi công</p>
+                    <p className="text-[11px] text-slate-400 font-medium mt-1">
+                      {isCurrentWeek ? 'Dữ liệu sẽ xuất hiện khi có biên bản được upload với ngày kết thúc trong tuần này' : 'Không có cọc nào được ghi nhận trong tuần này'}
+                    </p>
+                  </div>
+                  {cumRecords.length > 0 && (
+                    <div className="flex items-center gap-6 mt-2 pt-4 border-t border-slate-100 w-full justify-center">
+                      <div className="text-center">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lũy kế đến tuần này</p>
+                        <span className="text-[20px] font-black text-blue-600">{cumRecords.length}</span>
+                        <span className="text-[10px] font-bold text-blue-400 ml-1">cọc</span>
+                      </div>
+                      <div className="w-px h-10 bg-slate-200"/>
+                      <div className="text-center">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tổng chiều sâu lũy kế</p>
+                        <span className="text-[20px] font-black text-blue-600">{formatNumber(cumDepth,1)}</span>
+                        <span className="text-[10px] font-bold text-blue-400 ml-1">m</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
