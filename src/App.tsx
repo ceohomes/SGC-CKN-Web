@@ -861,111 +861,97 @@ export default function App() {
   // Load history, API key, and logo from localStorage and Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      // Load from localStorage first for offline feel
-      const savedHistory = localStorage.getItem('pile_drill_history');
-      if (savedHistory) {
-        try {
-          setHistory(JSON.parse(savedHistory));
-        } catch (e) {
-          console.error("Failed to load history", e);
-        }
-      }
-
+      // Load localStorage CHỈ để hiển thị tạm trong khi chờ Supabase
       const savedApiKey = localStorage.getItem('gemini_api_key');
-      if (savedApiKey) {
-        setUserApiKey(savedApiKey);
-      }
+      if (savedApiKey) setUserApiKey(savedApiKey);
 
       const savedLogo = localStorage.getItem('pile_drill_custom_logo');
-      if (savedLogo) {
-        setCustomLogo(savedLogo);
-      }
+      if (savedLogo) setCustomLogo(savedLogo);
 
-      // Sync with Supabase if available
       if (supabase) {
         try {
-          // 1. Sync History
-          const { data: historyData, error: historyError } = await supabase
-            .from('drill_extractions')
-            .select('*')
-            .order('timestamp', { ascending: false });
-          
-          if (!historyError && historyData) {
-            setHistory(historyData);
-            localStorage.setItem('pile_drill_history', JSON.stringify(historyData));
+          // 1 & 2: Gọi song song để tiết kiệm thời gian và Egress
+          const [historyRes, settingsRes] = await Promise.all([
+            supabase
+              .from('drill_extractions')
+              // Chỉ lấy các field cần thiết để hiển thị danh sách — KHÔNG lấy layers (JSON lớn nhất)
+              // layers sẽ được lazy-load khi user mở chi tiết biên bản
+              .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt')
+              .order('timestamp', { ascending: false }),
+            supabase.from('app_settings').select('id, value'),
+          ]);
+
+          // Xử lý history
+          if (!historyRes.error && historyRes.data) {
+            // Merge với layers từ localStorage nếu có (để không mất data khi chưa load chi tiết)
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            const localMap: Record<string, any> = {};
+            if (savedHistory) {
+              try {
+                JSON.parse(savedHistory).forEach((r: any) => { localMap[r.id] = r; });
+              } catch {}
+            }
+            const merged = historyRes.data.map((row: any) => ({
+              ...(localMap[row.id] || {}), // giữ layers từ local nếu có
+              ...row,                       // Supabase override các field khác
+            }));
+            setHistory(merged);
+            // Lưu lại localStorage với data mới nhất (chỉ fields đã fetch)
+            localStorage.setItem('pile_drill_history', JSON.stringify(merged));
+          } else {
+            console.warn('[loadData] Supabase history error:', historyRes.error?.message);
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            if (savedHistory) {
+              try { setHistory(JSON.parse(savedHistory)); } catch {}
+            }
           }
 
-          // 2. Sync Settings (API Key & Logo)
-          const { data: settingsData, error: settingsError } = await supabase
-            .from('app_settings')
-            .select('*');
+          // Xử lý settings + github creds trong 1 lần gọi duy nhất
+          if (!settingsRes.error && settingsRes.data) {
+            const sd = settingsRes.data;
+            const apiKeySetting = sd.find((s: any) => s.id === 'gemini_api_key');
+            const logoSetting = sd.find((s: any) => s.id === 'app_logo');
+            const token = sd.find((s: any) => s.id === 'github_token')?.value || '';
+            const username = sd.find((s: any) => s.id === 'github_username')?.value || '';
+            const repo = sd.find((s: any) => s.id === 'github_repo')?.value || 'construction-reports';
 
-          if (!settingsError && settingsData) {
-            const apiKeySetting = settingsData.find(s => s.id === 'gemini_api_key');
-            const logoSetting = settingsData.find(s => s.id === 'app_logo');
-
-            if (apiKeySetting && apiKeySetting.value) {
+            if (apiKeySetting?.value) {
               setUserApiKey(apiKeySetting.value);
               localStorage.setItem('gemini_api_key', apiKeySetting.value);
             }
             if (logoSetting) {
               if (logoSetting.value) {
-                // Supabase có logo → dùng Supabase làm nguồn chính xác nhất
                 setCustomLogo(logoSetting.value);
                 localStorage.setItem('pile_drill_custom_logo', logoSetting.value);
               } else {
-                // Supabase lưu chuỗi rỗng = đã reset → xóa cả localStorage
                 setCustomLogo(null);
                 localStorage.removeItem('pile_drill_custom_logo');
               }
             }
-          }
-        } catch (e) {
-          console.error("Supabase sync failed", e);
-        }
-      }
-    };
-
-    loadData();
-
-    const checkGithubStatus = async () => {
-      // Ưu tiên đọc từ Supabase app_settings (hoạt động trên Cloudflare Pages)
-      if (supabase) {
-        try {
-          const { data } = await supabase.from('app_settings').select('*');
-          if (data) {
-            const token = data.find((s: any) => s.id === 'github_token')?.value || '';
-            const username = data.find((s: any) => s.id === 'github_username')?.value || '';
-            const repo = data.find((s: any) => s.id === 'github_repo')?.value || 'construction-reports';
             if (token && username) {
               setGithubCreds({ token, username, repo });
               setGithubTokenInput(token);
               setGithubUsernameInput(username);
               setGithubRepoInput(repo);
               setIsGithubConnected(true);
-              return;
             }
           }
         } catch (e) {
-          console.error("Failed to load GitHub creds from Supabase", e);
+          console.error('[loadData] Supabase sync failed:', e);
+          const savedHistory = localStorage.getItem('pile_drill_history');
+          if (savedHistory) {
+            try { setHistory(JSON.parse(savedHistory)); } catch {}
+          }
         }
-      }
-
-      // Fallback: check server endpoint
-      try {
-        const res = await fetch('/api/auth/github/status');
-        if (res.ok) {
-          const data = await res.json();
-          setIsGithubConnected(data.connected);
+      } else {
+        const savedHistory = localStorage.getItem('pile_drill_history');
+        if (savedHistory) {
+          try { setHistory(JSON.parse(savedHistory)); } catch {}
         }
-      } catch (e) {
-        console.error("Failed to check GitHub status", e);
       }
     };
-    checkGithubStatus();
 
-    // Periodic check every 5 minutes
-    const statusInterval = setInterval(checkGithubStatus, 300000);
+    loadData();
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
@@ -977,6 +963,7 @@ export default function App() {
 
     // 3. Realtime Subscription for Settings
     let settingsSubscription: any = null;
+    let extractionsSubscription: any = null;
     if (supabase) {
       settingsSubscription = supabase
         .channel('public:app_settings')
@@ -996,24 +983,66 @@ export default function App() {
           }
         })
         .subscribe();
+
+      // ── Realtime cho drill_extractions: đồng bộ ngay cho tất cả client ──
+      extractionsSubscription = supabase
+        .channel('public:drill_extractions')
+        .on('postgres_changes', { event: 'INSERT', table: 'drill_extractions', schema: 'public' }, (payload) => {
+          const newRow = payload.new as ExtractionResult;
+          setHistory(prev => {
+            // Tránh duplicate nếu chính client này vừa insert
+            if (prev.some(r => r.id === newRow.id)) return prev;
+            return [newRow, ...prev];
+          });
+          // Cập nhật localStorage
+          try {
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            const arr = savedHistory ? JSON.parse(savedHistory) : [];
+            if (!arr.some((r: any) => r.id === newRow.id)) {
+              localStorage.setItem('pile_drill_history', JSON.stringify([newRow, ...arr]));
+            }
+          } catch {}
+        })
+        .on('postgres_changes', { event: 'UPDATE', table: 'drill_extractions', schema: 'public' }, (payload) => {
+          // payload.new chứa toàn bộ record — chỉ merge fields cần thiết để tránh overwrite layers từ local
+          const updated = payload.new as ExtractionResult;
+          setHistory(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+          // Cập nhật localStorage
+          try {
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            if (savedHistory) {
+              const arr = JSON.parse(savedHistory);
+              const newArr = arr.map((r: any) => r.id === updated.id ? { ...r, ...updated } : r);
+              localStorage.setItem('pile_drill_history', JSON.stringify(newArr));
+            }
+          } catch {}
+        })
+        .on('postgres_changes', { event: 'DELETE', table: 'drill_extractions', schema: 'public' }, (payload) => {
+          const deleted = payload.old as { id: string };
+          setHistory(prev => prev.filter(r => r.id !== deleted.id));
+          // Cập nhật localStorage
+          try {
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            if (savedHistory) {
+              const arr = JSON.parse(savedHistory).filter((r: any) => r.id !== deleted.id);
+              localStorage.setItem('pile_drill_history', JSON.stringify(arr));
+            }
+          } catch {}
+        })
+        .subscribe((status) => {
+          console.log('[Realtime] drill_extractions subscription status:', status);
+        });
     }
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      clearInterval(statusInterval);
-      if (settingsSubscription) {
-        supabase?.removeChannel(settingsSubscription);
-      }
+      if (settingsSubscription) supabase?.removeChannel(settingsSubscription);
+      if (extractionsSubscription) supabase?.removeChannel(extractionsSubscription);
     };
   }, []);
 
-  // Save history to localStorage với debounce 500ms tránh ghi liên tục
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      localStorage.setItem('pile_drill_history', JSON.stringify(history));
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [history]);
+  // Không tự động lưu history vào localStorage nữa
+  // Supabase là source of truth, localStorage chỉ dùng fallback khi Supabase lỗi
 
   // Bấm Esc để đóng modal/overlay theo thứ tự ưu tiên
   useEffect(() => {
@@ -1209,7 +1238,7 @@ export default function App() {
             const result: ExtractionResult = {
               ...rawResult,
               layers: normalizedLayers,
-              id: Math.random().toString(36).substring(7),
+              id: crypto.randomUUID(),
               timestamp: Date.now(),
               fileName,
               _base64: base64,
@@ -2545,21 +2574,43 @@ export default function App() {
       }
     }
 
-    // 2. Lưu vào Supabase — luôn chạy dù GitHub thành công hay thất bại
+    // 2. Lưu vào Supabase — chỉ gửi đúng fields cần thiết để tiết kiệm Egress
     if (supabase) {
       try {
-        // Loại bỏ các field không lưu được vào Supabase
-        const { designLayerMap: _dlm, _base64: _b, _mimeType: _m, ...updateData } = finalResult as any;
+        // Chỉ gửi fields người dùng có thể chỉnh sửa + excelUrl nếu đã cập nhật
+        const minimalUpdate: Record<string, any> = {
+          project: finalResult.project,
+          item: finalResult.item,
+          componentName: finalResult.componentName,
+          pileId: finalResult.pileId,
+          reportNumber: finalResult.reportNumber,
+          diameter: finalResult.diameter,
+          constructionStart: finalResult.constructionStart,
+          constructionEnd: finalResult.constructionEnd,
+          notes: finalResult.notes,
+          layers: finalResult.layers,
+        };
+        if (finalResult.excelUrl) minimalUpdate.excelUrl = finalResult.excelUrl;
+
         console.log('[handleSaveEdit] Đang lưu vào Supabase, id:', finalResult.id);
         const { error } = await supabase
           .from('drill_extractions')
-          .update(updateData)
+          .update(minimalUpdate)
           .eq('id', finalResult.id);
         if (error) {
           console.error('[handleSaveEdit] Lỗi cập nhật Supabase:', error.message, error.details, error.hint);
           alert(`⚠️ Dữ liệu đã cập nhật trên màn hình nhưng lưu Supabase thất bại:\n${error.message}\n\nHãy thử lại hoặc kiểm tra kết nối.`);
         } else {
           console.log('[handleSaveEdit] Lưu Supabase thành công');
+          // Cập nhật localStorage với data mới
+          try {
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            if (savedHistory) {
+              const arr = JSON.parse(savedHistory);
+              const updated = arr.map((r: any) => r.id === finalResult.id ? { ...r, ...minimalUpdate } : r);
+              localStorage.setItem('pile_drill_history', JSON.stringify(updated));
+            }
+          } catch {}
         }
       } catch (e: any) {
         console.error('[handleSaveEdit] Lỗi kết nối Supabase:', e?.message);
@@ -2569,18 +2620,6 @@ export default function App() {
       console.warn('[handleSaveEdit] Supabase chưa được khởi tạo — dữ liệu chỉ lưu local.');
     }
 
-    // 3. Đồng bộ localStorage (backup offline)
-    try {
-      setHistory(prev => {
-        const updated = prev.map(item => item.id === finalResult.id ? finalResult : item);
-        localStorage.setItem('pile_drill_history', JSON.stringify(
-          updated.map(({ _base64: _b, _mimeType: _m, designLayerMap: _d, ...rest }: any) => rest)
-        ));
-        return updated;
-      });
-    } catch (e) {
-      console.warn('[handleSaveEdit] Lỗi lưu localStorage:', e);
-    }
   };
 
   return (
