@@ -4801,6 +4801,39 @@ function PdfSplitterView() {
   );
 }
 
+// ── Weekly Report Utilities ──
+function getWeekLabel(weekStart: Date): string {
+  const end = new Date(weekStart);
+  end.setDate(end.getDate() + 6);
+  const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  return `${fmt(weekStart)} – ${fmt(end)}/${end.getFullYear()}`;
+}
+
+function getWeekKey(d: Date): string {
+  // Week starts Friday (day 5). Find the Friday of the current week (Fri–Thu cycle)
+  const day = d.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
+  // Days since last Friday
+  const daysSinceFri = (day + 2) % 7; // Fri=0, Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6
+  const fri = new Date(d);
+  fri.setHours(0,0,0,0);
+  fri.setDate(fri.getDate() - daysSinceFri);
+  return fri.toISOString().slice(0,10);
+}
+
+function getWeekStartDate(key: string): Date {
+  return new Date(key + 'T00:00:00');
+}
+
+function parseViDate(str: string): Date | null {
+  if (!str) return null;
+  // Supports DD/MM/YYYY or YYYY-MM-DD
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) return new Date(+dmyMatch[3], +dmyMatch[2]-1, +dmyMatch[1]);
+  const isoMatch = str.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if (isoMatch) return new Date(+isoMatch[1], +isoMatch[2]-1, +isoMatch[3]);
+  return null;
+}
+
 function SummaryView({ 
   history, 
   onSelectResult, 
@@ -4818,6 +4851,9 @@ function SummaryView({
   isExportingAll: boolean,
   onExportAll: (rows: ExtractionResult[]) => void,
 }) {
+  const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
+  const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
+  const [weeklyYear, setWeeklyYear] = useState<number>(new Date().getFullYear());
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
   // Đếm tổng số biên bản (mỗi file/biên bản được coi là 1 thực thể cọc trong thống kê này nếu người dùng muốn khớp với số lượng file đã upload)
   const totalPiles = history.length;
@@ -5045,10 +5081,69 @@ function SummaryView({
     </div>
   );
 
+  // ── Weekly report data computation ──
+  const weeklyData = React.useMemo(() => {
+    const map: Record<string, ExtractionResult[]> = {};
+    history.forEach(r => {
+      const dateStr = r.constructionEnd || r.constructionStart;
+      const d = parseViDate(dateStr);
+      if (!d) return;
+      const key = getWeekKey(d);
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return map;
+  }, [history]);
+
+  const weekKeys = React.useMemo(() => {
+    return Object.keys(weeklyData)
+      .filter(k => {
+        const d = getWeekStartDate(k);
+        return d.getFullYear() === weeklyYear;
+      })
+      .sort((a,b) => a.localeCompare(b));
+  }, [weeklyData, weeklyYear]);
+
+  const availableYears = React.useMemo(() => {
+    const years = new Set<number>();
+    Object.keys(weeklyData).forEach(k => {
+      years.add(getWeekStartDate(k).getFullYear());
+    });
+    if (years.size === 0) years.add(new Date().getFullYear());
+    return Array.from(years).sort((a,b) => b - a);
+  }, [weeklyData]);
+
+  // Auto-select latest week
+  React.useEffect(() => {
+    if (weekKeys.length > 0 && !selectedWeekKey) {
+      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
+    }
+    if (weekKeys.length > 0 && !weekKeys.includes(selectedWeekKey)) {
+      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
+    }
+  }, [weekKeys, selectedWeekKey]);
+
+  const selectedWeekRecords = selectedWeekKey ? (weeklyData[selectedWeekKey] || []) : [];
+
+  // Per-project stats for selected week
+  const weeklyProjectStats = React.useMemo(() => {
+    const projects = [...new Set(selectedWeekRecords.map(r => r.project).filter(Boolean))];
+    return projects.map(proj => {
+      const recs = selectedWeekRecords.filter(r => r.project === proj);
+      const totalPiles = recs.length;
+      const totalDepth = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0), 0);
+      const totalDuration = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0), 0);
+      const avgSpeed = totalDuration > 0 ? totalDepth / totalDuration : 0;
+      const diameters = [...new Set(recs.map(r=>r.diameter).filter(Boolean))].join(', ');
+      const items = [...new Set(recs.map(r=>r.item||r.componentName).filter(Boolean))];
+      return { proj, totalPiles, totalDepth, totalDuration, avgSpeed, diameters, items, recs };
+    }).sort((a,b) => b.totalPiles - a.totalPiles);
+  }, [selectedWeekRecords]);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
 
-      {/* ── Tiêu đề ── */}
+      {/* ── Tiêu đề + Tabs ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
@@ -5057,8 +5152,276 @@ function SummaryView({
             <p className="text-xs text-slate-500 font-medium">Tổng quan dữ liệu thi công cọc khoan nhồi</p>
           </div>
         </div>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cập nhật tự động</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setDashTab('overview')}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <span className="flex items-center gap-1.5"><BarChart3 size={12} /> Tổng quan</span>
+            </button>
+            <button
+              onClick={() => setDashTab('weekly')}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'weekly' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <span className="flex items-center gap-1.5"><Calendar size={12} /> Báo cáo tuần</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* ── WEEKLY REPORT TAB ── */}
+      {dashTab === 'weekly' && (
+        <div className="space-y-5 animate-in fade-in duration-300">
+          {/* Week selector header */}
+          <div className="bg-gradient-to-br from-[#1a3a6b] to-[#1e4480] rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl"><Calendar size={18} className="text-orange-300" /></div>
+                <div>
+                  <h4 className="text-[14px] font-black text-white uppercase tracking-wide">Báo Cáo Tuần</h4>
+                  <p className="text-[10px] text-blue-200 font-medium mt-0.5">Chu kỳ Thứ 6 – Thứ 5 · So sánh các dự án</p>
+                </div>
+              </div>
+              {/* Year selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Năm:</span>
+                <select
+                  value={weeklyYear}
+                  onChange={e => { setWeeklyYear(+e.target.value); setSelectedWeekKey(''); }}
+                  className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
+                >
+                  {availableYears.map(y => <option key={y} value={y} className="text-slate-900">{y}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Week pills */}
+            {weekKeys.length === 0 ? (
+              <div className="text-center py-6 text-blue-200 text-[12px] font-medium">Không có dữ liệu thi công trong năm {weeklyYear}</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {weekKeys.map((key) => {
+                  const recs = weeklyData[key] || [];
+                  const weekStart = getWeekStartDate(key);
+                  // Calculate ISO week number
+                  const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
+                  const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                  const isSelected = key === selectedWeekKey;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedWeekKey(key)}
+                      className={`flex flex-col items-center px-3 py-2 rounded-xl border transition-all text-left ${isSelected ? 'bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-900/30 scale-105' : 'bg-white/10 border-white/15 text-blue-100 hover:bg-white/20'}`}
+                    >
+                      <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-orange-100' : 'text-blue-300'}`}>Tuần {weekNo}</span>
+                      <span className={`text-[11px] font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-blue-100'}`}>{getWeekLabel(weekStart)}</span>
+                      <span className={`text-[9px] font-black mt-0.5 px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-orange-600 text-white' : 'bg-white/15 text-blue-200'}`}>{recs.length} cọc</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Selected week content */}
+          {selectedWeekKey && selectedWeekRecords.length > 0 && (() => {
+            const weekStart = getWeekStartDate(selectedWeekKey);
+            const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
+            const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+            const totalWeekDepth = selectedWeekRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0);
+            const totalWeekDur = selectedWeekRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0),0);
+            const avgWeekSpeed = totalWeekDur > 0 ? totalWeekDepth / totalWeekDur : 0;
+            const projectCount = [...new Set(selectedWeekRecords.map(r=>r.project).filter(Boolean))].length;
+
+            return (
+              <div className="space-y-5">
+                {/* Week summary KPIs */}
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-1 h-5 bg-orange-500 rounded-full"/>
+                  <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wide">
+                    Tuần {weekNo} · {getWeekLabel(weekStart)}
+                  </h4>
+                  <span className="ml-2 text-[10px] font-bold text-slate-400">(Thứ 6 → Thứ 5)</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: 'Tổng cọc tuần', value: selectedWeekRecords.length, unit: 'cọc', color: 'bg-blue-600', icon: <Layers className="w-4 h-4 text-white"/> },
+                    { label: 'Tổng chiều sâu', value: formatNumber(totalWeekDepth, 1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="w-4 h-4 text-white"/> },
+                    { label: 'Tốc độ TB', value: formatNumber(avgWeekSpeed), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-4 h-4 text-white"/> },
+                    { label: 'Dự án tham gia', value: projectCount, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-4 h-4 text-white"/> },
+                  ].map((k,i)=>(
+                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
+                      <div className={`w-8 h-8 rounded-xl ${k.color} flex items-center justify-center mb-2`}>{k.icon}</div>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">{k.label}</p>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-black text-slate-900">{k.value}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{k.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bar chart: piles per project */}
+                {weeklyProjectStats.length > 1 && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                      <BarChart2 size={15} className="text-blue-500"/>
+                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">So sánh số lượng cọc theo dự án</h5>
+                    </div>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={weeklyProjectStats.map(p=>({ name: p.proj, 'Số cọc': p.totalPiles, 'Chiều sâu (m)': Math.round(p.totalDepth*10)/10 }))} margin={{top:4,right:16,bottom:30,left:0}}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                        <XAxis dataKey="name" tick={{fontSize:9,fontWeight:700,fill:'#64748b'}} angle={-20} textAnchor="end" interval={0}/>
+                        <YAxis tick={{fontSize:9,fill:'#94a3b8'}}/>
+                        <Tooltip contentStyle={{fontSize:11,borderRadius:10,border:'1px solid #e2e8f0'}}/>
+                        <Legend wrapperStyle={{fontSize:10}}/>
+                        <Bar dataKey="Số cọc" fill="#3b82f6" radius={[4,4,0,0]}/>
+                        <Bar dataKey="Chiều sâu (m)" fill="#f97316" radius={[4,4,0,0]}/>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Per-project comparison table */}
+                <div className="bg-white border-2 border-slate-300 rounded-2xl overflow-hidden shadow-md">
+                  <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-2" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
+                    <TableIcon size={15} className="text-blue-300"/>
+                    <h5 className="text-[11px] font-black text-white uppercase tracking-widest">Bảng so sánh chi tiết các dự án trong tuần</h5>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">#</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Dự án</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Số cọc</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tổng chiều sâu (m)</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tổng thời gian (h)</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tốc độ TB (m/h)</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Đường kính</th>
+                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weeklyProjectStats.map((ps, idx) => {
+                          const maxPiles = weeklyProjectStats[0]?.totalPiles || 1;
+                          const barW = Math.round((ps.totalPiles / maxPiles) * 100);
+                          const rowColors = ['bg-blue-50','bg-orange-50','bg-emerald-50','bg-violet-50','bg-amber-50','bg-cyan-50'];
+                          const accentColors = ['bg-blue-500','bg-orange-500','bg-emerald-500','bg-violet-500','bg-amber-500','bg-cyan-500'];
+                          return (
+                            <tr key={ps.proj} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${rowColors[idx % rowColors.length]}`}>
+                              <td className="px-4 py-3">
+                                <span className={`w-6 h-6 rounded-lg ${accentColors[idx % accentColors.length]} text-white text-[10px] font-black flex items-center justify-center`}>{idx+1}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-[12px] font-black text-slate-800">{ps.proj}</p>
+                                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{ps.items.slice(0,2).join(', ')}{ps.items.length>2?` +${ps.items.length-2}`:''}</p>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-[16px] font-black text-slate-900">{ps.totalPiles}</span>
+                                  <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div className={`h-full ${accentColors[idx % accentColors.length]} rounded-full`} style={{width:`${barW}%`}}/>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="text-[13px] font-black text-slate-800">{formatNumber(ps.totalDepth, 1)}</span>
+                                <span className="text-[9px] text-slate-400 font-bold ml-1">m</span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="text-[13px] font-black text-slate-800">{formatNumber(ps.totalDuration, 1)}</span>
+                                <span className="text-[9px] text-slate-400 font-bold ml-1">h</span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`text-[13px] font-black ${ps.avgSpeed >= 1 ? 'text-emerald-600' : ps.avgSpeed > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{ps.avgSpeed > 0 ? formatNumber(ps.avgSpeed, 2) : '—'}</span>
+                                {ps.avgSpeed > 0 && <span className="text-[9px] text-slate-400 font-bold ml-1">m/h</span>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">{ps.diameters || '—'}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {ps.items.slice(0,3).map((item,ii)=>(
+                                    <span key={ii} className="text-[9px] font-bold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded truncate max-w-[100px]">{item}</span>
+                                  ))}
+                                  {ps.items.length > 3 && <span className="text-[9px] text-slate-400 font-bold">+{ps.items.length-3}</span>}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Totals row */}
+                        <tr className="bg-slate-900 border-t-2 border-slate-400">
+                          <td colSpan={2} className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest">Tổng tuần</td>
+                          <td className="px-4 py-3 text-center text-[15px] font-black text-orange-300">{selectedWeekRecords.length}</td>
+                          <td className="px-4 py-3 text-right text-[13px] font-black text-orange-300">{formatNumber(totalWeekDepth, 1)}</td>
+                          <td className="px-4 py-3 text-right text-[13px] font-black text-orange-300">{formatNumber(totalWeekDur, 1)}</td>
+                          <td className="px-4 py-3 text-right text-[13px] font-black text-emerald-300">{formatNumber(avgWeekSpeed, 2)}</td>
+                          <td colSpan={2} className="px-4 py-3 text-[9px] font-bold text-slate-400">{projectCount} dự án tham gia</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Per-project pile list */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {weeklyProjectStats.map((ps, idx) => {
+                    const accentColors = ['border-blue-400','border-orange-400','border-emerald-400','border-violet-400','border-amber-400','border-cyan-400'];
+                    const bgColors = ['bg-blue-50','bg-orange-50','bg-emerald-50','bg-violet-50','bg-amber-50','bg-cyan-50'];
+                    const pillColors = ['bg-blue-500','bg-orange-500','bg-emerald-500','bg-violet-500','bg-amber-500','bg-cyan-500'];
+                    return (
+                      <div key={ps.proj} className={`bg-white border-2 ${accentColors[idx % accentColors.length]} rounded-2xl overflow-hidden shadow-sm`}>
+                        <div className={`px-4 py-3 ${bgColors[idx % bgColors.length]} border-b border-slate-200 flex items-center justify-between`}>
+                          <div>
+                            <p className="text-[11px] font-black text-slate-800">{ps.proj}</p>
+                            <p className="text-[9px] text-slate-500 font-medium mt-0.5">{ps.totalPiles} cọc · {formatNumber(ps.totalDepth, 1)}m · {formatNumber(ps.avgSpeed, 2)} m/h</p>
+                          </div>
+                          <span className={`text-[11px] font-black text-white ${pillColors[idx % pillColors.length]} px-3 py-1 rounded-full`}>{ps.totalPiles} cọc</span>
+                        </div>
+                        <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                          {ps.recs.map((r, ri) => {
+                            const depth = (r.layers||[]).reduce((s,l)=>s+(l.lengthMeters||0),0);
+                            const dur = (r.layers||[]).reduce((s,l)=>s+(l.durationHours||0),0);
+                            const spd = dur > 0 ? depth/dur : 0;
+                            return (
+                              <div key={r.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors group">
+                                <span className="text-[9px] font-black text-slate-400 w-4 shrink-0">{ri+1}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-black text-slate-800 truncate">{r.pileId || r.componentName || '—'}</span>
+                                    {r.diameter && <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.diameter}</span>}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    {r.constructionEnd && <span className="text-[9px] text-slate-400 font-medium">{r.constructionEnd}</span>}
+                                    <span className="text-[9px] font-bold text-slate-600">{formatNumber(depth,1)}m</span>
+                                    {spd > 0 && <span className={`text-[9px] font-bold ${spd >= 1 ? 'text-emerald-600' : 'text-amber-600'}`}>{formatNumber(spd,2)} m/h</span>}
+                                  </div>
+                                </div>
+                                <button onClick={()=>onEdit(r)} className="opacity-0 group-hover:opacity-100 text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-600 hover:text-white transition-all">Xem</button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {selectedWeekKey && selectedWeekRecords.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-[12px] font-medium">Không có cọc nào trong tuần này.</div>
+          )}
+        </div>
+      )}
+
+      {/* ── OVERVIEW TAB ── */}
+      {dashTab === 'overview' && <>
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-4 gap-4">
@@ -5481,6 +5844,8 @@ function SummaryView({
           </table>
         </div>
       </div>
+
+      </>}
 
     </div>
   );
