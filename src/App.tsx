@@ -2453,6 +2453,18 @@ export default function App() {
           { width: 11 }, { width: 11 }, { width: 11 }, { width: 9 }, { width: 9 }, { width: 28 },
         ];
 
+        // Nút quay lại sheet Dữ liệu thi công
+        const backRow = wsImg.addRow([]);
+        backRow.height = 24;
+        const backCell = backRow.getCell(1);
+        backCell.value = { text: '← Quay lại Dữ liệu thi công', hyperlink: `#'Dữ liệu thi công'!A1` };
+        backCell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' }, underline: false };
+        backCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } };
+        backCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        backCell.border = thinB();
+        wsImg.mergeCells(backRow.number, 1, backRow.number, 11);
+        const blankBack = wsImg.addRow([]); blankBack.height = 6;
+
         // Thông tin biên bản
         const infoItems = [
           ['Dự án', res.project], ['Hạng mục', res.item],
