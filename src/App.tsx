@@ -891,9 +891,8 @@ export default function App() {
           const [historyRes, settingsRes] = await Promise.all([
             supabase
               .from('drill_extractions')
-              // Chỉ lấy các field cần thiết để hiển thị danh sách — KHÔNG lấy layers (JSON lớn nhất)
-              // layers sẽ được lazy-load khi user mở chi tiết biên bản
-              .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt')
+              // Lấy đầy đủ layers để tính chiều dài, thời gian, vận tốc chính xác
+              .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt, layers')
               .order('timestamp', { ascending: false }),
             supabase.from('app_settings').select('id, value'),
           ]);
@@ -908,10 +907,19 @@ export default function App() {
                 JSON.parse(savedHistory).forEach((r: any) => { localMap[r.id] = r; });
               } catch {}
             }
-            const merged = historyRes.data.map((row: any) => ({
-              ...(localMap[row.id] || {}), // giữ layers từ local nếu có
-              ...row,                       // Supabase override các field khác
-            }));
+            const merged = historyRes.data.map((row: any) => {
+              const local = localMap[row.id] || {};
+              return {
+                ...local,
+                ...row,
+                // Luôn giữ layers: ưu tiên Supabase nếu có, fallback về local, cuối cùng là []
+                layers: (Array.isArray(row.layers) && row.layers.length > 0)
+                  ? row.layers
+                  : (Array.isArray(local.layers) && local.layers.length > 0)
+                    ? local.layers
+                    : [],
+              };
+            });
             setHistory(merged);
             // Lưu lại localStorage với data mới nhất (chỉ fields đã fetch)
             localStorage.setItem('pile_drill_history', JSON.stringify(merged));
@@ -1987,8 +1995,26 @@ export default function App() {
     });
   };
 
-  const handleEdit = (result: ExtractionResult) => {
-    setEditingResult(JSON.parse(JSON.stringify(result)));
+  const handleEdit = async (result: ExtractionResult) => {
+    // Nếu layers chưa có (lazy-load), fetch từ Supabase trước khi mở modal
+    let safeResult = { ...result, layers: Array.isArray(result.layers) ? result.layers : [] };
+    if (safeResult.layers.length === 0 && supabase) {
+      try {
+        const { data } = await supabase
+          .from('drill_extractions')
+          .select('layers')
+          .eq('id', result.id)
+          .single();
+        if (data?.layers && Array.isArray(data.layers) && data.layers.length > 0) {
+          safeResult = { ...safeResult, layers: data.layers };
+          // Cập nhật lại history state để lần sau không cần fetch lại
+          setHistory(prev => prev.map(r => r.id === result.id ? { ...r, layers: data.layers } : r));
+        }
+      } catch (e) {
+        console.warn('[handleEdit] Không thể lazy-load layers:', e);
+      }
+    }
+    setEditingResult(JSON.parse(JSON.stringify(safeResult)));
     setIsEditModalOpen(true);
   };
 
@@ -3779,7 +3805,7 @@ export default function App() {
         ) : (
           <SummaryView 
             history={history} 
-            onSelectResult={(res) => { setCurrentResult(res); setActiveSheet('upload'); }} 
+            onSelectResult={(res) => { setCurrentResult({ ...res, layers: Array.isArray(res.layers) ? res.layers : [] }); setActiveSheet('upload'); }} 
             onEdit={handleEdit}
             onDelete={handleDelete}
             onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
