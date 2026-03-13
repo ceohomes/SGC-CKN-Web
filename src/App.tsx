@@ -4136,35 +4136,109 @@ export default function App() {
                       {isGithubConnected && (
                         <button onClick={async () => {
                           if (!githubCreds) return;
-                          if (!window.confirm("Tính năng này sẽ quét GitHub và xóa các file Excel/ảnh KHÔNG có trong Supabase.\n\nTiếp tục?")) return;
+                          if (!window.confirm(
+                            "Tính năng này sẽ:\n" +
+                            "• Quét toàn bộ thư mục SGC-CKN/ trên GitHub\n" +
+                            "• So sánh với TẤT CẢ bản ghi trong Supabase\n" +
+                            "• Xóa file ảnh/PDF/Excel không có trong Supabase\n\n" +
+                            "Tiếp tục?"
+                          )) return;
+
                           const { token, username, repo } = githubCreds;
-                          const headers = { 'Authorization': `token ${token.trim()}`, 'Accept': 'application/vnd.github.v3+json' };
+                          const ghHeaders = { 'Authorization': `token ${token.trim()}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
+                          const BASE_RAW = `https://raw.githubusercontent.com/${username}/${repo}/main`;
+                          const BASE_API = `https://api.github.com/repos/${username}/${repo}/contents`;
+
+                          // ── Bước 1: Lấy TẤT CẢ bản ghi Supabase (có phân trang) ──
+                          // normalizeUrl: decode %xx, strip query string, lowercase → so sánh chính xác
+                          const normalizeUrl = (u: string): string => {
+                            if (!u) return '';
+                            try { return decodeURIComponent(u.split('?')[0].trim()).toLowerCase(); }
+                            catch { return u.split('?')[0].trim().toLowerCase(); }
+                          };
                           const validUrls = new Set<string>();
                           if (supabase) {
-                            const { data } = await supabase.from('drill_extractions').select('excelUrl, fileUrl');
-                            (data || []).forEach((r: any) => {
-                              if (r.excelUrl) validUrls.add(r.excelUrl.split('?')[0]);
-                              if (r.fileUrl) validUrls.add(r.fileUrl.split('?')[0]);
-                            });
+                            let page = 0;
+                            const PAGE_SIZE = 1000;
+                            while (true) {
+                              const { data, error } = await supabase
+                                .from('drill_extractions')
+                                .select('excelUrl, fileUrl')
+                                .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+                              if (error || !data || data.length === 0) break;
+                              data.forEach((r: any) => {
+                                if (r.excelUrl) validUrls.add(normalizeUrl(r.excelUrl));
+                                if (r.fileUrl) validUrls.add(normalizeUrl(r.fileUrl));
+                              });
+                              if (data.length < PAGE_SIZE) break;
+                              page++;
+                            }
                           }
+                          console.log(`[Cleanup] Supabase valid URLs (${validUrls.size}):`, [...validUrls]);
+
+                          // ── Bước 2: Hàm lấy danh sách file trong 1 thư mục GitHub ──
+                          const listDir = async (path: string): Promise<{path:string, sha:string, name:string}[]> => {
+                            const res = await fetch(`${BASE_API}/${path}`, { headers: ghHeaders });
+                            if (!res.ok) return [];
+                            const items = await res.json();
+                            if (!Array.isArray(items)) return [];
+                            return items.filter((f:any) => f.type === 'file');
+                          };
+
+                          // ── Bước 3: Quét cả 2 thư mục ──
                           let deleted = 0;
+                          let skipped = 0;
+                          const deletedFiles: string[] = [];
+                          const keptFiles: string[] = [];
+
                           try {
-                            const listRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/SGC-CKN/Excel`, { headers });
-                            if (listRes.ok) {
-                              const files = await listRes.json();
-                              for (const f of files) {
-                                const rawUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${f.path}`;
-                                if (!validUrls.has(rawUrl)) {
-                                  await fetch(`https://api.github.com/repos/${username}/${repo}/contents/${f.path}`, {
-                                    method: 'DELETE', headers: { ...headers, 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ message: `Cleanup orphan: ${f.path}`, sha: f.sha })
-                                  });
+                            // Quét thư mục gốc SGC-CKN/ (ảnh + PDF)
+                            const rootFiles = await listDir('SGC-CKN');
+                            // Quét thư mục Excel
+                            const excelFiles = await listDir('SGC-CKN/Excel');
+                            const allFiles = [...rootFiles, ...excelFiles];
+
+                            console.log(`[Cleanup] GitHub total files: ${allFiles.length}`);
+
+                            for (const f of allFiles) {
+                              const rawUrl = `${BASE_RAW}/${f.path}`;
+                              // So sánh sau khi normalize cả 2 phía
+                              const isValid = validUrls.has(normalizeUrl(rawUrl));
+                              console.log(`[Cleanup] ${isValid ? 'KEEP' : 'DELETE'}: ${f.path}`);
+
+                              if (!isValid) {
+                                const delRes = await fetch(`${BASE_API}/${f.path}`, {
+                                  method: 'DELETE',
+                                  headers: ghHeaders,
+                                  body: JSON.stringify({ message: `[SGC-CKN] Dọn rác: xóa file mồ côi ${f.name}`, sha: f.sha })
+                                });
+                                if (delRes.ok) {
                                   deleted++;
+                                  deletedFiles.push(f.name);
+                                } else {
+                                  const err = await delRes.json().catch(()=>({}));
+                                  console.error(`[Cleanup] Lỗi xóa ${f.path}:`, err);
                                 }
+                              } else {
+                                skipped++;
+                                keptFiles.push(f.name);
                               }
                             }
-                          } catch (e) { console.error(e); }
-                          alert(deleted > 0 ? `✅ Đã dọn ${deleted} file mồ côi trên GitHub.` : "✅ GitHub sạch, không có file mồ côi.");
+                          } catch (e) {
+                            console.error('[Cleanup] Lỗi quét GitHub:', e);
+                          }
+
+                          // ── Kết quả ──
+                          if (deleted > 0) {
+                            alert(
+                              `✅ Dọn rác hoàn tất!\n\n` +
+                              `🗑 Đã xóa ${deleted} file mồ côi:\n` +
+                              deletedFiles.map(n => `  • ${n}`).join('\n') +
+                              `\n\n✓ Giữ lại ${skipped} file đang dùng`
+                            );
+                          } else {
+                            alert(`✅ GitHub sạch! ${skipped} file đang dùng, không có file mồ côi.`);
+                          }
                         }}
                           className="w-full py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                           style={{background:'rgba(239,68,68,0.12)', color:'#fca5a5', border:'1px solid rgba(239,68,68,0.25)'}}>
@@ -5537,31 +5611,43 @@ function EditSplitView({
             console.warn('[replaceFile] Không thể cập nhật fileUrl lên Supabase:', sbErr);
           }
 
-          // Xóa file cũ trên GitHub (async, không block flow chính)
+          // Xóa file cũ trên GitHub — chạy đồng bộ để đảm bảo dọn sạch
           if (oldFileUrl && oldFileUrl !== newFileUrl) {
+            console.log('[replaceFile] Deleting old file:', oldFileUrl);
             try {
               const cleanOldUrl = decodeURIComponent(oldFileUrl.split('?')[0]);
               const oldMatch = cleanOldUrl.match(/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
               if (oldMatch) {
                 const oldPath = oldMatch[1];
-                const oldApiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${oldPath}`;
+                const oldApiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${encodeURIComponent(oldPath).replace(/%2F/g,'/')}`;
                 const oldGetRes = await fetch(`${oldApiUrl}?t=${timestamp}`, { headers });
                 if (oldGetRes.ok) {
                   const oldFileData = await oldGetRes.json();
-                  await fetch(oldApiUrl, {
+                  const delRes = await fetch(oldApiUrl, {
                     method: 'DELETE',
                     headers,
                     body: JSON.stringify({
-                      message: `Remove old file: ${oldPath}`,
+                      message: `[SGC-CKN] Thay thế file cũ: ${oldPath.split('/').pop()} → ${safeFileName}`,
                       sha: oldFileData.sha,
                     }),
                   });
-                  console.log('[replaceFile] Old file deleted from GitHub:', oldPath);
+                  if (delRes.ok) {
+                    console.log('[replaceFile] ✓ Old file deleted:', oldPath);
+                  } else {
+                    const delErr = await delRes.json().catch(()=>({}));
+                    console.error('[replaceFile] ✗ Delete failed:', delErr.message || delRes.status);
+                  }
+                } else {
+                  console.warn('[replaceFile] Old file not found on GitHub (may already be deleted):', oldPath);
                 }
+              } else {
+                console.warn('[replaceFile] Cannot parse old file path from URL:', oldFileUrl);
               }
             } catch (delErr) {
-              console.warn('[replaceFile] Không thể xóa file cũ (không ảnh hưởng):', delErr);
+              console.warn('[replaceFile] Lỗi khi xóa file cũ:', delErr);
             }
+          } else if (!oldFileUrl) {
+            console.log('[replaceFile] No old fileUrl to delete.');
           }
         } else {
           const errBody = await putRes.json().catch(() => ({}));
