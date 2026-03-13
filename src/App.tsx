@@ -3057,19 +3057,6 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
-                activeSheet === 'pdf-splitter' 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-white/10 text-blue-200"
-              )}
-            >
-              <Scissors size={18} className={activeSheet === 'pdf-splitter' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Tách file PDF</span>
-            </button>
-
-            <button 
               onClick={() => { setActiveSheet('geology'); setIsSidebarOpen(false); }}
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
@@ -3080,6 +3067,19 @@ export default function App() {
             >
               <Layers size={18} className={activeSheet === 'geology' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Cấu tạo lớp địa chất</span>
+            </button>
+
+            <button 
+              onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'pdf-splitter' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <Scissors size={18} className={activeSheet === 'pdf-splitter' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Tách file PDF</span>
             </button>
           </nav>
 
@@ -4995,17 +4995,17 @@ function SummaryView({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr style={{ background: '#2d5496' }}>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-10">STT</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">Đường kính</th>
-                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-white border border-white/20">Mô tả lớp thiết kế tương ứng</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-20">Số cọc</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-20">Số mẫu</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-28">Tổng dài (m)</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-28">T.Gian (h)</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">V.Min</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">V.Max</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24" style={{ background: '#f97316' }}>V.TB (m/h)</th>
+              <tr style={{ background: '#fff3e0' }}>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-10">STT</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">Đường kính</th>
+                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-orange-200">Mô tả lớp thiết kế tương ứng</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Số cọc</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Số mẫu</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-28">Tổng dài (m)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-28">T.Gian (h)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.Min</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.Max</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.TB (m/h)</th>
               </tr>
             </thead>
             <tbody>
