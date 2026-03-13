@@ -4542,11 +4542,11 @@ function SummaryView({
   });
 
   const designLayerStats = Object.values(statsMap).sort((a, b) => {
-    // Sắp xếp theo mã lớp nếu có, không thì theo tên
-    if (a.designLayerCode && b.designLayerCode) {
-      return a.designLayerCode.localeCompare(b.designLayerCode, undefined, { numeric: true });
-    }
-    return a.layerDesign.localeCompare(b.layerDesign);
+    // Sắp xếp: đường kính thấp→cao (số trong chuỗi D1000, D2000...), sau đó A→Z theo mô tả
+    const diaA = parseInt((a.diameter || '').replace(/\D/g, '')) || 0;
+    const diaB = parseInt((b.diameter || '').replace(/\D/g, '')) || 0;
+    if (diaA !== diaB) return diaA - diaB;
+    return (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' });
   });
 
   // allPileIds nên lấy từ history để đảm bảo đếm đủ số cọc đã upload
@@ -4983,80 +4983,64 @@ function SummaryView({
             )}
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#1e3a8a] text-white">
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-12 text-center">STT</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Đường kính</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20">Mô tả lớp thiết kế tương ứng</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số cọc</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số mẫu</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Tổng Dài (m)</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Tổng T.Gian (h)</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">V.Min (m/h)</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">V.Max (m/h)</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest bg-[#f97316] border border-white/20 w-28 text-center">V.TB (m/h)</th>
+              <tr style={{ background: '#1a3a6b' }}>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-10">STT</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">Đường kính</th>
+                <th className="px-4 py-3.5 text-[11px] font-black uppercase tracking-wider text-white border-r border-white/10">Mô tả lớp thiết kế tương ứng</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-20">Số cọc</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-20">Số mẫu</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-28">Tổng dài (m)</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-28">T.Gian (h)</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">V.Min</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">V.Max</th>
+                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center w-24" style={{ background: '#f97316' }}>V.TB (m/h)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {designLayerStats.map((stat, i) => {
                 const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
                 const isSlow = avgSpd > 0 && avgSpd <= 1;
                 const isFast = avgSpd >= 5;
-                
+                const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
                 return (
-                  <tr key={i} className="hover:bg-slate-50 transition-all group">
-                    <td className="px-4 py-4 text-[11px] font-bold text-blue-600 text-center border border-slate-200">{i + 1}</td>
-                    <td className="px-4 py-4 text-[11px] font-black text-slate-700 text-center border border-slate-200">{stat.diameter}</td>
-                    <td className="px-4 py-4 text-[11px] font-medium text-slate-600 border border-slate-200 leading-relaxed italic">
-                      {stat.layerDesign}
+                  <tr key={i} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors border-b border-slate-100">
+                    <td className="px-3 py-3 text-[12px] font-bold text-blue-600 text-center border-r border-slate-100">{i + 1}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-700 text-center border-r border-slate-100">
+                      <span className="inline-block bg-slate-100 text-slate-700 rounded-lg px-2 py-0.5 text-[11px] font-black">{stat.diameter}</span>
                     </td>
-                    <td className="px-4 py-4 text-[11px] font-black text-slate-700 text-center border border-slate-200">{stat.pileIds.size}</td>
-                    <td className="px-4 py-4 text-[11px] font-bold text-slate-500 text-center border border-slate-200">{stat.segments}</td>
-                    <td className="px-4 py-4 text-[11px] font-bold text-blue-600 text-center border border-slate-200 bg-blue-50/10">
-                      {stat.totalLength.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-4 text-[11px] font-bold text-indigo-600 text-center border border-slate-200 bg-indigo-50/10">
-                      {stat.totalDuration.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-center border border-slate-200 bg-slate-50/30">
-                      {stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-center border border-slate-200 bg-slate-50/30">
-                      {stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-4 text-center border border-slate-200 bg-orange-50/20">
+                    <td className="px-4 py-3 text-[12px] text-slate-700 border-r border-slate-100 leading-snug">{stat.layerDesign}</td>
+                    <td className="px-3 py-3 text-[12px] font-bold text-slate-700 text-center border-r border-slate-100">{stat.pileIds.size}</td>
+                    <td className="px-3 py-3 text-[12px] font-bold text-slate-500 text-center border-r border-slate-100">{stat.segments}</td>
+                    <td className="px-3 py-3 text-[12px] font-bold text-blue-600 text-center border-r border-slate-100">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-bold text-indigo-600 text-center border-r border-slate-100">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-100">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-100">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-center">
                       <span className={cn(
-                        "inline-block px-3 py-1 rounded-full text-[11px] font-black min-w-[60px] shadow-sm",
-                        isSlow ? "bg-red-500 text-white" : 
+                        "inline-block px-3 py-1 rounded-full text-[12px] font-black min-w-[52px] text-center",
+                        isSlow ? "bg-red-500 text-white shadow-sm" :
                         isFast ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
                         "bg-orange-100 text-orange-700 border border-orange-200"
-                      )}>
-                        {avgSpd.toFixed(2)}
-                      </span>
+                      )}>{avgSpd.toFixed(2)}</span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-50 font-black text-slate-900 border-t-2 border-slate-200">
-                <td colSpan={3} className="px-6 py-4 text-[11px] uppercase tracking-[0.2em] text-left font-black border border-slate-200">Tổng hợp toàn bộ</td>
-                <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200">{allPileIdsCount}</td>
-                <td className="px-4 py-4 text-[12px] text-center border border-slate-200">{totalSegments}</td>
-                <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200 bg-blue-50/30">{totalLen.toFixed(2)}</td>
-                <td className="px-4 py-4 text-[12px] text-center text-indigo-700 border border-slate-200 bg-indigo-50/30">{totalDur.toFixed(2)}</td>
-                <td className="px-4 py-4 text-[12px] text-center text-slate-600 border border-slate-200">
-                  {globalMinSpeed === Infinity ? '—' : globalMinSpeed.toFixed(2)}
-                </td>
-                <td className="px-4 py-4 text-[12px] text-center text-slate-600 border border-slate-200">
-                  {globalMaxSpeed === -Infinity ? '—' : globalMaxSpeed.toFixed(2)}
-                </td>
-                <td className="px-4 py-4 text-center border border-slate-200">
-                  <span className="inline-block px-4 py-1.5 bg-blue-700 text-white rounded-full text-[11px] shadow-md">
-                    {totalAvgSpd.toFixed(2)}
-                  </span>
+              <tr style={{ background: '#f1f5f9', borderTop: '2px solid #cbd5e1' }}>
+                <td colSpan={3} className="px-5 py-3.5 text-[12px] font-black text-slate-800 uppercase tracking-widest border-r border-slate-200">Tổng hợp toàn bộ</td>
+                <td className="px-3 py-3.5 text-[12px] font-black text-blue-700 text-center border-r border-slate-200">{allPileIdsCount}</td>
+                <td className="px-3 py-3.5 text-[12px] font-bold text-slate-600 text-center border-r border-slate-200">{totalSegments}</td>
+                <td className="px-3 py-3.5 text-[12px] font-black text-blue-700 text-center border-r border-slate-200">{totalLen.toFixed(2)}</td>
+                <td className="px-3 py-3.5 text-[12px] font-black text-indigo-700 text-center border-r border-slate-200">{totalDur.toFixed(2)}</td>
+                <td className="px-3 py-3.5 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-200">{globalMinSpeed === Infinity ? '—' : globalMinSpeed.toFixed(2)}</td>
+                <td className="px-3 py-3.5 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-200">{globalMaxSpeed === -Infinity ? '—' : globalMaxSpeed.toFixed(2)}</td>
+                <td className="px-3 py-3.5 text-center">
+                  <span className="inline-block px-4 py-1 bg-blue-700 text-white rounded-full text-[12px] font-black shadow">{totalAvgSpd.toFixed(2)}</span>
                 </td>
               </tr>
             </tfoot>
