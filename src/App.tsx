@@ -589,7 +589,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
           const fixedMin = parseH(fixed);
           // Chỉ sửa nếu sau khi thêm "1" thì hợp lý hơn (gần với prevEndMin)
           if (fixedMin >= prevEndMin - 30 && fixedMin <= prevEndMin + 120) {
-            console.warn(\`[AutoFix] timeFrom sót "1": "\${timeFrom}" → "\${fixed}" (dòng \${i + 1})\`);
+            console.warn(`[AutoFix] timeFrom sót "1": "\${timeFrom}" → "\${fixed}" (dòng \${i + 1})`);
             timeFrom = fixed;
           }
         }
@@ -603,7 +603,7 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
           const fixed = addLeading1(timeTo);
           const fixedMin = parseH(fixed);
           if (fixedMin > fromMin && fixedMin <= fromMin + 180) {
-            console.warn(\`[AutoFix] timeTo sót "1": "\${timeTo}" → "\${fixed}" (dòng \${i + 1})\`);
+            console.warn(`[AutoFix] timeTo sót "1": "\${timeTo}" → "\${fixed}" (dòng \${i + 1})`);
             timeTo = fixed;
           }
         }
@@ -1280,18 +1280,18 @@ export default function App() {
       tried.add(idx);
 
       try {
-        console.log(\`[KeyRotation] Đang dùng API Key #\${idx + 1}\`);
+        console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1}`);
         const result = await extractDataFromFile(base64Data, mimeType, key);
         // Thành công — cập nhật activeKeyIndex
         if (idx !== activeKeyIndex) {
           setActiveKeyIndex(idx);
           setUserApiKey(key);
-          console.log(\`[KeyRotation] Đã chuyển sang Key #\${idx + 1} thành công\`);
+          console.log(`[KeyRotation] Đã chuyển sang Key #\${idx + 1} thành công`);
         }
         return result;
       } catch (err: any) {
         if (isQuotaError(err)) {
-          console.warn(\`[KeyRotation] Key #\${idx + 1} hết quota, thử key tiếp theo...\`);
+          console.warn(`[KeyRotation] Key #\${idx + 1} hết quota, thử key tiếp theo...`);
           setExhaustedKeys(prev => new Set(prev).add(idx));
           lastError = err;
           continue;
@@ -1303,7 +1303,7 @@ export default function App() {
 
     // Hết tất cả key
     const totalValid = geminiApiKeys.filter(k => k.trim()).length;
-    throw new Error(\`⛔ Tất cả \${totalValid} API Key Gemini đã hết quota! Vui lòng vào Cài đặt để thêm key mới hoặc chờ quota được reset.\`);
+    throw new Error(`⛔ Tất cả \${totalValid} API Key Gemini đã hết quota! Vui lòng vào Cài đặt để thêm key mới hoặc chờ quota được reset.`);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
