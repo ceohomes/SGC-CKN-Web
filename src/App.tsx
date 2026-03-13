@@ -5128,6 +5128,9 @@ function EditSplitView({
   userApiKey?: string;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
+  // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
+  const dataRef = React.useRef<ExtractionResult>(data);
+  React.useEffect(() => { dataRef.current = data; }, [data]);
   const [zoom, setZoom] = useState(1);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isRescanning, setIsRescanning] = useState(false);
@@ -5160,59 +5163,84 @@ function EditSplitView({
         const base64DataUrl = await readBase64(file);
         const base64Content = base64DataUrl.split(',')[1];
 
-        // Upload lên GitHub — thay file cũ nếu có, hoặc tạo mới
+        // Upload file MỚI với tên mới (timestamp + tên file) — tránh cache của GitHub raw CDN
+        // Sau đó xóa file cũ để dọn dẹp repo
         const { token, username, repo } = githubCreds;
         const timestamp = Date.now();
         const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const path = data.fileUrl
-          ? (() => {
-              const cleanUrl = decodeURIComponent(data.fileUrl.split('?')[0]);
-              const m = cleanUrl.match(/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
-              return m ? m[1] : `SGC-CKN/${timestamp}_${safeFileName}`;
-            })()
-          : `SGC-CKN/${timestamp}_${safeFileName}`;
+        // Luôn tạo path MỚI để tránh GitHub/CDN cache file cũ
+        const newPath = `SGC-CKN/${timestamp}_${safeFileName}`;
+        const oldFileUrl = data.fileUrl || null;
 
-        const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
+        const apiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${newPath}`;
         const headers = {
           'Authorization': `Bearer ${token.trim()}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json',
         };
 
-        // Lấy SHA nếu file đã tồn tại (để ghi đè)
-        let sha: string | undefined;
-        try {
-          const getRes = await fetch(`${apiUrl}?t=${timestamp}`, { headers });
-          if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
-        } catch (_) {}
-
+        console.log('[replaceFile] Uploading NEW file to path:', newPath);
         const putRes = await fetch(apiUrl, {
           method: 'PUT',
           headers,
           body: JSON.stringify({
             message: `Replace file: ${safeFileName} via SGC-CKN Web`,
             content: base64Content,
-            sha,
           }),
         });
 
-        let newFileUrl = data.fileUrl;
+        let newFileUrl = oldFileUrl;
         if (putRes.ok) {
-          newFileUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${path}`;
-          // Cập nhật fileUrl và fileName mới lên Supabase ngay sau khi upload GitHub thành công
+          newFileUrl = `https://raw.githubusercontent.com/${username}/${repo}/main/${newPath}`;
+          console.log('[replaceFile] GitHub upload SUCCESS. New URL:', newFileUrl);
+
+          // Cập nhật fileUrl và fileName mới lên Supabase
           try {
             if (supabase) {
-              await supabase
+              const { error: sbUpdateErr } = await supabase
                 .from('drill_extractions')
                 .update({ fileUrl: newFileUrl, fileName: file.name })
                 .eq('id', data.id);
+              if (sbUpdateErr) {
+                console.error('[replaceFile] Supabase fileUrl update FAILED:', sbUpdateErr.message);
+              } else {
+                console.log('[replaceFile] Supabase fileUrl updated OK:', newFileUrl);
+              }
             }
           } catch (sbErr) {
             console.warn('[replaceFile] Không thể cập nhật fileUrl lên Supabase:', sbErr);
           }
+
+          // Xóa file cũ trên GitHub (async, không block flow chính)
+          if (oldFileUrl && oldFileUrl !== newFileUrl) {
+            try {
+              const cleanOldUrl = decodeURIComponent(oldFileUrl.split('?')[0]);
+              const oldMatch = cleanOldUrl.match(/raw\.githubusercontent\.com\/[^\/]+\/[^\/]+\/[^\/]+\/(.+)/);
+              if (oldMatch) {
+                const oldPath = oldMatch[1];
+                const oldApiUrl = `https://api.github.com/repos/${username}/${repo}/contents/${oldPath}`;
+                const oldGetRes = await fetch(`${oldApiUrl}?t=${timestamp}`, { headers });
+                if (oldGetRes.ok) {
+                  const oldFileData = await oldGetRes.json();
+                  await fetch(oldApiUrl, {
+                    method: 'DELETE',
+                    headers,
+                    body: JSON.stringify({
+                      message: `Remove old file: ${oldPath}`,
+                      sha: oldFileData.sha,
+                    }),
+                  });
+                  console.log('[replaceFile] Old file deleted from GitHub:', oldPath);
+                }
+              }
+            } catch (delErr) {
+              console.warn('[replaceFile] Không thể xóa file cũ (không ảnh hưởng):', delErr);
+            }
+          }
         } else {
-          const err = await putRes.json();
-          alert(`⚠️ Lỗi upload GitHub: ${err.message || 'Không thể upload'}. Vẫn tiếp tục quét AI với file mới.`);
+          const errBody = await putRes.json().catch(() => ({}));
+          console.error('[replaceFile] GitHub upload FAILED:', putRes.status, errBody);
+          alert(`⚠️ Lỗi upload GitHub (${putRes.status}): ${errBody.message || 'Không thể upload'}. Vẫn tiếp tục quét AI với file mới.`);
         }
 
         // Cập nhật _base64 và fileUrl trong data để quét lại
@@ -5292,7 +5320,13 @@ function EditSplitView({
         setIsReplacingFile(false);
       }
     };
+    // Phải append vào DOM để onchange hoạt động ổn định trên mọi browser
+    document.body.appendChild(input);
     input.click();
+    // Tự dọn sau khi chọn xong (hoặc hủy)
+    setTimeout(() => {
+      if (document.body.contains(input)) document.body.removeChild(input);
+    }, 60000);
   };
 
   // ── Quét lại toàn bộ dữ liệu bằng AI từ ảnh biên bản ──
@@ -5970,7 +6004,7 @@ function EditSplitView({
             Hủy bỏ
           </button>
           <button 
-            onClick={() => onSave(data)}
+            onClick={() => onSave(dataRef.current)}
             className="px-6 py-2 bg-sky-400 hover:bg-sky-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
           >
             <Save size={14} />
