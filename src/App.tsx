@@ -4809,19 +4809,29 @@ function getWeekLabel(weekStart: Date): string {
   return `${fmt(weekStart)} – ${fmt(end)}/${end.getFullYear()}`;
 }
 
+// Format date as YYYY-MM-DD dùng local time (tránh bug UTC lệch múi giờ GMT+7)
+function toLocalDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 function getWeekKey(d: Date): string {
-  // Week starts Friday (day 5). Find the Friday of the current week (Fri–Thu cycle)
-  const day = d.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
-  // Days since last Friday
-  const daysSinceFri = (day + 2) % 7; // Fri=0, Sat=1, Sun=2, Mon=3, Tue=4, Wed=5, Thu=6
+  // Tuần bắt đầu Thứ 6 (day=5), kết thúc Thứ 5 (day=4)
+  const day = d.getDay(); // 0=CN,1=T2,...,5=T6,6=T7
+  // Số ngày kể từ Thứ 6 gần nhất: T6=0, T7=1, CN=2, T2=3, T3=4, T4=5, T5=6
+  const daysSinceFri = (day + 2) % 7;
   const fri = new Date(d);
-  fri.setHours(0,0,0,0);
+  fri.setHours(0, 0, 0, 0);
   fri.setDate(fri.getDate() - daysSinceFri);
-  return fri.toISOString().slice(0,10);
+  return toLocalDateKey(fri); // dùng local time, không dùng toISOString()
 }
 
 function getWeekStartDate(key: string): Date {
-  return new Date(key + 'T00:00:00');
+  // Parse YYYY-MM-DD trực tiếp thành local date (không qua UTC)
+  const [y, m, dd] = key.split('-').map(Number);
+  return new Date(y, m - 1, dd);
 }
 
 function parseViDate(str: string): Date | null {
@@ -5280,6 +5290,7 @@ function SummaryView({
           {/* Selected week content */}
           {selectedWeekKey && selectedWeekRecords.length > 0 && (() => {
             const weekStart = getWeekStartDate(selectedWeekKey);
+            const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6); weekEnd.setHours(23,59,59,999);
             const startOfYear = new Date(weekStart.getFullYear(), 0, 1);
             const weekNo = Math.ceil(((weekStart.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
             const totalWeekDepth = selectedWeekRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0);
@@ -5287,9 +5298,32 @@ function SummaryView({
             const avgWeekSpeed = totalWeekDur > 0 ? totalWeekDepth / totalWeekDur : 0;
             const projectCount = [...new Set(selectedWeekRecords.map(r=>r.project).filter(Boolean))].length;
 
+            // ── Lũy kế ──
+            // Tất cả các bản ghi có ngày kết thúc TRƯỚC tuần này (< weekStart)
+            const prevRecords = history.filter(r => {
+              const d = parseViDate(r.constructionEnd);
+              return d && d.getTime() < weekStart.getTime();
+            });
+            // Lũy kế đến tuần này = prevRecords + selectedWeekRecords
+            const cumRecords = history.filter(r => {
+              const d = parseViDate(r.constructionEnd);
+              return d && d.getTime() <= weekEnd.getTime();
+            });
+
+            const calcStats = (recs: ExtractionResult[]) => ({
+              piles: recs.length,
+              depth: recs.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0),
+              dur:   recs.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0),0),
+            });
+            const prevStats = calcStats(prevRecords);
+            const cumStats  = calcStats(cumRecords);
+
+            const thu5 = new Date(weekStart); thu5.setDate(thu5.getDate() + 6);
+            const fmtDate = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+
             return (
               <div className="space-y-5">
-                {/* Week summary KPIs */}
+                {/* Header tuần */}
                 <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-5 bg-orange-500 rounded-full"/>
@@ -5301,20 +5335,131 @@ function SummaryView({
                   <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
                     <Calendar size={13} className="text-blue-500 shrink-0"/>
                     <div className="text-[11px] font-bold text-blue-700">
-                      {(() => {
-                        const thu5 = new Date(weekStart); thu5.setDate(thu5.getDate() + 6);
-                        const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-                        return <><span className="text-blue-500">Thứ 6:</span> {fmt(weekStart)} &nbsp;→&nbsp; <span className="text-blue-500">Thứ 5:</span> {fmt(thu5)}</>;
-                      })()}
+                      <span className="text-blue-500">Thứ 6:</span> {fmtDate(weekStart)} &nbsp;→&nbsp; <span className="text-blue-500">Thứ 5:</span> {fmtDate(thu5)}
                     </div>
                   </div>
                 </div>
 
+                {/* ── Bảng lũy kế 3 cột ── */}
+                <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-md">
+                  <div className="px-5 py-3 flex items-center gap-2" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
+                    <TrendingUp size={15} className="text-orange-300"/>
+                    <h5 className="text-[11px] font-black text-white uppercase tracking-widest">Thống kê lũy kế tiến độ</h5>
+                    <span className="ml-auto text-[9px] font-bold text-blue-200 uppercase tracking-widest">Tổng hợp toàn bộ dự án</span>
+                  </div>
+                  <div className="grid grid-cols-3 divide-x divide-slate-200">
+                    {/* Lũy kế đến tuần trước */}
+                    <div className="p-5 bg-slate-50">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2 h-2 rounded-full bg-slate-400"/>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lũy kế đến tuần trước</p>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Số cọc</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[26px] font-black text-slate-700">{prevStats.piles}</span>
+                            <span className="text-[11px] font-bold text-slate-400">cọc</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Chiều sâu</p>
+                            <span className="text-[14px] font-black text-slate-700">{formatNumber(prevStats.depth,1)}</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1">m</span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mb-0.5">Thời gian</p>
+                            <span className="text-[14px] font-black text-slate-700">{formatNumber(prevStats.dur,1)}</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1">h</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Thực hiện tuần này */}
+                    <div className="p-5 bg-orange-50 relative">
+                      <div className="absolute top-3 right-3 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Tuần {weekNo}</div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2 h-2 rounded-full bg-orange-500"/>
+                        <p className="text-[10px] font-black text-orange-700 uppercase tracking-widest">Thực hiện tuần này</p>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-[9px] font-bold text-orange-400 uppercase mb-0.5">Số cọc</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[26px] font-black text-orange-600">{selectedWeekRecords.length}</span>
+                            <span className="text-[11px] font-bold text-orange-400">cọc</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white border border-orange-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-orange-400 uppercase mb-0.5">Chiều sâu</p>
+                            <span className="text-[14px] font-black text-orange-600">{formatNumber(totalWeekDepth,1)}</span>
+                            <span className="text-[9px] font-bold text-orange-400 ml-1">m</span>
+                          </div>
+                          <div className="bg-white border border-orange-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-orange-400 uppercase mb-0.5">Tốc độ TB</p>
+                            <span className="text-[14px] font-black text-orange-600">{formatNumber(avgWeekSpeed,2)}</span>
+                            <span className="text-[9px] font-bold text-orange-400 ml-1">m/h</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lũy kế đến tuần này */}
+                    <div className="p-5 bg-blue-50">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2 h-2 rounded-full bg-blue-600"/>
+                        <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Lũy kế đến tuần này</p>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-[9px] font-bold text-blue-400 uppercase mb-0.5">Số cọc</p>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[26px] font-black text-blue-700">{cumStats.piles}</span>
+                            <span className="text-[11px] font-bold text-blue-400">cọc</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white border border-blue-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-blue-400 uppercase mb-0.5">Chiều sâu</p>
+                            <span className="text-[14px] font-black text-blue-700">{formatNumber(cumStats.depth,1)}</span>
+                            <span className="text-[9px] font-bold text-blue-400 ml-1">m</span>
+                          </div>
+                          <div className="bg-white border border-blue-200 rounded-xl p-2.5">
+                            <p className="text-[9px] font-bold text-blue-400 uppercase mb-0.5">Thời gian</p>
+                            <span className="text-[14px] font-black text-blue-700">{formatNumber(cumStats.dur,1)}</span>
+                            <span className="text-[9px] font-bold text-blue-400 ml-1">h</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mini progress bar: tuần này / lũy kế */}
+                  {cumStats.piles > 0 && (
+                    <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center gap-4">
+                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest shrink-0">Tuần này / Lũy kế:</span>
+                      <div className="flex-1 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all"
+                          style={{width:`${Math.min(100, (selectedWeekRecords.length / cumStats.piles) * 100).toFixed(1)}%`}}
+                        />
+                      </div>
+                      <span className="text-[10px] font-black text-orange-600 shrink-0">
+                        {((selectedWeekRecords.length / cumStats.piles) * 100).toFixed(1)}% tuần này
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* KPI cards nhỏ bên dưới */}
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: 'Tổng cọc tuần', value: selectedWeekRecords.length, unit: 'cọc', color: 'bg-blue-600', icon: <Layers className="w-4 h-4 text-white"/> },
-                    { label: 'Tổng chiều sâu', value: formatNumber(totalWeekDepth, 1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="w-4 h-4 text-white"/> },
-                    { label: 'Tốc độ TB', value: formatNumber(avgWeekSpeed), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-4 h-4 text-white"/> },
+                    { label: 'Cọc tuần này', value: selectedWeekRecords.length, unit: 'cọc', color: 'bg-orange-500', icon: <Layers className="w-4 h-4 text-white"/> },
+                    { label: 'Chiều sâu tuần', value: formatNumber(totalWeekDepth, 1), unit: 'm', color: 'bg-blue-600', icon: <ArrowDownToLine className="w-4 h-4 text-white"/> },
+                    { label: 'Tốc độ TB', value: formatNumber(avgWeekSpeed, 2), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-4 h-4 text-white"/> },
                     { label: 'Dự án tham gia', value: projectCount, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-4 h-4 text-white"/> },
                   ].map((k,i)=>(
                     <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
