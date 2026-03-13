@@ -2370,7 +2370,7 @@ export default function App() {
           const code = (layer.designLayerCode || '').trim();
           const design = (layer.layerDesign || 'Chưa xác định').trim();
           const dia = (res.diameter || '—').trim();
-          const key = `${normalizeForGrouping(code)}|||${normalizeForGrouping(design)}|||${normalizeForGrouping(dia)}`;
+          const key = `${normalizeForGrouping(design)}|||${normalizeForGrouping(dia)}`;
           if (!excelStatsMap[key]) {
             excelStatsMap[key] = { code, design, dia, pileIds: new Set(), segments: 0, minSpeed: Infinity, maxSpeed: -Infinity, totalDuration: 0, totalLength: 0 };
           }
@@ -2648,14 +2648,13 @@ export default function App() {
 
   // ── GeologyView: Cấu tạo lớp địa chất ──
   const GeologyView = () => {
-    const [searchText, setSearchText] = React.useState('');
     const [editingKey, setEditingKey] = React.useState<string | null>(null);
     const [editValue, setEditValue] = React.useState('');
     const [savingKey, setSavingKey] = React.useState<string | null>(null);
     const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
     const [syncCount, setSyncCount] = React.useState(0);
 
-    // UNIQUE chỉ theo layerDesign (trim, lowercase để so sánh)
+    // UNIQUE chỉ theo layerDesign
     type UniqueLayer = { layerDesign: string; count: number; };
 
     const uniqueLayers: UniqueLayer[] = React.useMemo(() => {
@@ -2678,12 +2677,6 @@ export default function App() {
         (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' })
       );
     }, [history]);
-
-    const filtered = React.useMemo(() => {
-      if (!searchText.trim()) return uniqueLayers;
-      const q = searchText.toLowerCase();
-      return uniqueLayers.filter(r => (r.layerDesign || '').toLowerCase().includes(q));
-    }, [uniqueLayers, searchText]);
 
     const startEdit = (layerDesign: string) => {
       setEditingKey(layerDesign);
@@ -2756,8 +2749,6 @@ export default function App() {
       }
     };
 
-    const totalAppearances = uniqueLayers.reduce((s, r) => s + r.count, 0);
-
     return (
       <div className="w-full space-y-6">
         {/* Header */}
@@ -2789,110 +2780,95 @@ export default function App() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {[
-            { label: 'Tổng lớp unique', value: uniqueLayers.length, color: '#1a3a6b' },
-            { label: 'Tổng lượt xuất hiện', value: totalAppearances, color: '#4f46e5' },
-            { label: 'Số biên bản', value: history.length, color: '#059669' },
-          ].map(s => (
-            <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-              <p className="text-xs text-slate-500 font-medium">{s.label}</p>
-              <p className="text-2xl font-black mt-1" style={{ color: s.color }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 bg-slate-50"
-              placeholder="Tìm theo mô tả lớp thiết kế..."
-              value={searchText} onChange={e => setSearchText(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-slate-400 mt-2">
-            Hiển thị <span className="font-semibold text-blue-600">{filtered.length}</span> / {uniqueLayers.length} lớp unique.
-            <span className="ml-2 text-amber-600">💡 Click vào tên lớp để sửa — tất cả biên bản có cùng lớp đó sẽ được cập nhật đồng loạt.</span>
-          </p>
-        </div>
-
-        {/* Table */}
+        {/* Table — multi-column để hiển thị vừa màn hình không cần scroll */}
         {uniqueLayers.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
             <Layers size={48} className="text-slate-200 mx-auto mb-4" />
             <p className="text-slate-500 font-medium">Chưa có dữ liệu lớp địa chất</p>
             <p className="text-sm text-slate-400 mt-1">Hãy upload biên bản để xem dữ liệu</p>
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr style={{ background: '#1a3a6b' }}>
-                  <th className="px-4 py-3 text-xs font-bold text-white text-center w-14 border-r border-blue-800/30">#</th>
-                  <th className="px-4 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">Mô tả lớp thiết kế</th>
-                  <th className="px-4 py-3 text-xs font-bold text-white text-center w-36">Số lần xuất hiện</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row, idx) => {
-                  const isEditing = editingKey === row.layerDesign;
-                  const isSaving = savingKey === row.layerDesign;
-                  const rowBg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
-                  return (
-                    <tr key={row.layerDesign} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
-                      <td className="px-4 py-3.5 text-xs text-center text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="px-4 py-3.5">
-                        {isEditing ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              autoFocus
-                              className="flex-1 border-2 border-blue-400 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                              value={editValue}
-                              onChange={e => setEditValue(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') commitEdit(row.layerDesign);
-                                if (e.key === 'Escape') cancelEdit();
-                              }}
-                            />
-                            <button onClick={() => commitEdit(row.layerDesign)}
-                              className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors whitespace-nowrap">
-                              <CheckCircle2 size={13} /> Lưu
-                            </button>
-                            <button onClick={cancelEdit}
-                              className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors">
-                              <X size={13} /> Hủy
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => !isSaving && startEdit(row.layerDesign)}>
-                            {isSaving ? (
-                              <span className="flex items-center gap-2 text-blue-600 text-sm">
-                                <Loader2 size={14} className="animate-spin" /> Đang lưu...
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-sm text-slate-700">{row.layerDesign}</span>
-                                <Edit2 size={13} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-center">
-                        <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-3 py-1 rounded-full border border-blue-200">
-                          {row.count} lần
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : (() => {
+          // Chia uniqueLayers thành các cột, mỗi cột tối đa 15 dòng
+          const ROWS_PER_COL = 15;
+          const cols: typeof uniqueLayers[] = [];
+          for (let i = 0; i < uniqueLayers.length; i += ROWS_PER_COL) {
+            cols.push(uniqueLayers.slice(i, i + ROWS_PER_COL));
+          }
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="flex gap-0 divide-x divide-slate-200">
+                {cols.map((colRows, colIdx) => (
+                  <div key={colIdx} className="flex-1 min-w-0">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr style={{ background: '#1a3a6b' }}>
+                          <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-blue-800/30">#</th>
+                          <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">Mô tả lớp thiết kế</th>
+                          <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số lần</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {colRows.map((row, rowIdx) => {
+                          const globalIdx = colIdx * ROWS_PER_COL + rowIdx;
+                          const isEditing = editingKey === row.layerDesign;
+                          const isSaving = savingKey === row.layerDesign;
+                          const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+                          return (
+                            <tr key={row.layerDesign} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
+                              <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono">{globalIdx + 1}</td>
+                              <td className="px-3 py-2.5">
+                                {isEditing ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      autoFocus
+                                      className="flex-1 border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                      value={editValue}
+                                      onChange={e => setEditValue(e.target.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') commitEdit(row.layerDesign);
+                                        if (e.key === 'Escape') cancelEdit();
+                                      }}
+                                    />
+                                    <button onClick={() => commitEdit(row.layerDesign)}
+                                      className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
+                                      <CheckCircle2 size={11} /> Lưu
+                                    </button>
+                                    <button onClick={cancelEdit}
+                                      className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-lg font-semibold transition-colors">
+                                      <X size={11} /> Hủy
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => !isSaving && startEdit(row.layerDesign)}>
+                                    {isSaving ? (
+                                      <span className="flex items-center gap-1.5 text-blue-600 text-xs">
+                                        <Loader2 size={12} className="animate-spin" /> Đang lưu...
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <span className="text-xs text-slate-700 leading-snug">{row.layerDesign}</span>
+                                        <Edit2 size={11} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200">
+                                  {row.count}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -4529,10 +4505,10 @@ function SummaryView({
       const cleanDesign = normalizeForGrouping(design);
       const cleanDia = normalizeForGrouping(dia);
       
-      const key = `${cleanCode}|||${cleanDesign}|||${cleanDia}`;
+      const key = `${cleanDesign}|||${cleanDia}`;
       
       if (!statsMap[key]) {
-        const colorKey = code || design;
+        const colorKey = design;
         if (colorMap[colorKey] === undefined) {
           colorMap[colorKey] = colorCounter % GROUP_COLORS.length;
           colorCounter++;
