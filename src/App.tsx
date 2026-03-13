@@ -3529,6 +3529,8 @@ export default function App() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
+            isExportingAll={isExportingAll}
+            onExportAll={exportAllToExcel}
           />
         )}
       </main>
@@ -4123,13 +4125,17 @@ function SummaryView({
   onSelectResult, 
   onEdit, 
   onDelete,
-  onUploadClick
+  onUploadClick,
+  isExportingAll,
+  onExportAll,
 }: { 
   history: ExtractionResult[], 
   onSelectResult: (res: ExtractionResult) => void,
   onEdit: (res: ExtractionResult) => void,
   onDelete: (id: string) => void,
-  onUploadClick: () => void
+  onUploadClick: () => void,
+  isExportingAll: boolean,
+  onExportAll: (rows: ExtractionResult[]) => void,
 }) {
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
   // Đếm tổng số biên bản (mỗi file/biên bản được coi là 1 thực thể cọc trong thống kê này nếu người dùng muốn khớp với số lượng file đã upload)
@@ -4709,7 +4715,7 @@ function SummaryView({
             </h4>
           </div>
           <button
-            onClick={() => !isExportingAll && exportAllToExcel(history)}
+            onClick={() => !isExportingAll && onExportAll(history)}
             disabled={isExportingAll}
             className={cn(
               "flex items-center gap-2 px-4 py-2 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md",
