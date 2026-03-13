@@ -4826,10 +4826,11 @@ function getWeekStartDate(key: string): Date {
 
 function parseViDate(str: string): Date | null {
   if (!str) return null;
-  // Supports DD/MM/YYYY or YYYY-MM-DD
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  // Tìm DD/MM/YYYY ở bất kỳ vị trí nào (field có thể chứa cả giờ phút: "15:50\n24/02/2026")
+  const dmyMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (dmyMatch) return new Date(+dmyMatch[3], +dmyMatch[2]-1, +dmyMatch[1]);
-  const isoMatch = str.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  // ISO: YYYY-MM-DD
+  const isoMatch = str.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
   if (isoMatch) return new Date(+isoMatch[1], +isoMatch[2]-1, +isoMatch[3]);
   return null;
 }
