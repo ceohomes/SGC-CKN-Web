@@ -826,6 +826,23 @@ export default function App() {
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
   const [downloadingExcelId, setDownloadingExcelId] = useState<string | null>(null);
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // ── Confirm Dialog (thay window.confirm) ──
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    detail?: string;
+    type: 'save' | 'delete';
+    onConfirm: () => void;
+  } | null>(null);
+
+  // ── Toast thông báo đồng bộ ──
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'loading' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
+    setToast({ message, type });
+    if (type !== 'loading') setTimeout(() => setToast(null), duration);
+  };
 
   // Bộ lọc Sheet 1
   const [filterProject, setFilterProject] = useState('');
@@ -949,6 +966,7 @@ export default function App() {
           try { setHistory(JSON.parse(savedHistory)); } catch {}
         }
       }
+      setIsInitialLoading(false); // Tắt splash screen sau khi load xong
     };
 
     loadData();
@@ -1907,76 +1925,66 @@ export default function App() {
 
   const handleDelete = (id: string) => {
     const itemToDelete = history.find(item => item.id === id);
-
-    // Liệt kê file sẽ bị xóa để hiện trong confirm
     const filesToDelete: string[] = [];
     if (itemToDelete?.fileUrl)  filesToDelete.push(`📄 File ảnh/PDF: ${itemToDelete.fileName || 'file gốc'}`);
     if (itemToDelete?.excelUrl) filesToDelete.push(`📊 File Excel: ${itemToDelete.excelUrl.split('/').pop()}`);
-    const fileList = filesToDelete.length > 0
-      ? `\n\nCác file sẽ bị xóa trên GitHub:\n` + filesToDelete.join('\n')
-      : `\n\n(Không có file đính kèm trên GitHub)`;
 
-    if (!window.confirm(
-      `Bạn có chắc chắn muốn xóa biên bản này?
-` +
-      `Biên bản: ${itemToDelete?.componentName || ''} - ${itemToDelete?.pileId || ''}` +
-      fileList +
-      `
+    setConfirmDialog({
+      title: 'Xác nhận xóa biên bản',
+      message: `Biên bản: ${itemToDelete?.componentName || ''} — ${itemToDelete?.pileId || ''}`,
+      detail: filesToDelete.length > 0
+        ? `Các file sẽ bị xóa trên GitHub:\n${filesToDelete.join('\n')}\n\n⚠️ Hành động này KHÔNG THỂ hoàn tác.`
+        : '⚠️ Hành động này KHÔNG THỂ hoàn tác.',
+      type: 'delete',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        // Optimistic UI
+        setHistory(prev => prev.filter(item => item.id !== id));
+        if (currentResult?.id === id) setCurrentResult(null);
+        showToast('Đang xóa dữ liệu...', 'loading');
 
-⚠️ Hành động này KHÔNG THỂ hoàn tác.`
-    )) return;
+        const errors: string[] = [];
 
-    // ✅ Optimistic UI
-    setHistory(prev => prev.filter(item => item.id !== id));
-    if (currentResult?.id === id) setCurrentResult(null);
-
-    // Gọi API ngầm
-    (async () => {
-      const errors: string[] = [];
-
-      // 1. Xóa Supabase
-      if (supabase) {
-        try {
-          const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
-          if (error) errors.push(`Supabase: ${error.message}`);
-        } catch (e: any) {
-          errors.push(`Supabase: ${e?.message}`);
-        }
-      }
-
-      // 2. Xóa TẤT CẢ file trên GitHub: ảnh gốc + Excel
-      const creds = githubCreds;
-      if (creds && itemToDelete) {
-        const urlsToDelete = [
-          itemToDelete.fileUrl,   // ảnh gốc hoặc PDF
-          itemToDelete.excelUrl,  // file Excel tự động
-        ].filter(Boolean) as string[];
-
-        for (const url of urlsToDelete) {
+        // 1. Xóa Supabase TRƯỚC — chờ xong mới tiếp tục
+        if (supabase) {
           try {
-            await deleteGithubFile(url, creds);
+            const { error } = await supabase.from('drill_extractions').delete().eq('id', id);
+            if (error) errors.push(`Supabase: ${error.message}`);
           } catch (e: any) {
-            errors.push(`GitHub (${url.split('/').pop()}): ${e?.message}`);
+            errors.push(`Supabase: ${e?.message}`);
           }
         }
-      }
 
-      // 3. Đồng bộ localStorage
-      try {
-        const saved = localStorage.getItem('pile_drill_history');
-        if (saved) {
-          const parsed: ExtractionResult[] = JSON.parse(saved);
-          const updated = parsed.filter(r => r.id !== id);
-          localStorage.setItem('pile_drill_history', JSON.stringify(updated));
+        // 2. Xóa file GitHub (chạy sau Supabase)
+        if (githubCreds && itemToDelete) {
+          const urlsToDelete = [itemToDelete.fileUrl, itemToDelete.excelUrl].filter(Boolean) as string[];
+          for (const url of urlsToDelete) {
+            try {
+              await deleteGithubFile(url, githubCreds);
+            } catch (e: any) {
+              errors.push(`GitHub (${url.split('/').pop()}): ${e?.message}`);
+            }
+          }
         }
-      } catch (_) {}
 
-      // Báo lỗi nếu có
-      if (errors.length > 0) {
-        console.error('Lỗi xóa:', errors);
-        alert(`⚠️ Đã xóa khỏi giao diện nhưng có lỗi:\n${errors.join('\n')}\n\nVui lòng kiểm tra thủ công trên GitHub/Supabase.`);
-      }
-    })();
+        // 3. Đồng bộ localStorage
+        try {
+          const saved = localStorage.getItem('pile_drill_history');
+          if (saved) {
+            localStorage.setItem('pile_drill_history', JSON.stringify(
+              JSON.parse(saved).filter((r: any) => r.id !== id)
+            ));
+          }
+        } catch {}
+
+        // 4. Thông báo kết quả
+        if (errors.length > 0) {
+          showToast(`⚠️ Xóa một phần — có lỗi: ${errors[0]}`, 'error', 6000);
+        } else {
+          showToast('✅ Đã xóa và đồng bộ dữ liệu thành công!', 'success', 3500);
+        }
+      },
+    });
   };
 
   const handleEdit = (result: ExtractionResult) => {
@@ -2548,83 +2556,199 @@ export default function App() {
     }
   };
 
-  const handleSaveEdit = async (updatedResult: ExtractionResult) => {
-    // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
-    setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
-    setIsEditModalOpen(false);
-    setEditingResult(null);
+  const handleSaveEdit = (updatedResult: ExtractionResult) => {
+    setConfirmDialog({
+      title: 'Xác nhận lưu thay đổi',
+      message: 'Bạn có chắc chắn muốn cập nhật biên bản này không?',
+      detail: `${updatedResult.componentName || ''} — ${updatedResult.pileId || ''}`,
+      type: 'save',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsEditModalOpen(false);
+        setEditingResult(null);
+        setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
 
-    let finalResult = { ...updatedResult };
+        let finalResult = { ...updatedResult };
+        showToast('Đang đồng bộ dữ liệu...', 'loading');
 
-    // 1. Tái tạo Excel và ghi đè file cũ trên GitHub
-    if (isGithubConnected && githubCreds) {
-      try {
-        const autoImg = await ensureImageData(finalResult, githubCreds);
-        const excelBase64 = await generateExcelBase64(finalResult, autoImg);
-        if (excelBase64) {
-          const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
-          if (newUrl) {
-            finalResult = { ...finalResult, excelUrl: newUrl };
-            setHistory(prev => prev.map(item => item.id === finalResult.id ? { ...item, excelUrl: newUrl } : item));
+        // 1. Tái tạo Excel trên GitHub
+        if (isGithubConnected && githubCreds) {
+          try {
+            const autoImg = await ensureImageData(finalResult, githubCreds);
+            const excelBase64 = await generateExcelBase64(finalResult, autoImg);
+            if (excelBase64) {
+              const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
+              if (newUrl) {
+                finalResult = { ...finalResult, excelUrl: newUrl };
+                setHistory(prev => prev.map(item => item.id === finalResult.id ? { ...item, excelUrl: newUrl } : item));
+              }
+            }
+          } catch (e) {
+            console.error('Re-generate Excel on edit failed:', e);
           }
         }
-      } catch (e) {
-        console.error('Re-generate Excel on edit failed:', e);
-        // Không dừng lại — vẫn tiếp tục lưu Supabase
-      }
-    }
 
-    // 2. Lưu vào Supabase — chỉ gửi đúng fields cần thiết để tiết kiệm Egress
-    if (supabase) {
-      try {
-        // Chỉ gửi fields người dùng có thể chỉnh sửa + excelUrl nếu đã cập nhật
-        const minimalUpdate: Record<string, any> = {
-          project: finalResult.project,
-          item: finalResult.item,
-          componentName: finalResult.componentName,
-          pileId: finalResult.pileId,
-          reportNumber: finalResult.reportNumber,
-          diameter: finalResult.diameter,
-          constructionStart: finalResult.constructionStart,
-          constructionEnd: finalResult.constructionEnd,
-          notes: finalResult.notes,
-          layers: finalResult.layers,
-        };
-        if (finalResult.excelUrl) minimalUpdate.excelUrl = finalResult.excelUrl;
-
-        console.log('[handleSaveEdit] Đang lưu vào Supabase, id:', finalResult.id);
-        const { error } = await supabase
-          .from('drill_extractions')
-          .update(minimalUpdate)
-          .eq('id', finalResult.id);
-        if (error) {
-          console.error('[handleSaveEdit] Lỗi cập nhật Supabase:', error.message, error.details, error.hint);
-          alert(`⚠️ Dữ liệu đã cập nhật trên màn hình nhưng lưu Supabase thất bại:\n${error.message}\n\nHãy thử lại hoặc kiểm tra kết nối.`);
-        } else {
-          console.log('[handleSaveEdit] Lưu Supabase thành công');
-          // Cập nhật localStorage với data mới
+        // 2. Update Supabase
+        if (supabase) {
           try {
-            const savedHistory = localStorage.getItem('pile_drill_history');
-            if (savedHistory) {
-              const arr = JSON.parse(savedHistory);
-              const updated = arr.map((r: any) => r.id === finalResult.id ? { ...r, ...minimalUpdate } : r);
-              localStorage.setItem('pile_drill_history', JSON.stringify(updated));
-            }
-          } catch {}
-        }
-      } catch (e: any) {
-        console.error('[handleSaveEdit] Lỗi kết nối Supabase:', e?.message);
-        alert(`⚠️ Lỗi kết nối Supabase: ${e?.message || 'Không xác định'}. Dữ liệu chỉ lưu tạm trên màn hình.`);
-      }
-    } else {
-      console.warn('[handleSaveEdit] Supabase chưa được khởi tạo — dữ liệu chỉ lưu local.');
-    }
+            const minimalUpdate: Record<string, any> = {
+              project: finalResult.project,
+              item: finalResult.item,
+              componentName: finalResult.componentName,
+              pileId: finalResult.pileId,
+              reportNumber: finalResult.reportNumber,
+              diameter: finalResult.diameter,
+              constructionStart: finalResult.constructionStart,
+              constructionEnd: finalResult.constructionEnd,
+              notes: finalResult.notes,
+              layers: finalResult.layers,
+            };
+            if (finalResult.excelUrl) minimalUpdate.excelUrl = finalResult.excelUrl;
 
+            const { error } = await supabase
+              .from('drill_extractions')
+              .update(minimalUpdate)
+              .eq('id', finalResult.id);
+
+            if (error) {
+              showToast(`⚠️ Lưu thất bại: ${error.message}`, 'error', 5000);
+            } else {
+              try {
+                const savedHistory = localStorage.getItem('pile_drill_history');
+                if (savedHistory) {
+                  const arr = JSON.parse(savedHistory);
+                  localStorage.setItem('pile_drill_history', JSON.stringify(
+                    arr.map((r: any) => r.id === finalResult.id ? { ...r, ...minimalUpdate } : r)
+                  ));
+                }
+              } catch {}
+              showToast('✅ Đã đồng bộ dữ liệu thành công!', 'success', 3500);
+            }
+          } catch (e: any) {
+            showToast(`⚠️ Lỗi kết nối: ${e?.message || 'Không xác định'}`, 'error', 5000);
+          }
+        } else {
+          showToast('⚠️ Chưa kết nối Supabase — lưu tạm thời', 'error', 4000);
+        }
+      },
+    });
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans overflow-x-hidden">
-      {/* Sidebar Overlay */}
+
+      {/* ── Splash Screen Loading — hiển thị khi F5, dùng logo của người dùng ── */}
+      {isInitialLoading && (
+        <div
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+          style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}
+        >
+          {/* Logo */}
+          <div className="mb-8 flex flex-col items-center gap-5">
+            <div className="w-28 h-28 rounded-3xl overflow-hidden shadow-2xl border-4 border-white/20 flex items-center justify-center bg-white/10">
+              {customLogo ? (
+                <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-16 h-16">
+                  <rect x="8" y="28" width="10" height="28" rx="2" fill="white" fillOpacity="0.9"/>
+                  <rect x="27" y="16" width="10" height="40" rx="2" fill="white"/>
+                  <rect x="46" y="8" width="10" height="48" rx="2" fill="white" fillOpacity="0.7"/>
+                </svg>
+              )}
+            </div>
+            <div className="text-center">
+              <p className="text-white font-black text-3xl tracking-widest uppercase">SGC – CKN</p>
+              <p className="text-blue-300 text-xs font-bold tracking-[0.3em] uppercase mt-1">Construction Management</p>
+            </div>
+          </div>
+
+          {/* Thanh loading */}
+          <div className="w-56 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-orange-400 rounded-full"
+              style={{
+                animation: 'splash-bar 1.6s ease-in-out infinite',
+              }}
+            />
+          </div>
+          <p className="text-blue-300/60 text-xs mt-4 tracking-widest uppercase">Đang tải dữ liệu...</p>
+
+          <style>{`
+            @keyframes splash-bar {
+              0%   { width: 0%;   margin-left: 0%; }
+              50%  { width: 70%;  margin-left: 15%; }
+              100% { width: 0%;   margin-left: 100%; }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* ── Toast thông báo đồng bộ ── */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold text-sm transition-all animate-in slide-in-from-bottom-4 duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-600' :
+          toast.type === 'error'   ? 'bg-red-600' :
+          'bg-[#1a3a6b]'
+        }`}>
+          {toast.type === 'loading' && (
+            <svg className="animate-spin w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          )}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* ── Confirm Dialog (thay window.confirm) ── */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[9997] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className={`px-7 py-5 flex items-center gap-3 ${confirmDialog.type === 'delete' ? 'bg-red-600' : 'bg-[#1a3a6b]'}`}>
+              <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+                {confirmDialog.type === 'delete'
+                  ? <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                  : <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                }
+              </div>
+              <h2 className="text-white font-black text-lg tracking-tight">{confirmDialog.title}</h2>
+            </div>
+
+            {/* Body */}
+            <div className="px-7 py-6">
+              <p className="text-slate-800 font-semibold text-base mb-2">{confirmDialog.message}</p>
+              {confirmDialog.detail && (
+                <div className={`mt-3 p-3 rounded-xl text-xs font-medium whitespace-pre-line ${confirmDialog.type === 'delete' ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                  {confirmDialog.detail}
+                </div>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div className="px-7 pb-6 flex gap-3">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className={`flex-1 py-3 rounded-xl text-white font-black transition-all active:scale-95 shadow-lg ${
+                  confirmDialog.type === 'delete'
+                    ? 'bg-red-600 hover:bg-red-700 shadow-red-200'
+                    : 'bg-[#1a3a6b] hover:bg-[#1e4480] shadow-blue-200'
+                }`}
+              >
+                {confirmDialog.type === 'delete' ? 'Xác nhận xóa' : 'Đồng ý lưu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       <div 
         className={cn(
           "fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity duration-300",
@@ -4180,7 +4304,45 @@ function SummaryView({
   const totalLen = designLayerStats.reduce((s, g) => s + g.totalLength, 0);
   const totalAvgSpd = totalDur > 0 ? totalLen / totalDur : 0;
 
-  if (history.length === 0) return (
+  // ── Phát hiện biên bản thiếu dữ liệu ──
+  interface MissingDataRecord {
+    result: ExtractionResult;
+    missing: { type: 'image' | 'excel' | 'supabase'; label: string }[];
+  }
+  const missingDataRecords: MissingDataRecord[] = history
+    .map(r => {
+      const missing: MissingDataRecord['missing'] = [];
+      // Thiếu ảnh/PDF gốc
+      if (!r.fileUrl && !r.fileName) {
+        missing.push({ type: 'image', label: 'Ảnh / PDF gốc' });
+      }
+      // Thiếu file Excel trên GitHub
+      if (!r.excelUrl) {
+        missing.push({ type: 'excel', label: 'File Excel GitHub' });
+      }
+      // Thiếu dữ liệu địa chất (layers rỗng hoặc không có)
+      if (!r.layers || r.layers.length === 0) {
+        missing.push({ type: 'supabase', label: 'Dữ liệu địa chất (layers)' });
+      }
+      return missing.length > 0 ? { result: r, missing } : null;
+    })
+    .filter(Boolean) as MissingDataRecord[];
+
+  // Badge màu cho từng loại thiếu
+  const missingBadge = (type: 'image' | 'excel' | 'supabase') => {
+    if (type === 'image')    return 'bg-purple-100 text-purple-700 border-purple-200';
+    if (type === 'excel')    return 'bg-orange-100 text-orange-700 border-orange-200';
+    if (type === 'supabase') return 'bg-red-100 text-red-700 border-red-200';
+    return 'bg-slate-100 text-slate-600';
+  };
+  const missingIcon = (type: 'image' | 'excel' | 'supabase') => {
+    if (type === 'image')    return '🖼️';
+    if (type === 'excel')    return '📊';
+    if (type === 'supabase') return '🗄️';
+    return '❓';
+  };
+
+
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
       <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
@@ -4230,6 +4392,23 @@ function SummaryView({
           </div>
         ))}
       </div>
+
+      {/* ── Banner tổng hợp cảnh báo (hiện khi có vấn đề) ── */}
+      {(missingDataRecords.length > 0 || duplicateGroups.length > 0 || inconsistentRecords.length > 0 || slowPiles.length > 0) && (
+        <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-amber-600 shrink-0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span className="text-[11px] font-bold text-amber-700 flex-1">Hệ thống phát hiện một số vấn đề cần xử lý:</span>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {missingDataRecords.length > 0 && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-violet-600 text-white">{missingDataRecords.length} thiếu dữ liệu</span>}
+            {duplicateGroups.length > 0    && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500 text-white">{duplicateGroups.length} trùng lặp</span>}
+            {inconsistentRecords.length > 0 && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-red-600 text-white">{inconsistentRecords.length} địa chất lỗi</span>}
+            {slowPiles.length > 0           && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-orange-500 text-white">{slowPiles.length} vận tốc thấp</span>}
+          </div>
+        </div>
+      )}
 
       {/* ── Cảnh báo trùng Hạng mục + Số hiệu cọc ── */}
       {/* ── Cảnh báo không nhất quán địa chất ── */}
@@ -4370,6 +4549,101 @@ function SummaryView({
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Cảnh báo biên bản thiếu dữ liệu ── */}
+      {missingDataRecords.length > 0 && (
+        <div className="bg-violet-50 border border-violet-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-1.5 bg-violet-600 rounded-lg shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-white">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-[11px] font-black text-violet-800 uppercase tracking-widest">
+                Cảnh báo biên bản thiếu dữ liệu
+              </h4>
+              <p className="text-[10px] text-violet-600 font-medium mt-0.5">
+                Các biên bản dưới đây thiếu ảnh gốc, file Excel hoặc dữ liệu địa chất. Hãy cập nhật để đảm bảo đồng bộ đầy đủ.
+              </p>
+            </div>
+            <span className="bg-violet-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full shrink-0">
+              {missingDataRecords.length} biên bản
+            </span>
+          </div>
+
+          {/* Thống kê nhanh theo loại */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {(() => {
+              const imgCount   = missingDataRecords.filter(r => r.missing.some(m => m.type === 'image')).length;
+              const xlsxCount  = missingDataRecords.filter(r => r.missing.some(m => m.type === 'excel')).length;
+              const layerCount = missingDataRecords.filter(r => r.missing.some(m => m.type === 'supabase')).length;
+              return (
+                <>
+                  {imgCount   > 0 && <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-purple-100 text-purple-700 border-purple-200">🖼️ Thiếu ảnh/PDF: <strong>{imgCount}</strong></span>}
+                  {xlsxCount  > 0 && <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-orange-100 text-orange-700 border-orange-200">📊 Thiếu Excel: <strong>{xlsxCount}</strong></span>}
+                  {layerCount > 0 && <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-red-100 text-red-700 border-red-200">🗄️ Thiếu địa chất: <strong>{layerCount}</strong></span>}
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="space-y-2">
+            {missingDataRecords.map(({ result: rec, missing }) => (
+              <div key={rec.id} className="bg-white border border-violet-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-violet-50 transition-colors group">
+                  {/* Số thứ tự */}
+                  <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-black text-violet-700">{rec.stt ?? '—'}</span>
+                  </div>
+
+                  {/* Thông tin biên bản */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[12px] font-black text-slate-800 truncate max-w-[180px]">
+                        {rec.componentName || '(Chưa có tên)'}
+                      </span>
+                      {rec.pileId && (
+                        <span className="text-[10px] font-black text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full shrink-0">
+                          {rec.pileId}
+                        </span>
+                      )}
+                      {rec.diameter && (
+                        <span className="text-[10px] text-slate-500 font-bold shrink-0">{rec.diameter}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {/* Badges thiếu dữ liệu */}
+                      {missing.map(m => (
+                        <span key={m.type} className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${missingBadge(m.type)}`}>
+                          {missingIcon(m.type)} {m.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => onSelectResult(rec)}
+                      className="px-3 py-1.5 bg-violet-50 text-violet-700 rounded-lg text-[10px] font-black uppercase hover:bg-violet-600 hover:text-white transition-all border border-violet-200"
+                    >
+                      Xem
+                    </button>
+                    <button
+                      onClick={() => onEdit(rec)}
+                      className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
+                    >
+                      Sửa
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
