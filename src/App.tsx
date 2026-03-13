@@ -5013,7 +5013,6 @@ function SummaryView({
               <tr className="bg-[#1e3a8a] text-white">
                 <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-12 text-center">STT</th>
                 <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Đường kính</th>
-                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Ký hiệu ĐC</th>
                 <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20">Mô tả lớp thiết kế tương ứng</th>
                 <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số cọc</th>
                 <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số mẫu</th>
@@ -5034,11 +5033,6 @@ function SummaryView({
                   <tr key={i} className="hover:bg-slate-50 transition-all group">
                     <td className="px-4 py-4 text-[11px] font-bold text-blue-600 text-center border border-slate-200">{i + 1}</td>
                     <td className="px-4 py-4 text-[11px] font-black text-slate-700 text-center border border-slate-200">{stat.diameter}</td>
-                    <td className="px-4 py-4 text-center border border-slate-200">
-                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-black text-[11px] border border-slate-200">
-                        {stat.designLayerCode || '—'}
-                      </span>
-                    </td>
                     <td className="px-4 py-4 text-[11px] font-medium text-slate-600 border border-slate-200 leading-relaxed italic">
                       {stat.layerDesign}
                     </td>
@@ -5072,7 +5066,7 @@ function SummaryView({
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-black text-slate-900 border-t-2 border-slate-200">
-                <td colSpan={4} className="px-6 py-4 text-[11px] uppercase tracking-[0.2em] text-left font-black border border-slate-200">Tổng hợp toàn bộ</td>
+                <td colSpan={3} className="px-6 py-4 text-[11px] uppercase tracking-[0.2em] text-left font-black border border-slate-200">Tổng hợp toàn bộ</td>
                 <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200">{allPileIdsCount}</td>
                 <td className="px-4 py-4 text-[12px] text-center border border-slate-200">{totalSegments}</td>
                 <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200 bg-blue-50/30">{totalLen.toFixed(2)}</td>
