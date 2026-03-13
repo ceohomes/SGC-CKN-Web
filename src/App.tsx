@@ -21,6 +21,7 @@ import {
   X,
   Settings,
   Save,
+  RefreshCw,
   Key,
   RotateCcw,
   ImageIcon,
@@ -1180,6 +1181,7 @@ export default function App() {
   const [githubRepoInput, setGithubRepoInput] = useState('construction-reports');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<ExtractionResult | null>(null);
+  const [downloadingExcelId, setDownloadingExcelId] = useState<string | null>(null);
 
   // Bộ lọc Sheet 1
   const [filterProject, setFilterProject] = useState('');
@@ -1791,8 +1793,18 @@ export default function App() {
         titleRow.height = 25;
         applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
         ws1.mergeCells(startRow, 1, startRow, 11);
-        ws1.addImage(imgId, { tl: { col: 0, row: startRow }, ext: { width: 850, height: 1100 } });
-        for (let i = startRow + 1; i <= startRow + 60; i++) ws1.getRow(i).height = 20;
+        
+        // tl.row là 0-indexed: startRow (1-indexed) → startRow-1 là dòng tiêu đề (0-indexed)
+        // Ảnh đặt bắt đầu từ dòng NGAY SAU tiêu đề → tl.row = startRow (0-indexed)
+        ws1.addImage(imgId, {
+          tl: { col: 0, row: startRow }, // startRow (0-indexed) = dòng ngay sau tiêu đề (startRow là 1-indexed row)
+          ext: { width: 850, height: 1100 },
+        });
+        
+        // Đảm bảo các dòng có chiều cao đủ để hiển thị ảnh
+        for (let i = startRow + 1; i <= startRow + 60; i++) {
+          ws1.getRow(i).height = 20;
+        }
       } else {
         // Nếu thiếu ảnh, thêm dòng cảnh báo vào Excel
         const startRow = 11 + result.layers.length + 2;
@@ -1854,10 +1866,16 @@ export default function App() {
       });
 
       const buffer = await wb.xlsx.writeBuffer();
-      const uint8 = new Uint8Array(buffer as ArrayBuffer);
-      let bin = '';
-      for (let i = 0; i < uint8.length; i++) bin += String.fromCharCode(uint8[i]);
-      return btoa(bin);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result as string;
+          resolve(res.split(',')[1]);
+        };
+        reader.readAsDataURL(blob);
+      });
+      return base64;
     } catch (e) {
       console.error('generateExcelBase64 error:', e);
       return null;
@@ -1880,23 +1898,27 @@ export default function App() {
     return { valid: conflicts.length === 0, conflicts };
   };
 
-  const ensureImageData = async (result: ExtractionResult): Promise<{ base64: string; ext: string } | null> => {
+  const ensureImageData = async (result: ExtractionResult, creds?: { token: string } | null): Promise<{ base64: string; ext: string } | null> => {
     try {
+      console.log(`[ensureImageData] Bắt đầu xử lý cho ID: ${result.id}, fileName: ${result.fileName}`);
+      
       // 1. Ưu tiên dùng _base64 nếu có (đối với file mới upload chưa lưu hoặc còn cache)
       if (result._base64) {
+        console.log(`[ensureImageData] Sử dụng _base64 từ bộ nhớ tạm`);
         const parts = result._base64.split(',');
         if (parts.length > 1) {
           const mime = result._mimeType || '';
           // Nếu là PDF thì convert sang ảnh
           if (mime.includes('pdf') || result.fileName?.toLowerCase().endsWith('.pdf')) {
             try {
+              console.log(`[ensureImageData] Đang chuyển đổi PDF sang ảnh...`);
               const imgDataUrl = await convertPdfToImage(result._base64);
               const imgParts = imgDataUrl.split(',');
               if (imgParts.length > 1) {
                 return { base64: imgParts[1], ext: 'jpeg' };
               }
             } catch (e) {
-              console.error('convertPdfToImage failed from _base64:', e);
+              console.error('[ensureImageData] convertPdfToImage failed from _base64:', e);
             }
           } else {
             const ext = mime.includes('png') ? 'png' : 'jpeg';
@@ -1908,38 +1930,102 @@ export default function App() {
       // 2. Nếu không có _base64, thử lấy từ fileUrl (GitHub)
       let url = result.fileUrl;
       if (url) {
+        console.log(`[ensureImageData] Đang tải ảnh từ URL: ${url}`);
         // Chuẩn hoá URL về dạng raw.githubusercontent.com nếu cần
         if (url.includes('github.com') && url.includes('/blob/')) {
           url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
         }
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Fetch fileUrl failed');
-        const blob = await res.blob();
-        const base64Full = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-        
-        const isPdf = url.toLowerCase().split('?')[0].endsWith('.pdf') || blob.type.includes('pdf');
-        if (isPdf) {
-          const imgDataUrl = await convertPdfToImage(base64Full);
-          const imgParts = imgDataUrl.split(',');
-          if (imgParts.length > 1) {
-            return { base64: imgParts[1], ext: 'jpeg' };
+        // Chiến lược 1: Dùng proxy server-side (tránh CORS, hỗ trợ token từ env)
+        try {
+          const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(url)}`);
+          if (proxyResp.ok) {
+            const buf = await proxyResp.arrayBuffer();
+            if (buf.byteLength > 100) {
+              console.log(`[ensureImageData] Proxy thành công, size=${buf.byteLength}`);
+              return await processBlob(new Blob([buf]), url);
+            }
           }
-        } else {
-          const parts = base64Full.split(',');
-          if (parts.length > 1) {
-            const ext = blob.type.includes('png') ? 'png' : 'jpeg';
-            return { base64: parts[1], ext };
-          }
+          console.warn(`[ensureImageData] Proxy trả về không hợp lệ, thử phương án khác...`);
+        } catch (proxyErr) {
+          console.warn('[ensureImageData] Proxy thất bại:', proxyErr);
         }
+
+        // Chiến lược 2: Fetch trực tiếp với token
+        try {
+          const headers: HeadersInit = {};
+          if (creds?.token) {
+            headers['Authorization'] = `token ${creds.token}`;
+          }
+          const res = await fetch(url, { headers, cache: 'no-store' });
+          if (res.ok) {
+            const buf = await res.arrayBuffer();
+            if (buf.byteLength > 100) {
+              console.log(`[ensureImageData] Fetch trực tiếp thành công, size=${buf.byteLength}`);
+              return await processBlob(new Blob([buf]), url);
+            }
+          }
+          console.warn(`[ensureImageData] Fetch trực tiếp thất bại: ${res.status}`);
+        } catch (directErr) {
+          console.warn('[ensureImageData] Fetch trực tiếp lỗi:', directErr);
+        }
+
+        // Chiến lược 3: GitHub Contents API với Accept: raw
+        try {
+          const m = url.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/);
+          if (m) {
+            const [, owner, repo, branch, filePath] = m;
+            const apiHeaders: HeadersInit = { 'Accept': 'application/vnd.github.v3.raw' };
+            if (creds?.token) apiHeaders['Authorization'] = `token ${creds.token}`;
+            const apiResp = await fetch(
+              `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+              { headers: apiHeaders }
+            );
+            if (apiResp.ok) {
+              const buf = await apiResp.arrayBuffer();
+              if (buf.byteLength > 100) {
+                console.log(`[ensureImageData] GitHub API thành công, size=${buf.byteLength}`);
+                return await processBlob(new Blob([buf]), url);
+              }
+            }
+          }
+        } catch (apiErr) {
+          console.warn('[ensureImageData] GitHub API thất bại:', apiErr);
+        }
+
+        console.error(`[ensureImageData] Tất cả chiến lược thất bại cho URL: ${url}`);
       }
     } catch (e) {
-      console.error('ensureImageData failed:', e);
+      console.error('[ensureImageData] failed:', e);
+    }
+    return null;
+  };
+
+  const processBlob = async (blob: Blob, url: string): Promise<{ base64: string; ext: string } | null> => {
+    const base64Full = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    
+    const isPdf = url.toLowerCase().split('?')[0].endsWith('.pdf') || blob.type.includes('pdf');
+    if (isPdf) {
+      try {
+        const imgDataUrl = await convertPdfToImage(base64Full);
+        const imgParts = imgDataUrl.split(',');
+        if (imgParts.length > 1) {
+          return { base64: imgParts[1], ext: 'jpeg' };
+        }
+      } catch (e) {
+        console.error('[ensureImageData] convertPdfToImage from blob failed:', e);
+      }
+    } else {
+      const parts = base64Full.split(',');
+      if (parts.length > 1) {
+        const ext = blob.type.includes('png') ? 'png' : 'jpeg';
+        return { base64: parts[1], ext };
+      }
     }
     return null;
   };
@@ -2038,7 +2124,7 @@ export default function App() {
     // 1b. Tự động tạo Excel và upload lên GitHub (path cố định theo id, luôn ghi đè file cũ)
     if (isGithubConnected && githubCreds) {
       try {
-        const autoImg = await ensureImageData(finalResult);
+        const autoImg = await ensureImageData(finalResult, githubCreds);
         
         // Kiểm soát nghiêm ngặt: Nếu có file gốc mà không lấy được ảnh để nhúng vào Excel thì cảnh báo
         if ((finalResult._base64 || finalResult.fileUrl) && !autoImg) {
@@ -2224,6 +2310,213 @@ export default function App() {
     setIsEditModalOpen(true);
   };
 
+  const handleRefreshExcel = async (item: ExtractionResult) => {
+    if (!isGithubConnected || !githubCreds) {
+      alert("⚠️ Vui lòng kết nối GitHub trong cài đặt để thực hiện chức năng này.");
+      return;
+    }
+
+    try {
+      const autoImg = await ensureImageData(item, githubCreds);
+      const excelBase64 = await generateExcelBase64(item, autoImg);
+      
+      if (excelBase64) {
+        const newUrl = await upsertExcelToGitHub(item.id, excelBase64, githubCreds, item.excelUrl, item);
+        if (newUrl) {
+          if (supabase) {
+             await supabase.from('drill_extractions').update({ excelUrl: newUrl }).eq('id', item.id);
+          }
+          setHistory(prev => prev.map(r => r.id === item.id ? { ...r, excelUrl: newUrl } : r));
+          alert("✅ Đã làm mới file Excel thành công!");
+        }
+      }
+    } catch (e) {
+      console.error("Refresh Excel failed:", e);
+      alert("❌ Lỗi khi làm mới file Excel.");
+    }
+  };
+
+  // Tải Excel ngay tại browser: fetch ảnh → tạo Excel với ảnh → download
+  // Đảm bảo luôn có ảnh dù file trên GitHub thiếu ảnh
+  const handleDownloadExcel = async (item: ExtractionResult) => {
+    setDownloadingExcelId(item.id);
+    try {
+      // Lấy ảnh với nhiều fallback (proxy → trực tiếp → GitHub API)
+      const autoImg = await ensureImageData(item, githubCreds);
+      
+      // Tạo Excel buffer ngay trong browser rồi download
+      const ExcelJS = await loadExcelJS();
+      const argb = (hex: string) => 'FF' + hex.toUpperCase();
+      const thinBorder = (color = 'CCCCCC') => ({
+        top: { style: 'thin' as const, color: { argb: argb(color) } },
+        bottom: { style: 'thin' as const, color: { argb: argb(color) } },
+        left: { style: 'thin' as const, color: { argb: argb(color) } },
+        right: { style: 'thin' as const, color: { argb: argb(color) } },
+      });
+      const applyCell = (cell: any, value: any, opts: { bg?: string; fontColor?: string; bold?: boolean; sz?: number; align?: string; wrap?: boolean; border?: any }) => {
+        cell.value = value;
+        cell.font = { name: 'Arial', size: opts.sz ?? 10, bold: opts.bold ?? false, color: { argb: argb(opts.fontColor ?? '000000') } };
+        if (opts.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb(opts.bg) } };
+        cell.alignment = { horizontal: (opts.align ?? 'center') as any, vertical: 'middle', wrapText: opts.wrap ?? false };
+        cell.border = opts.border ?? thinBorder();
+      };
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'SGC-CKN'; wb.created = new Date();
+
+      let gc = 0; let pk = '';
+      const rowColorIdx = item.layers.map((layer) => {
+        const key = layer.layerDesign?.trim() || '__';
+        if (key !== pk) { gc++; pk = key; }
+        return (gc - 1) % GROUP_COLORS.length;
+      });
+
+      // Sheet 1: Chi tiết địa chất
+      const ws1 = wb.addWorksheet('Chi tiết địa chất');
+      ws1.columns = [
+        { width: 14 }, { width: 11 }, { width: 46 }, { width: 13 }, { width: 13 },
+        { width: 11 }, { width: 11 }, { width: 11 }, { width: 9 }, { width: 9 }, { width: 28 },
+      ];
+      const infoItems = [
+        ['Dự án', item.project], ['Hạng mục', item.item],
+        ['Tên bộ phận', item.componentName], ['Số hiệu cọc', item.pileId],
+        ['Biên bản số', item.reportNumber], ['Đường kính', item.diameter],
+        ['Bắt đầu thi công', item.constructionStart], ['Kết thúc thi công', item.constructionEnd],
+      ];
+      infoItems.forEach(([k, v]) => {
+        const row = ws1.addRow([k, v]);
+        row.height = 18;
+        applyCell(row.getCell(1), k, { bg: 'EFF6FF', fontColor: '1E3A6E', bold: true, align: 'left', border: thinBorder('DBEAFE') });
+        applyCell(row.getCell(2), v, { bg: 'FFFFFF', fontColor: '374151', align: 'left', border: thinBorder('DBEAFE') });
+        ws1.mergeCells(row.number, 2, row.number, 11);
+      });
+      const blankRow = ws1.addRow([]); blankRow.height = 6;
+      const hdrCols = ['Địa chất TT', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const hdrRow = ws1.addRow(hdrCols);
+      hdrRow.height = 36;
+      hdrCols.forEach((h, ci) => {
+        applyCell(hdrRow.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 || ci === 10 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
+      item.layers.forEach((layer, ri) => {
+        const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
+        const spd = layer.speedMph;
+        const isSlowSpd = spd > 0 && spd <= 1;
+        const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
+        const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
+        const vals = [
+          layer.actualGeology, item.diameter, layer.layerDesign,
+          layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
+          layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
+          layer.elevationFrom, layer.elevationTo,
+          parseFloat(layer.durationHours.toFixed(2)),
+          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(spd.toFixed(2)),
+          layer.notes || '',
+        ];
+        const dataRow = ws1.addRow(vals);
+        dataRow.height = 36;
+        vals.forEach((v, ci) => {
+          const isSpd = ci === 9;
+          applyCell(dataRow.getCell(ci + 1), v, {
+            bg: isSpd ? spdBg : bg,
+            fontColor: isSpd ? spdFontColor : fontColor,
+            bold: isSpd && isSlowSpd,
+            align: ci === 2 || ci === 10 ? 'left' : 'center',
+            wrap: ci === 2 || ci === 3 || ci === 4 || ci === 10,
+            border: thinBorder(),
+          });
+        });
+      });
+
+      // Nhúng ảnh
+      if (autoImg) {
+        try {
+          const imgId = wb.addImage({ base64: autoImg.base64, extension: autoImg.ext as any });
+          const startRow = 11 + item.layers.length + 2;
+          const titleRow = ws1.getRow(startRow);
+          titleRow.height = 25;
+          applyCell(titleRow.getCell(1), 'ẢNH BIÊN BẢN GỐC', { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 12, align: 'center', border: thinBorder('1A3A6B') });
+          ws1.mergeCells(startRow, 1, startRow, 11);
+          ws1.addImage(imgId, { tl: { col: 0, row: startRow }, ext: { width: 850, height: 1100 } });
+          for (let i = startRow + 1; i <= startRow + 60; i++) ws1.getRow(i).height = 20;
+        } catch (imgErr) {
+          console.error('[handleDownloadExcel] Lỗi nhúng ảnh vào Excel:', imgErr);
+          // Tiếp tục xuất Excel dù lỗi ảnh
+        }
+      } else {
+        const startRow = 11 + item.layers.length + 2;
+        const titleRow = ws1.getRow(startRow);
+        titleRow.height = 25;
+        applyCell(titleRow.getCell(1), '⚠️ CẢNH BÁO: THIẾU HÌNH ẢNH BIÊN BẢN GỐC TRONG DỮ LIỆU', { bg: 'FEE2E2', fontColor: '991B1B', bold: true, sz: 12, align: 'center', border: thinBorder('991B1B') });
+        ws1.mergeCells(startRow, 1, startRow, 11);
+      }
+
+      // Sheet 2: Tổng hợp lớp thiết kế
+      const ws2 = wb.addWorksheet('Tổng hợp lớp thiết kế');
+      ws2.columns = [{ width: 6 }, { width: 11 }, { width: 46 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 12 }, { width: 12 }];
+      const hdr2 = ['STT', 'Đường kính', 'Lớp Thiết Kế', 'Số đoạn', 'Cao độ từ (m)', 'Cao độ đến (m)', 'Tổng T.Gian (h)', 'Tổng Dài (m)', 'V TB (m/h)'];
+      const hdrRow2 = ws2.addRow(hdr2);
+      hdrRow2.height = 36;
+      hdr2.forEach((h, ci) => {
+        applyCell(hdrRow2.getCell(ci + 1), h, { bg: '1A3A6B', fontColor: 'FFFFFF', bold: true, sz: 11, align: ci === 2 ? 'left' : 'center', wrap: true, border: thinBorder('FFFFFF') });
+      });
+      const groups2: any[] = [];
+      let gc2b = 0; let pk2b = '';
+      item.layers.forEach((layer) => {
+        const key = layer.layerDesign?.trim() || '(Chưa có)';
+        if (key !== pk2b) { gc2b++; pk2b = key; }
+        const ci2 = (gc2b - 1) % GROUP_COLORS.length;
+        const last = groups2[groups2.length - 1];
+        if (last && last.layerDesign === key) {
+          last.segments++; last.elevationTo = layer.elevationTo;
+          last.totalDuration += layer.durationHours; last.totalLength += layer.lengthMeters;
+        } else {
+          groups2.push({ layerDesign: key, segments: 1, elevationFrom: layer.elevationFrom, elevationTo: layer.elevationTo, totalDuration: layer.durationHours, totalLength: layer.lengthMeters, colorIdx: ci2 });
+        }
+      });
+      groups2.forEach(g => { g.avgSpeed = g.totalDuration > 0 ? g.totalLength / g.totalDuration : 0; });
+      const totalDur2 = groups2.reduce((s, g) => s + g.totalDuration, 0);
+      const totalLen2b = groups2.reduce((s, g) => s + g.totalLength, 0);
+      const totalAvgSpd2 = totalDur2 > 0 ? totalLen2b / totalDur2 : 0;
+      groups2.forEach((g, i) => {
+        const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
+        const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
+        const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
+        const vals2 = [i + 1, item.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const r2 = ws2.addRow(vals2);
+        r2.height = 32;
+        vals2.forEach((v, ci) => {
+          const isSpd = ci === 8;
+          applyCell(r2.getCell(ci + 1), v, { bg: isSpd ? spdBg : bg, fontColor: isSpd ? (isSlowSpd ? 'FFFFFF' : 'C2410C') : fontColor, bold: isSpd && isSlowSpd, align: ci === 2 ? 'left' : 'center', wrap: ci === 2, border: thinBorder() });
+        });
+      });
+      const totVals2 = ['TỔNG CỘNG', '', '', item.layers.length,
+        item.layers.length > 0 ? parseFloat(item.layers[0].elevationFrom.toFixed(2)) : '',
+        item.layers.length > 0 ? parseFloat(item.layers[item.layers.length - 1].elevationTo.toFixed(2)) : '',
+        parseFloat(totalDur2.toFixed(2)), parseFloat(totalLen2b.toFixed(2)), parseFloat(totalAvgSpd2.toFixed(2))];
+      const totRow2 = ws2.addRow(totVals2);
+      totRow2.height = 28;
+      totVals2.forEach((v, ci) => {
+        applyCell(totRow2.getCell(ci + 1), v, { bg: 'E2E8F0', fontColor: '1E3A6E', bold: true, sz: 11, align: ci === 0 ? 'left' : 'center', border: { ...thinBorder(), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } } });
+      });
+
+      // Xuất file
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const dlUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = dlUrl;
+      a.download = `${buildExcelFileName(item)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(dlUrl);
+    } catch (e) {
+      console.error('[handleDownloadExcel] Lỗi:', e);
+      alert('❌ Không thể tải file Excel. Vui lòng thử lại hoặc kiểm tra kết nối mạng.');
+    } finally {
+      setDownloadingExcelId(null);
+    }
+  };
+
   const handleSaveEdit = (updatedResult: ExtractionResult) => {
     // ✅ Optimistic UI: cập nhật giao diện NGAY LẬP TỨC
     setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
@@ -2238,7 +2531,7 @@ export default function App() {
       if (isGithubConnected && githubCreds) {
         try {
           // Lấy ảnh (từ cache hoặc fetch từ GitHub) để nhúng vào Excel
-          const autoImg = await ensureImageData(finalResult);
+          const autoImg = await ensureImageData(finalResult, githubCreds);
           
           if ((finalResult._base64 || finalResult.fileUrl) && !autoImg) {
             const confirmMsg = `⚠️ [Chỉnh sửa] Không thể trích xuất hình ảnh từ biên bản "${finalResult.fileName || 'này'}". \n\nFile Excel cập nhật sẽ KHÔNG có hình ảnh đính kèm. Bạn có chắc chắn muốn tiếp tục không?`;
@@ -2966,16 +3259,32 @@ export default function App() {
                             </td>
                             <td className="text-center">
                               {item.excelUrl ? (
-                                <a
-                                  href={item.excelUrl}
-                                  download
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-black uppercase tracking-wide hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                                  title="Tải file Excel"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <ArrowDownToLine size={12} />
-                                  Excel
-                                </a>
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadExcel(item); }}
+                                    disabled={downloadingExcelId === item.id}
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[11px] font-black uppercase tracking-wide transition-all shadow-sm",
+                                      downloadingExcelId === item.id
+                                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                        : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-600 hover:text-white"
+                                    )}
+                                    title="Tải file Excel (có ảnh biên bản)"
+                                  >
+                                    {downloadingExcelId === item.id ? (
+                                      <><svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>...</>
+                                    ) : (
+                                      <><ArrowDownToLine size={12} />Excel</>
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleRefreshExcel(item); }}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                                    title="Làm mới file Excel trên GitHub (nhúng lại ảnh)"
+                                  >
+                                    <RefreshCw size={12} />
+                                  </button>
+                                </div>
                               ) : (
                                 <span className="text-[11px] text-slate-300 font-medium">—</span>
                               )}
@@ -4381,7 +4690,7 @@ function EditSplitView({
 
       // ── Chiến lược 1: Cloudflare Proxy (đọc GITHUB_TOKEN từ server, không CORS) ──
       try {
-        const proxyResp = await fetch(`/api/proxy/github?url=${encodeURIComponent(rawUrl)}`);
+        const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(rawUrl)}`);
         if (proxyResp.ok) {
           const buf = await proxyResp.arrayBuffer();
           if (buf.byteLength > 100) return await processBuffer(buf);
