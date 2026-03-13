@@ -4853,7 +4853,16 @@ function SummaryView({
 }) {
   const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
-  const [weeklyYear, setWeeklyYear] = useState<number>(new Date().getFullYear());
+
+  // Năm mặc định = năm có dữ liệu mới nhất (không phải năm hiện tại)
+  const defaultYear = React.useMemo(() => {
+    for (const r of history) {
+      const d = parseViDate(r.constructionEnd);
+      if (d) return d.getFullYear();
+    }
+    return new Date().getFullYear();
+  }, [history]);
+  const [weeklyYear, setWeeklyYear] = useState<number>(defaultYear);
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
   // Đếm tổng số biên bản (mỗi file/biên bản được coi là 1 thực thể cọc trong thống kê này nếu người dùng muốn khớp với số lượng file đã upload)
   const totalPiles = history.length;
@@ -5106,12 +5115,19 @@ function SummaryView({
     }
   }, [weekKeys]);
 
-  // Auto-select correct year based on available data
+  // Auto-select correct year based on available data (handles late-loading data)
   React.useEffect(() => {
     if (availableYears.length > 0 && !availableYears.includes(weeklyYear)) {
       setWeeklyYear(availableYears[0]);
     }
   }, [availableYears]);
+
+  // Sync year when defaultYear resolves from data
+  React.useEffect(() => {
+    if (defaultYear !== new Date().getFullYear()) {
+      setWeeklyYear(defaultYear);
+    }
+  }, [defaultYear]);
 
   const selectedWeekRecords = selectedWeekKey ? (weeklyData[selectedWeekKey] || []) : [];
 
@@ -5180,54 +5196,61 @@ function SummaryView({
         <div className="space-y-5 animate-in fade-in duration-300">
           {/* Week selector header */}
           <div className="bg-gradient-to-br from-[#1a3a6b] to-[#1e4480] rounded-2xl p-5 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/10 rounded-xl"><Calendar size={18} className="text-orange-300" /></div>
                 <div>
                   <h4 className="text-[14px] font-black text-white uppercase tracking-wide">Báo Cáo Tuần</h4>
-                  <p className="text-[10px] text-blue-200 font-medium mt-0.5">Chu kỳ Thứ 6 – Thứ 5 · So sánh các dự án</p>
+                  <p className="text-[10px] text-blue-200 font-medium mt-0.5">Chu kỳ Thứ 6 – Thứ 5 · So sánh các dự án · Ngày ghi nhận: Ngày kết thúc thi công</p>
                 </div>
               </div>
-              {/* Year + Week selectors */}
-              <div className="flex items-center gap-3">
+              {/* Year + Week selectors — luôn hiển thị */}
+              <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Năm:</span>
                   <select
                     value={weeklyYear}
                     onChange={e => { setWeeklyYear(+e.target.value); setSelectedWeekKey(''); }}
-                    className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
+                    className="text-[12px] font-bold bg-white/15 border border-white/30 text-white rounded-lg px-3 py-2 focus:outline-none cursor-pointer"
                   >
                     {availableYears.map(y => <option key={y} value={y} className="text-slate-900 bg-white">{y}</option>)}
                   </select>
                 </div>
-                {weekKeys.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Tuần:</span>
-                    <select
-                      value={selectedWeekKey}
-                      onChange={e => setSelectedWeekKey(e.target.value)}
-                      className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer min-w-[200px]"
-                    >
-                      {weekKeys.map(key => {
-                        const ws = getWeekStartDate(key);
-                        const startOfYear = new Date(ws.getFullYear(), 0, 1);
-                        const weekNo = Math.ceil(((ws.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-                        const recs = weeklyData[key] || [];
-                        return (
-                          <option key={key} value={key} className="text-slate-900 bg-white">
-                            Tuần {weekNo} · {getWeekLabel(ws)} ({recs.length} cọc)
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Tuần:</span>
+                  <select
+                    value={selectedWeekKey}
+                    onChange={e => setSelectedWeekKey(e.target.value)}
+                    disabled={weekKeys.length === 0}
+                    className="text-[12px] font-bold bg-white/15 border border-white/30 text-white rounded-lg px-3 py-2 focus:outline-none cursor-pointer min-w-[240px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {weekKeys.length === 0
+                      ? <option value="" className="text-slate-900 bg-white">— Không có dữ liệu năm {weeklyYear} —</option>
+                      : weekKeys.map(key => {
+                          const ws = getWeekStartDate(key);
+                          const startOfYear = new Date(ws.getFullYear(), 0, 1);
+                          const weekNo = Math.ceil(((ws.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                          const we = new Date(ws); we.setDate(we.getDate() + 6);
+                          const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+                          const recs = weeklyData[key] || [];
+                          return (
+                            <option key={key} value={key} className="text-slate-900 bg-white">
+                              Tuần {weekNo} · T6 {fmt(ws)} – T5 {fmt(we)} · {recs.length} cọc
+                            </option>
+                          );
+                        })
+                    }
+                  </select>
+                </div>
               </div>
             </div>
 
-            {/* Week pills */}
+            {/* Week pills — dải pills cho tổng quan nhanh */}
             {weekKeys.length === 0 ? (
-              <div className="text-center py-6 text-blue-200 text-[12px] font-medium">Không có dữ liệu thi công trong năm {weeklyYear}</div>
+              <div className="flex items-center justify-center gap-3 py-5 bg-white/5 rounded-xl border border-white/10">
+                <AlertCircle size={16} className="text-blue-300"/>
+                <span className="text-blue-200 text-[12px] font-medium">Không có dữ liệu thi công trong năm {weeklyYear}. Hãy chọn năm khác.</span>
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {weekKeys.map((key) => {
