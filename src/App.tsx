@@ -42,7 +42,8 @@ import {
   Search,
   ChevronDown,
   RotateCw,
-  FileDown
+  FileDown,
+  ArrowRight
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -270,6 +271,69 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
     wb.creator = 'SGC-CKN'; wb.created = new Date();
     const dateStr2 = new Date().toLocaleDateString('vi-VN');
 
+    // ── Sheet 0: Dữ liệu thi công (Bảng tổng hợp như UI) ──
+    const ws0 = wb.addWorksheet('Dữ liệu thi công');
+    ws0.columns = [
+      { width: 8 },   // STT
+      { width: 30 },  // Dự án
+      { width: 25 },  // Hạng mục
+      { width: 25 },  // Tên bộ phận
+      { width: 12 },  // Số hiệu
+      { width: 15 },  // Biên bản số
+      { width: 12 },  // Đường kính
+      { width: 18 },  // Bắt đầu
+      { width: 18 },  // Kết thúc
+      { width: 15 },  // Chiều dài (m)
+      { width: 15 },  // T.Gian TC (h)
+      { width: 15 },  // Vận tốc TB (m/h)
+      { width: 25 },  // File Dữ Liệu
+    ];
+
+    const r0_1 = ws0.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
+    r0_1.height = 30;
+    cell(r0_1.getCell(1), r0_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+    ws0.mergeCells(r0_1.number, 1, r0_1.number, 13);
+
+    const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'File Dữ Liệu'];
+    const r0_2 = ws0.addRow(HDRS0);
+    r0_2.height = 25;
+    HDRS0.forEach((h, ci) => cell(r0_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+    ws0.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+
+    rows.forEach((res, idx) => {
+      const reportStt = (res as any).displayStt || (rows.length - idx);
+      const totalLen = (res.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0);
+      const totalDur = (res.layers || []).reduce((acc, l) => acc + l.durationHours, 0);
+      const avgSpeed = totalDur > 0 ? totalLen / totalDur : 0;
+
+      const excelUrl = res.excelUrl || '';
+      const row = ws0.addRow([
+        reportStt,
+        res.project,
+        res.item,
+        res.componentName,
+        res.pileId,
+        res.reportNumber,
+        res.diameter,
+        res.constructionStart,
+        res.constructionEnd,
+        parseFloat(totalLen.toFixed(2)),
+        parseFloat(totalDur.toFixed(2)),
+        parseFloat(avgSpeed.toFixed(2)),
+        excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
+      ]);
+      
+      for (let ci = 1; ci <= 13; ci++) {
+        const c = row.getCell(ci);
+        const isText = [2, 3, 4, 6].includes(ci);
+        const isLink = ci === 13;
+        cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, isText ? 'left' : 'center', 9, isText);
+        if (isLink && excelUrl) {
+          c.font = { ...c.font, underline: true };
+        }
+      }
+    });
+
     // ── Sheet 1: Chi tiết Các lớp địa chất ──
     const ws1 = wb.addWorksheet('Chi tiết Các lớp địa chất');
     ws1.columns = [
@@ -290,25 +354,27 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
       { width: 10 },  // Dài (m)
       { width: 10 },  // V (m/h)
       { width: 20 },  // Ghi chú
+      { width: 25 },  // File Dữ Liệu
     ];
 
     const r1_1 = ws1.addRow(['CHI TIẾT CÁC LỚP ĐỊA CHẤT - TẤT CẢ BIÊN BẢN']);
     r1_1.height = 30;
     cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws1.mergeCells(r1_1.number, 1, r1_1.number, 17);
+    ws1.mergeCells(r1_1.number, 1, r1_1.number, 18);
 
-    const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+    const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú', 'File Dữ Liệu'];
     const r2_1 = ws1.addRow(HDRS1);
     r2_1.height = 25;
     HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws1.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 17 } };
+    ws1.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 18 } };
     // Thiết lập Wrap Text cho các cột chứa văn bản dài
     [2, 3, 4, 6, 9, 17].forEach(col => {
       ws1.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     });
 
     rows.forEach((res, idx) => {
-      const reportStt = rows.length - idx;
+      const reportStt = (res as any).displayStt || (rows.length - idx);
+      const excelUrl = res.excelUrl || '';
       (res.layers || []).forEach((layer) => {
         const row = ws1.addRow([
           reportStt,
@@ -327,13 +393,19 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
           parseFloat(layer.durationHours.toFixed(2)),
           parseFloat(layer.lengthMeters.toFixed(2)),
           parseFloat(layer.speedMph.toFixed(2)),
-          layer.notes
+          layer.notes,
+          excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
         ]);
         const wrapCols = [2, 3, 4, 6, 9, 17];
-        row.eachCell((c, ci) => {
+        for (let ci = 1; ci <= 18; ci++) {
+          const c = row.getCell(ci);
           const shouldWrap = wrapCols.includes(ci);
-          cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
-        });
+          const isLink = ci === 18;
+          cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+          if (isLink && excelUrl) {
+            c.font = { ...c.font, underline: true };
+          }
+        }
       });
     });
 
@@ -353,25 +425,26 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
       { width: 12 },  // Tổng Dài (m)
       { width: 12 },  // Tổng T.Gian (h)
       { width: 12 },  // V.TB (m/h)
+      { width: 25 },  // File Dữ Liệu
     ];
 
     const r1_2 = ws2.addRow(['THỐNG KÊ THEO LỚP THIẾT KẾ - TỪNG BIÊN BẢN']);
     r1_2.height = 30;
     cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-    ws2.mergeCells(r1_2.number, 1, r1_2.number, 13);
+    ws2.mergeCells(r1_2.number, 1, r1_2.number, 14);
 
-    const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
+    const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)', 'File Dữ Liệu'];
     const r2_2 = ws2.addRow(HDRS2);
     r2_2.height = 25;
     HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-    ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+    ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 14 } };
     // Thiết lập Wrap Text cho các cột chứa văn bản dài
     [2, 3, 4, 6, 9].forEach(col => {
       ws2.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     });
 
     rows.forEach((res, idx) => {
-      const reportStt = rows.length - idx;
+      const reportStt = (res as any).displayStt || (rows.length - idx);
       const perReportStats: Record<string, any> = {};
       (res.layers || []).forEach(layer => {
         const key = `${layer.designLayerCode}|||${layer.layerDesign}`;
@@ -389,6 +462,7 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
         perReportStats[key].totalDur += layer.durationHours;
       });
 
+      const excelUrl = res.excelUrl || '';
       Object.values(perReportStats).forEach((stat: any) => {
         const avg = stat.totalDur > 0 ? stat.totalLen / stat.totalDur : 0;
         const row = ws2.addRow([
@@ -404,13 +478,19 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
           stat.segments,
           parseFloat(stat.totalLen.toFixed(2)),
           parseFloat(stat.totalDur.toFixed(2)),
-          parseFloat(avg.toFixed(2))
+          parseFloat(avg.toFixed(2)),
+          excelUrl ? { text: 'Link Excel', hyperlink: excelUrl } : ''
         ]);
         const wrapCols = [2, 3, 4, 6, 9];
-        row.eachCell((c, ci) => {
+        for (let ci = 1; ci <= 14; ci++) {
+          const c = row.getCell(ci);
           const shouldWrap = wrapCols.includes(ci);
-          cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
-        });
+          const isLink = ci === 14;
+          cell(c, c.value, undefined, isLink && excelUrl ? '2563EB' : '1E293B', isLink && !!excelUrl, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+          if (isLink && excelUrl) {
+            c.font = { ...c.font, underline: true };
+          }
+        }
       });
     });
 
@@ -1713,6 +1793,13 @@ export default function App() {
         ws1.mergeCells(startRow, 1, startRow, 11);
         ws1.addImage(imgId, { tl: { col: 0, row: startRow }, ext: { width: 850, height: 1100 } });
         for (let i = startRow + 1; i <= startRow + 60; i++) ws1.getRow(i).height = 20;
+      } else {
+        // Nếu thiếu ảnh, thêm dòng cảnh báo vào Excel
+        const startRow = 11 + result.layers.length + 2;
+        const titleRow = ws1.getRow(startRow);
+        titleRow.height = 25;
+        applyCell(titleRow.getCell(1), '⚠️ CẢNH BÁO: THIẾU HÌNH ẢNH BIÊN BẢN GỐC TRONG DỮ LIỆU', { bg: 'FEE2E2', fontColor: '991B1B', bold: true, sz: 12, align: 'center', border: thinBorder('991B1B') });
+        ws1.mergeCells(startRow, 1, startRow, 11);
       }
 
       const ws2 = wb.addWorksheet('Tổng hợp lớp thiết kế');
@@ -1791,6 +1878,70 @@ export default function App() {
       .filter(([, designs]) => designs.size > 1)
       .map(([geology, designs]) => ({ geology, designs: Array.from(designs) }));
     return { valid: conflicts.length === 0, conflicts };
+  };
+
+  const ensureImageData = async (result: ExtractionResult): Promise<{ base64: string; ext: string } | null> => {
+    try {
+      // 1. Ưu tiên dùng _base64 nếu có (đối với file mới upload chưa lưu hoặc còn cache)
+      if (result._base64) {
+        const parts = result._base64.split(',');
+        if (parts.length > 1) {
+          const mime = result._mimeType || '';
+          // Nếu là PDF thì convert sang ảnh
+          if (mime.includes('pdf') || result.fileName?.toLowerCase().endsWith('.pdf')) {
+            try {
+              const imgDataUrl = await convertPdfToImage(result._base64);
+              const imgParts = imgDataUrl.split(',');
+              if (imgParts.length > 1) {
+                return { base64: imgParts[1], ext: 'jpeg' };
+              }
+            } catch (e) {
+              console.error('convertPdfToImage failed from _base64:', e);
+            }
+          } else {
+            const ext = mime.includes('png') ? 'png' : 'jpeg';
+            return { base64: parts[1], ext };
+          }
+        }
+      }
+      
+      // 2. Nếu không có _base64, thử lấy từ fileUrl (GitHub)
+      let url = result.fileUrl;
+      if (url) {
+        // Chuẩn hoá URL về dạng raw.githubusercontent.com nếu cần
+        if (url.includes('github.com') && url.includes('/blob/')) {
+          url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+        }
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Fetch fileUrl failed');
+        const blob = await res.blob();
+        const base64Full = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        
+        const isPdf = url.toLowerCase().split('?')[0].endsWith('.pdf') || blob.type.includes('pdf');
+        if (isPdf) {
+          const imgDataUrl = await convertPdfToImage(base64Full);
+          const imgParts = imgDataUrl.split(',');
+          if (imgParts.length > 1) {
+            return { base64: imgParts[1], ext: 'jpeg' };
+          }
+        } else {
+          const parts = base64Full.split(',');
+          if (parts.length > 1) {
+            const ext = blob.type.includes('png') ? 'png' : 'jpeg';
+            return { base64: parts[1], ext };
+          }
+        }
+      }
+    } catch (e) {
+      console.error('ensureImageData failed:', e);
+    }
+    return null;
   };
 
   const saveResult = async (result: ExtractionResult, skipValidation = false) => {
@@ -1887,15 +2038,17 @@ export default function App() {
     // 1b. Tự động tạo Excel và upload lên GitHub (path cố định theo id, luôn ghi đè file cũ)
     if (isGithubConnected && githubCreds) {
       try {
-        let autoImg: { base64: string; ext: string } | null = null;
-        if (finalResult._base64) {
-          const parts = finalResult._base64.split(',');
-          if (parts.length > 1) {
-            const mime = finalResult._mimeType || '';
-            const ext = mime.includes('png') ? 'png' : 'jpeg';
-            autoImg = { base64: parts[1], ext };
+        const autoImg = await ensureImageData(finalResult);
+        
+        // Kiểm soát nghiêm ngặt: Nếu có file gốc mà không lấy được ảnh để nhúng vào Excel thì cảnh báo
+        if ((finalResult._base64 || finalResult.fileUrl) && !autoImg) {
+          const confirmMsg = `⚠️ Hệ thống không thể trích xuất hình ảnh từ biên bản "${finalResult.fileName || 'này'}". \n\nFile Excel xuất ra sẽ KHÔNG có hình ảnh đính kèm. Bạn có chắc chắn muốn tiếp tục lưu không?`;
+          if (!window.confirm(confirmMsg)) {
+            setIsProcessing(false);
+            return;
           }
         }
+
         const excelBase64 = await generateExcelBase64(finalResult, autoImg);
         if (excelBase64) {
           const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
@@ -2084,16 +2237,14 @@ export default function App() {
       // Tái tạo Excel và ghi đè file cũ trên GitHub (path cố định theo id)
       if (isGithubConnected && githubCreds) {
         try {
-          // Lấy ảnh từ fileUrl nếu có (để nhúng vào Excel)
-          let autoImg: { base64: string; ext: string } | null = null;
-          if (finalResult._base64) {
-            const parts = finalResult._base64.split(',');
-            if (parts.length > 1) {
-              const mime = finalResult._mimeType || '';
-              const ext = mime.includes('png') ? 'png' : 'jpeg';
-              autoImg = { base64: parts[1], ext };
-            }
+          // Lấy ảnh (từ cache hoặc fetch từ GitHub) để nhúng vào Excel
+          const autoImg = await ensureImageData(finalResult);
+          
+          if ((finalResult._base64 || finalResult.fileUrl) && !autoImg) {
+            const confirmMsg = `⚠️ [Chỉnh sửa] Không thể trích xuất hình ảnh từ biên bản "${finalResult.fileName || 'này'}". \n\nFile Excel cập nhật sẽ KHÔNG có hình ảnh đính kèm. Bạn có chắc chắn muốn tiếp tục không?`;
+            if (!window.confirm(confirmMsg)) return;
           }
+
           const excelBase64 = await generateExcelBase64(finalResult, autoImg);
           if (excelBase64) {
             const newUrl = await upsertExcelToGitHub(finalResult.id, excelBase64, githubCreds, finalResult.excelUrl, finalResult);
@@ -2243,15 +2394,6 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3">
-          {activeSheet === 'upload' && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-all flex items-center gap-2 shadow-md shadow-orange-900/30 uppercase tracking-wider border border-orange-400/20"
-            >
-              <Upload size={14} />
-              Up File
-            </button>
-          )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
@@ -2442,7 +2584,7 @@ export default function App() {
               <div className="w-full space-y-12">
 
             {/* Main Data Table on Sheet 1 */}
-            {history.length > 0 && !currentResult && (() => {
+            {!currentResult && (history.length > 0 ? (() => {
               // Parse date từ chuỗi "HH:mm DD/MM/YYYY"
               const parseDate = (s: string): Date | null => {
                 const m = s?.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -2455,9 +2597,10 @@ export default function App() {
                 return new Date(parseInt(y), parseInt(mo) - 1, parseInt(d));
               };
 
-              const filtered = history.filter((item, idx) => {
-                const reportStt = (history.length - idx).toString();
-                if (filterStt && !reportStt.includes(filterStt)) return false;
+              const filtered = history.map((item, idx) => ({ ...item, displayStt: history.length - idx }))
+                .filter((item) => {
+                const reportStt = item.displayStt.toString();
+                if (filterStt && reportStt !== filterStt) return false;
                 if (filterProject && !item.project?.toLowerCase().includes(filterProject.toLowerCase())) return false;
                 if (filterItem && !item.item?.toLowerCase().includes(filterItem.toLowerCase())) return false;
                 if (filterComponentName && !item.componentName?.toLowerCase().includes(filterComponentName.toLowerCase())) return false;
@@ -2512,6 +2655,13 @@ export default function App() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="bg-gradient-to-br from-orange-400 to-orange-600 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] hover:from-orange-500 hover:to-orange-700 transition-all flex items-center gap-3 shadow-lg shadow-orange-500/30 border border-white/10 active:scale-95"
+                    >
+                      <Upload size={16} strokeWidth={2.5} />
+                      Up File
+                    </button>
                     {hasActiveFilter && (
                       <button
                         onClick={resetFilters}
@@ -2523,13 +2673,13 @@ export default function App() {
                     )}
                     <button
                       onClick={() => exportAllToExcel(filtered)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-400 shadow-sm"
+                      className="flex items-center gap-3 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-white/10 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/30 active:scale-95"
                       title={`Xuất ${filtered.length} biên bản ra Excel`}
                     >
-                      <ArrowDownToLine size={13} />
+                      <ArrowDownToLine size={16} strokeWidth={2.5} />
                       Xuất Excel
                       {hasActiveFilter && (
-                        <span className="bg-white/30 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                        <span className="bg-white/20 backdrop-blur-md text-white text-[10px] font-black px-2.5 py-0.5 rounded-full border border-white/20">
                           {filtered.length}
                         </span>
                       )}
@@ -2537,25 +2687,26 @@ export default function App() {
                     <button
                       onClick={() => setShowFilters(p => !p)}
                       className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                        "flex items-center gap-3 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border active:scale-95",
                         showFilters
-                          ? "bg-blue-600 text-white border-blue-600 shadow-md"
-                          : "bg-white text-blue-900 border-slate-200 hover:border-blue-400"
+                          ? "bg-gradient-to-br from-blue-500 to-blue-700 text-white border-white/10 shadow-lg shadow-blue-500/30"
+                          : "bg-white text-blue-900 border-slate-200 hover:border-blue-400 shadow-md shadow-slate-200/50"
                       )}
                     >
-                      <Filter size={13} />
+                      <Filter size={16} strokeWidth={2.5} />
                       Bộ lọc
                       {hasActiveFilter && (
-                        <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                        <span className="bg-orange-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">
                           {[filterProject, filterItem, filterComponentName, filterReportNumber, filterDiameter, filterDateFrom, filterDateTo, filterStt].filter(Boolean).length}
                         </span>
                       )}
                     </button>
                     <button
                       onClick={() => setActiveSheet('summary')}
-                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest transition-colors"
+                      className="group flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black text-blue-600 hover:bg-blue-50 uppercase tracking-widest transition-all active:scale-95"
                     >
-                      Dashboard →
+                      <span>Dashboard</span>
+                      <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                   </div>
                 </div>
@@ -2780,7 +2931,7 @@ export default function App() {
                           </tr>
                         ) : filtered.map((item, index) => (
                           <tr key={item.id} className="hover:bg-sky-50/80 transition-colors group">
-                            <td className="text-center font-bold text-blue-700 text-xs">{filtered.length - index}</td>
+                            <td className="text-center font-bold text-blue-700 text-xs">{(item as any).displayStt}</td>
                             <td className="font-normal text-blue-900">{item.project}</td>
                             <td className="text-slate-900 font-normal">{item.item}</td>
                             <td className="text-slate-900 font-normal">{item.componentName}</td>
@@ -2855,7 +3006,24 @@ export default function App() {
                 </div>
               </div>
               );
-            })()}
+            })() : (
+              <div className="flex flex-col items-center justify-center py-32 bg-white border-2 border-dashed border-slate-200 rounded-[40px] animate-in fade-in duration-700">
+                <div className="w-24 h-24 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 mb-8 shadow-inner">
+                  <Upload size={48} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-3">Chưa có dữ liệu biên bản</h3>
+                <p className="text-slate-500 max-w-md text-center mb-10 font-medium">
+                  Hệ thống chưa ghi nhận biên bản nào. Hãy tải lên các tệp ảnh hoặc PDF của biên bản hiện trường để bắt đầu phân tích.
+                </p>
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-10 py-5 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/20 flex items-center gap-4 active:scale-95"
+                >
+                  <Upload size={24} />
+                  Tải lên biên bản ngay
+                </button>
+              </div>
+            ))}
           </div>
             )} {/* end else: không có file */}
           </div>
@@ -2867,6 +3035,7 @@ export default function App() {
             onSelectResult={(res) => { setCurrentResult(res); setActiveSheet('upload'); }} 
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
           />
         )}
       </main>
@@ -3460,12 +3629,14 @@ function SummaryView({
   history, 
   onSelectResult, 
   onEdit, 
-  onDelete 
+  onDelete,
+  onUploadClick
 }: { 
   history: ExtractionResult[], 
   onSelectResult: (res: ExtractionResult) => void,
   onEdit: (res: ExtractionResult) => void,
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void,
+  onUploadClick: () => void
 }) {
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
   // Đếm tổng số biên bản (mỗi file/biên bản được coi là 1 thực thể cọc trong thống kê này nếu người dùng muốn khớp với số lượng file đã upload)
@@ -3644,7 +3815,14 @@ function SummaryView({
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
       <h4 className="text-lg font-black text-slate-400 uppercase tracking-widest">Chưa có dữ liệu</h4>
-      <p className="text-slate-400 mt-2 text-sm">Hãy upload biên bản để xem Dashboard</p>
+      <p className="text-slate-400 mt-2 text-sm mb-8">Hãy upload biên bản để xem Dashboard</p>
+      <button 
+        onClick={onUploadClick}
+        className="px-8 py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg shadow-orange-900/20 flex items-center gap-3"
+      >
+        <Upload size={18} />
+        Tải lên ngay
+      </button>
     </div>
   );
 
