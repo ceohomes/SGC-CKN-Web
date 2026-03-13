@@ -397,6 +397,21 @@ const AutoResizeTextarea = ({ value, onChange, className, placeholder, style, ..
 
 // --- Gemini Service ---
 
+// Kiểm tra lỗi quota/rate-limit từ Gemini
+const isQuotaError = (err: any): boolean => {
+  const msg = (err?.message || err?.toString() || '').toLowerCase();
+  return (
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('too many requests') ||
+    msg.includes('429') ||
+    msg.includes('ratelimitexceeded') ||
+    (err?.status === 429) ||
+    (err?.code === 429)
+  );
+};
+
 const extractDataFromFile = async (base64Data: string, mimeType: string, userApiKey?: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
@@ -440,16 +455,31 @@ QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
    - "layerNumber": Số thứ tự dòng trong bảng (1, 2, 3...).
 
 3. TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
-   - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55).
+   - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55, 17h20).
+   - Format bắt buộc: "HHhmm" — luôn ghi ĐỦ số giờ. Giờ từ 10–23 PHẢI có 2 chữ số. TUYỆT ĐỐI không rút gọn "17h20" thành "7h20".
+   
+   - ⚠️ LỖI PHỔ BIẾN NHẤT - ĐỌC SÓT CHỮ SỐ 1 ĐẦU: Trong chữ viết tay, số "1" thường mảnh và nhỏ, đặc biệt khi đứng trước "7", "6", "5" dễ bị bỏ qua.
+     Ví dụ lỗi: đọc "17h20" → "7h20", đọc "16h33" → "6h33", đọc "13h58" → "3h58".
+     QUY TẮC KIỂM TRA: Nếu trích xuất được giờ từ 0–9 (1 chữ số), hãy nhìn lại hình ảnh thật kỹ xem trước chữ số đó có dấu "1" nào không. Trong biên bản khoan cọc nhồi, ca thi công thường kéo dài liên tục nhiều giờ — thời gian thường nằm trong khoảng 06h00 đến 23h59.
+     
+   - ⚠️ KIỂM TRA TÍNH LIÊN TỤC CỦA THỜI GIAN: Thời gian các dòng phải tăng dần và liên tiếp nhau. Nếu dòng trước kết thúc lúc "16h57" mà dòng sau bắt đầu lúc "7h20" — đây CHẮC CHẮN là lỗi đọc sót "1", phải là "17h20".
+   
+   - ⚠️ KIỂM TRA TÍNH HỢP LÝ: Thời gian không thể đột ngột giảm xuống (ví dụ từ 16h → 7h) trừ khi sang ngày mới (qua 00h). Nếu ngày không đổi mà giờ giảm mạnh > 5 tiếng, PHẢI kiểm tra lại xem có bị sót chữ số "1" không.
+   
    - Ngày tháng (dateFrom, dateTo, constructionStart, constructionEnd): Trích xuất CHÍNH XÁC ngày, tháng, năm. 
    - CẢNH BÁO NĂM: Nếu năm viết tay trông mập mờ, hãy đối chiếu với năm hiện tại (${currentYear}). Nếu văn bản ghi "2026" thì PHẢI trích xuất là "2026", KHÔNG ĐƯỢC tự ý đổi thành "2024".
    - CẢNH BÁO CHỮ VIẾT TAY: Chữ viết tay số "1" và "2", hoặc "4" và "6" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
    - KHÔNG ĐƯỢC tự ý làm tròn hoặc tự ý gán thời gian bắt đầu của dòng sau bằng thời gian kết thúc của dòng trước nếu hình ảnh không ghi như vậy. Nếu có khoảng nghỉ (ví dụ từ 11h26 đến 12h55), hãy trích xuất đúng các mốc thời gian ghi trên giấy.
-   - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại xem có phải bạn đọc nhầm số "1" thành "0" hoặc ngược lại không.
+   - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu trong cùng 1 dòng. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại có phải đọc nhầm không.
 
 4. TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN TỪNG CHỮ SỐ THẬP PHÂN):
-   - Cao độ (elevationFrom, elevationTo): Trích xuất ĐẦY ĐỦ số thập phân (ví dụ: -8.81, -10.88, -12.94). 
+   - Cao độ (elevationFrom, elevationTo): Trích xuất ĐẦY ĐỦ số thập phân (ví dụ: -8.81, -10.88, -12.94, -35.08, -37.06).
    - Tuyệt đối không bỏ sót dấu phẩy/chấm thập phân. Kiểm tra kỹ từng chữ số.
+   
+   - ⚠️ LỖI PHỔ BIẾN - ĐỌC SÓT CHỮ SỐ: Trong chữ viết tay, số "-35.08" có thể bị đọc thành "-3.08" hoặc "-5.08". Nếu cao độ các dòng giảm dần (sâu hơn), kiểm tra tính liên tục: không được đột ngột nhảy vọt (ví dụ -33.12 → -5.08 là sai, phải là -35.08).
+   - ⚠️ KIỂM TRA TÍNH LIÊN TỤC CỦA CAO ĐỘ: "elevationFrom" của dòng N phải bằng "elevationTo" của dòng N-1. Nếu không khớp, kiểm tra lại chữ số.
+   - ⚠️ DẤU ÂM: Tất cả cao độ trong biên bản khoan cọc nhồi đều là số ÂM (vì tính từ mặt đất xuống). Nếu thấy số dương, hãy kiểm tra lại xem có bị sót dấu "-" không.
+   - Cao độ phải giảm dần (ngày càng âm hơn) theo chiều sâu khoan. Nếu thấy cao độ tăng bất thường, kiểm tra lại ngay.
 
 Yêu cầu JSON:
 - project, item, componentName, pileId, reportNumber, diameter.
@@ -533,7 +563,57 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
     });
   }
 
-  const processedLayers = rawData.layers.map((layer: any) => {
+  // ── AUTO-FIX: Sửa lỗi AI đọc sót chữ số "1" đầu trong giờ viết tay ──
+  // Ví dụ: "7h20" khi dòng trước kết thúc lúc "16h57" → phải là "17h20"
+  const fixDroppedHourDigit = (layers: any[]): any[] => {
+    if (!layers || layers.length === 0) return layers;
+    const parseH = (t: string) => {
+      if (!t) return -1;
+      const m = t.match(/^(\d{1,2})[h:](\d{2})/);
+      return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : -1;
+    };
+    const addLeading1 = (t: string) => t.replace(/^(\d)[h:]/, '1$1h');
+
+    return layers.map((layer, i) => {
+      let { timeFrom, timeTo } = layer;
+      // Lấy giờ kết thúc của dòng trước để so sánh
+      const prevEndTime = i > 0 ? layers[i - 1].timeTo : null;
+      const prevEndMin = prevEndTime ? parseH(prevEndTime) : -1;
+
+      // Kiểm tra timeFrom: nếu giờ 1 chữ số VÀ dòng trước kết thúc > 9h so với timeFrom hiện tại
+      if (timeFrom && /^[2-9][h:]/.test(timeFrom)) {
+        const curMin = parseH(timeFrom);
+        // Nếu dòng trước kết thúc lúc > curMin + 60 → nhiều khả năng bị sót "1"
+        if (prevEndMin > 0 && prevEndMin > curMin + 60) {
+          const fixed = addLeading1(timeFrom);
+          const fixedMin = parseH(fixed);
+          // Chỉ sửa nếu sau khi thêm "1" thì hợp lý hơn (gần với prevEndMin)
+          if (fixedMin >= prevEndMin - 30 && fixedMin <= prevEndMin + 120) {
+            console.warn(\`[AutoFix] timeFrom sót "1": "\${timeFrom}" → "\${fixed}" (dòng \${i + 1})\`);
+            timeFrom = fixed;
+          }
+        }
+      }
+
+      // Kiểm tra timeTo: nếu giờ 1 chữ số VÀ nhỏ hơn timeFrom nhiều
+      if (timeTo && /^[2-9][h:]/.test(timeTo)) {
+        const fromMin = parseH(timeFrom);
+        const toMin = parseH(timeTo);
+        if (fromMin > 0 && fromMin > toMin + 60) {
+          const fixed = addLeading1(timeTo);
+          const fixedMin = parseH(fixed);
+          if (fixedMin > fromMin && fixedMin <= fromMin + 180) {
+            console.warn(\`[AutoFix] timeTo sót "1": "\${timeTo}" → "\${fixed}" (dòng \${i + 1})\`);
+            timeTo = fixed;
+          }
+        }
+      }
+
+      return { ...layer, timeFrom, timeTo };
+    });
+  };
+
+  const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
     
     // Áp dụng VLOOKUP: Nếu mã địa chất thực tế có trong bảng tra cứu, lấy mô tả từ đó
@@ -815,6 +895,10 @@ export default function App() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userApiKey, setUserApiKey] = useState<string>('');
+  // Multi API key: tối đa 5 key, tự động rotate khi hết quota
+  const [geminiApiKeys, setGeminiApiKeys] = useState<string[]>(['', '', '', '', '']);
+  const [activeKeyIndex, setActiveKeyIndex] = useState<number>(0);
+  const [exhaustedKeys, setExhaustedKeys] = useState<Set<number>>(new Set());
   const [customLogo, setCustomLogo] = useState<string | null>(null);
   const [isGithubConnected, setIsGithubConnected] = useState<boolean>(false);
   const [isConnectingGithub, setIsConnectingGithub] = useState<boolean>(false);
@@ -881,6 +965,13 @@ export default function App() {
       // Load localStorage CHỈ để hiển thị tạm trong khi chờ Supabase
       const savedApiKey = localStorage.getItem('gemini_api_key');
       if (savedApiKey) setUserApiKey(savedApiKey);
+      const savedKeys = localStorage.getItem('gemini_api_keys');
+      if (savedKeys) {
+        try {
+          const parsed = JSON.parse(savedKeys);
+          if (Array.isArray(parsed)) setGeminiApiKeys(parsed);
+        } catch {}
+      }
 
       const savedLogo = localStorage.getItem('pile_drill_custom_logo');
       if (savedLogo) setCustomLogo(savedLogo);
@@ -944,6 +1035,23 @@ export default function App() {
               setUserApiKey(apiKeySetting.value);
               localStorage.setItem('gemini_api_key', apiKeySetting.value);
             }
+            // Load danh sách 5 API key
+            const allKeysSetting = sd.find((s: any) => s.id === 'gemini_api_keys');
+            if (allKeysSetting?.value) {
+              try {
+                const parsed = JSON.parse(allKeysSetting.value);
+                if (Array.isArray(parsed)) {
+                  setGeminiApiKeys(parsed);
+                  localStorage.setItem('gemini_api_keys', allKeysSetting.value);
+                  // Sync userApiKey với key đầu tiên có giá trị
+                  const first = parsed.find((k: string) => k.trim());
+                  if (first) { setUserApiKey(first); localStorage.setItem('gemini_api_key', first); }
+                }
+              } catch {}
+            } else if (apiKeySetting?.value) {
+              // Backward compat: nếu chưa có gemini_api_keys thì set key[0] = key cũ
+              setGeminiApiKeys(prev => [apiKeySetting.value, ...prev.slice(1)]);
+            }
             if (logoSetting) {
               if (logoSetting.value) {
                 setCustomLogo(logoSetting.value);
@@ -998,6 +1106,14 @@ export default function App() {
           if (id === 'gemini_api_key') {
             setUserApiKey(value);
             localStorage.setItem('gemini_api_key', value);
+          } else if (id === 'gemini_api_keys') {
+            try {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed)) {
+                setGeminiApiKeys(parsed);
+                localStorage.setItem('gemini_api_keys', value);
+              }
+            } catch {}
           } else if (id === 'app_logo') {
             if (value) {
               setCustomLogo(value);
@@ -1091,28 +1207,103 @@ export default function App() {
   }, [isEditModalOpen, isSettingsOpen, currentResult, isSidebarOpen]);
 
   const saveApiKey = async (key: string) => {
+    // key ở đây là keys[0] (key đầu tiên), nhưng ta lưu toàn bộ mảng
+    const keysToSave = geminiApiKeys.map((k, i) => i === 0 ? key : k);
     setUserApiKey(key);
+    setGeminiApiKeys(keysToSave);
+    setActiveKeyIndex(0);
+    setExhaustedKeys(new Set());
     localStorage.setItem('gemini_api_key', key);
+    localStorage.setItem('gemini_api_keys', JSON.stringify(keysToSave));
     
     if (supabase) {
       try {
-        // Lưu API key
-        await supabase
-          .from('app_settings')
-          .upsert({ id: 'gemini_api_key', value: key, updated_at: new Date().toISOString() });
-
-        // Đồng thời lưu logo hiện tại (re-sync để chắc chắn không bị mất sau F5)
+        await supabase.from('app_settings').upsert({ id: 'gemini_api_key', value: key, updated_at: new Date().toISOString() });
+        await supabase.from('app_settings').upsert({ id: 'gemini_api_keys', value: JSON.stringify(keysToSave), updated_at: new Date().toISOString() });
         const logoValue = customLogo || '';
-        await supabase
-          .from('app_settings')
-          .upsert({ id: 'app_logo', value: logoValue, updated_at: new Date().toISOString() });
+        await supabase.from('app_settings').upsert({ id: 'app_logo', value: logoValue, updated_at: new Date().toISOString() });
       } catch (e) {
         console.error("Failed to save settings to Supabase", e);
       }
     }
     
     setIsSettingsOpen(false);
-    // Không cần alert — chỉ báo lỗi khi thực sự fail
+  };
+
+  // Lưu toàn bộ cấu hình 5 API key
+  const saveAllApiKeys = async (keys: string[]) => {
+    const validKeys = keys.map(k => k.trim());
+    const firstKey = validKeys.find(k => k) || '';
+    setGeminiApiKeys(validKeys);
+    setUserApiKey(firstKey);
+    setActiveKeyIndex(0);
+    setExhaustedKeys(new Set());
+    localStorage.setItem('gemini_api_key', firstKey);
+    localStorage.setItem('gemini_api_keys', JSON.stringify(validKeys));
+
+    if (supabase) {
+      try {
+        await supabase.from('app_settings').upsert({ id: 'gemini_api_key', value: firstKey, updated_at: new Date().toISOString() });
+        await supabase.from('app_settings').upsert({ id: 'gemini_api_keys', value: JSON.stringify(validKeys), updated_at: new Date().toISOString() });
+        const logoValue = customLogo || '';
+        await supabase.from('app_settings').upsert({ id: 'app_logo', value: logoValue, updated_at: new Date().toISOString() });
+      } catch (e) {
+        console.error("Failed to save settings to Supabase", e);
+      }
+    }
+    setIsSettingsOpen(false);
+  };
+
+  // ── Gọi AI với auto-rotate key khi hết quota ──
+  const callExtractWithRotation = async (base64Data: string, mimeType: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
+    const validKeys = geminiApiKeys.filter(k => k.trim());
+    if (validKeys.length === 0) {
+      throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
+    }
+
+    // Thử từng key trong vòng lặp
+    let lastError: any = null;
+    const tried = new Set<number>();
+
+    // Bắt đầu từ activeKeyIndex
+    let startIdx = activeKeyIndex;
+    // Nếu key hiện tại đã bị đánh dấu exhausted thì tìm key tiếp theo
+    while (exhaustedKeys.has(startIdx) && tried.size < validKeys.length) {
+      tried.add(startIdx);
+      startIdx = (startIdx + 1) % geminiApiKeys.length;
+    }
+
+    for (let attempt = 0; attempt < geminiApiKeys.length; attempt++) {
+      const idx = (startIdx + attempt) % geminiApiKeys.length;
+      const key = geminiApiKeys[idx]?.trim();
+      if (!key || tried.has(idx)) continue;
+      tried.add(idx);
+
+      try {
+        console.log(\`[KeyRotation] Đang dùng API Key #\${idx + 1}\`);
+        const result = await extractDataFromFile(base64Data, mimeType, key);
+        // Thành công — cập nhật activeKeyIndex
+        if (idx !== activeKeyIndex) {
+          setActiveKeyIndex(idx);
+          setUserApiKey(key);
+          console.log(\`[KeyRotation] Đã chuyển sang Key #\${idx + 1} thành công\`);
+        }
+        return result;
+      } catch (err: any) {
+        if (isQuotaError(err)) {
+          console.warn(\`[KeyRotation] Key #\${idx + 1} hết quota, thử key tiếp theo...\`);
+          setExhaustedKeys(prev => new Set(prev).add(idx));
+          lastError = err;
+          continue;
+        }
+        // Lỗi khác (không phải quota) → ném ra ngay
+        throw err;
+      }
+    }
+
+    // Hết tất cả key
+    const totalValid = geminiApiKeys.filter(k => k.trim()).length;
+    throw new Error(\`⛔ Tất cả \${totalValid} API Key Gemini đã hết quota! Vui lòng vào Cài đặt để thêm key mới hoặc chờ quota được reset.\`);
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1238,7 +1429,7 @@ export default function App() {
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40 } : f));
 
             // Bước 2: gọi AI — 40→90%
-            const rawResult = await extractDataFromFile(base64, mimeType, userApiKey);
+            const rawResult = await callExtractWithRotation(base64, mimeType);
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
 
             // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
@@ -3160,6 +3351,29 @@ export default function App() {
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
+      {/* ── BANNER CẢNH BÁO: Tất cả API Key hết quota ── */}
+      {geminiApiKeys.some(k => k.trim()) && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
+        <div className="bg-red-600 text-white px-6 py-3 flex items-center gap-3 sticky top-[64px] z-20 shadow-lg">
+          <span className="text-xl shrink-0">⛔</span>
+          <div className="flex-1">
+            <span className="font-black text-[13px] uppercase tracking-widest">Tất cả {geminiApiKeys.filter(k => k.trim()).length} API Key Gemini đã hết quota!</span>
+            <span className="text-red-200 text-[12px] ml-2">Vui lòng thêm key mới hoặc chờ quota reset (thường sau 24h).</span>
+          </div>
+          <button
+            onClick={() => { setIsSettingsOpen(true); }}
+            className="px-4 py-1.5 bg-white text-red-600 rounded-lg text-[11px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors shrink-0"
+          >
+            ⚙ Cài đặt Key
+          </button>
+          <button
+            onClick={() => { setExhaustedKeys(new Set()); setActiveKeyIndex(0); }}
+            className="px-4 py-1.5 bg-red-500 border border-red-300 text-white rounded-lg text-[11px] font-black uppercase tracking-widest hover:bg-red-400 transition-colors shrink-0"
+          >
+            ↺ Thử lại
+          </button>
+        </div>
+      )}
+
       <main className="flex-1 p-8 w-full space-y-10">
         {activeSheet === 'upload' ? (
           <div className="w-full space-y-12">
@@ -3324,6 +3538,8 @@ export default function App() {
                           embedded={true}
                           onClose={() => setCurrentResult(null)}
                           githubCreds={githubCreds}
+                          userApiKey={userApiKey}
+                          onExtract={callExtractWithRotation}
                           onSave={(updated) => {
                             setCurrentResult(updated);
                             setPendingResults(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -3978,20 +4194,104 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Gemini API Key</label>
-                  <div className="relative">
-                    <input 
-                      type="password"
-                      value={userApiKey}
-                      onChange={(e) => setUserApiKey(e.target.value)}
-                      placeholder="Nhập API Key của bạn..."
-                      className="w-full bg-sky-50 border border-sky-200 rounded-2xl px-5 py-3.5 text-blue-900 font-medium focus:border-blue-600 focus:ring-0 transition-all outline-none text-sm"
-                    />
+                  <div className="flex items-center justify-between ml-1">
+                    <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em]">Gemini API Keys</label>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tự động xoay vòng khi hết quota</span>
                   </div>
+
+                  {/* Status bar: hiển thị key nào đang active / exhausted */}
+                  <div className="flex gap-1.5 mb-1">
+                    {geminiApiKeys.map((k, i) => {
+                      const hasKey = k.trim().length > 0;
+                      const isActive = hasKey && i === activeKeyIndex && !exhaustedKeys.has(i);
+                      const isExhausted = hasKey && exhaustedKeys.has(i);
+                      return (
+                        <div
+                          key={i}
+                          title={isActive ? `Key #${i+1} đang dùng` : isExhausted ? `Key #${i+1} hết quota` : !hasKey ? `Key #${i+1} chưa điền` : `Key #${i+1} sẵn sàng`}
+                          className={`flex-1 h-1.5 rounded-full transition-all ${
+                            isActive ? 'bg-emerald-500' :
+                            isExhausted ? 'bg-red-400' :
+                            hasKey ? 'bg-sky-300' :
+                            'bg-slate-200'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2 mb-1 px-0.5">
+                    {geminiApiKeys.map((k, i) => {
+                      const hasKey = k.trim().length > 0;
+                      const isActive = hasKey && i === activeKeyIndex && !exhaustedKeys.has(i);
+                      const isExhausted = hasKey && exhaustedKeys.has(i);
+                      return (
+                        <span key={i} className={`flex-1 text-center text-[9px] font-black uppercase tracking-widest ${
+                          isActive ? 'text-emerald-600' :
+                          isExhausted ? 'text-red-400' :
+                          hasKey ? 'text-sky-500' :
+                          'text-slate-300'
+                        }`}>
+                          {isActive ? '● Đang dùng' : isExhausted ? '✕ Hết quota' : hasKey ? '○ Sẵn sàng' : `— Key ${i+1}`}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {/* 5 ô nhập key */}
+                  {geminiApiKeys.map((k, i) => {
+                    const isActive = k.trim() && i === activeKeyIndex && !exhaustedKeys.has(i);
+                    const isExhausted = k.trim() && exhaustedKeys.has(i);
+                    return (
+                      <div key={i} className="relative">
+                        <div className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black
+                          ${isActive ? 'bg-emerald-500 text-white' : isExhausted ? 'bg-red-400 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                          {i + 1}
+                        </div>
+                        <input
+                          type="password"
+                          value={k}
+                          onChange={(e) => {
+                            const next = [...geminiApiKeys];
+                            next[i] = e.target.value;
+                            setGeminiApiKeys(next);
+                          }}
+                          placeholder={`API Key #${i + 1}${i === 0 ? ' (chính)' : ` (dự phòng ${i})`}`}
+                          className={`w-full pl-10 pr-4 py-3 rounded-xl text-sm font-medium outline-none transition-all border
+                            ${isActive ? 'bg-emerald-50 border-emerald-300 text-emerald-800 focus:border-emerald-500' :
+                              isExhausted ? 'bg-red-50 border-red-200 text-red-700 focus:border-red-400' :
+                              'bg-sky-50 border-sky-200 text-blue-900 focus:border-blue-500'}`}
+                        />
+                        {isExhausted && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-red-500 uppercase tracking-widest">Hết quota</span>
+                        )}
+                        {isActive && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-emerald-600 uppercase tracking-widest">Đang dùng</span>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Cảnh báo khi tất cả key hết quota */}
+                  {geminiApiKeys.some(k => k.trim()) && exhaustedKeys.size > 0 && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
+                    <div className="bg-red-50 border border-red-300 rounded-xl px-4 py-3 flex items-start gap-3">
+                      <span className="text-red-500 text-lg mt-0.5">⛔</span>
+                      <div>
+                        <p className="text-red-700 font-black text-[11px] uppercase tracking-widest">Tất cả API Key đã hết quota!</p>
+                        <p className="text-red-500 text-[11px] mt-0.5">Vui lòng thêm key mới vào ô trống hoặc chờ quota reset (thường sau 24h).</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => { setExhaustedKeys(new Set()); setActiveKeyIndex(0); }}
+                    className="text-[10px] font-bold text-sky-500 hover:text-sky-700 uppercase tracking-widest transition-colors"
+                  >
+                    ↺ Reset trạng thái quota (thử lại từ Key #1)
+                  </button>
                 </div>
               </div>
               <button 
-                onClick={() => saveApiKey(userApiKey)}
+                onClick={() => saveAllApiKeys(geminiApiKeys)}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
               >
                 <Save size={18} />
@@ -4091,6 +4391,7 @@ export default function App() {
           onSave={handleSaveEdit}
           githubCreds={githubCreds}
           userApiKey={userApiKey}
+          onExtract={callExtractWithRotation}
         />
       )}
     </div>
@@ -5119,6 +5420,7 @@ function EditSplitView({
   embedded = false,
   githubCreds,
   userApiKey,
+  onExtract,
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
@@ -5126,6 +5428,7 @@ function EditSplitView({
   embedded?: boolean;
   githubCreds?: { token: string; username: string; repo: string } | null;
   userApiKey?: string;
+  onExtract?: (base64: string, mime: string) => Promise<Omit<ExtractionResult, 'id' | 'timestamp'>>;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
@@ -5286,7 +5589,7 @@ function EditSplitView({
             img.src = `data:${imgMime};base64,${imgBase64}`;
           });
 
-          const rawResult = await extractDataFromFile(normalized.base64, normalized.mime, userApiKey);
+          const rawResult = await callExtractWithRotation(normalized.base64, normalized.mime);
           const map = rawResult.designLayerMap || {};
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
             const geoCode = (layer.actualGeology || '').trim();
@@ -5386,7 +5689,9 @@ function EditSplitView({
       const normalized = await normalizeImage(img.base64, img.ext);
 
       // Bước 3: Gọi AI trích xuất lại với ảnh đã chuẩn hóa
-      const rawResult = await extractDataFromFile(normalized.base64, normalized.mime, apiKey);
+      const rawResult = onExtract
+        ? await onExtract(normalized.base64, normalized.mime)
+        : await extractDataFromFile(normalized.base64, normalized.mime, apiKey);
 
       // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
       const map = rawResult.designLayerMap || {};
