@@ -3324,6 +3324,16 @@ function SummaryView({
   );
 
   // ── Phát hiện trùng lặp (Hạng mục + Số hiệu cọc) ──
+  const normalizeKey = (str: string) => {
+    if (!str) return '';
+    return str
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/[^a-z0-9]/g, ""); // Viết liền, không dấu, không ký tự đặc biệt
+  };
+
   interface DuplicateGroup {
     key: string;
     item: string;
@@ -3335,7 +3345,12 @@ function SummaryView({
     const componentName = (r.componentName || '').trim();
     const pileId = (r.pileId || '').trim();
     if (!componentName && !pileId) return;
-    const key = `${componentName}|||${pileId}`;
+    
+    // Tạo key chuẩn hóa để so sánh chính xác hơn
+    const normComponent = normalizeKey(componentName);
+    const normPile = normalizeKey(pileId);
+    const key = `${normComponent}|||${normPile}`;
+    
     if (!duplicateMap[key]) duplicateMap[key] = [];
     duplicateMap[key].push(r);
   });
@@ -3368,6 +3383,61 @@ function SummaryView({
       return conflicts.length > 0 ? { result: r, conflicts } : null;
     })
     .filter(Boolean) as InconsistentRecord[];
+
+  // ── Tính toán Thống kê theo lớp thiết kế (Tổng hợp từ tất cả biên bản) ──
+  interface LayerStat {
+    layerDesign: string;
+    diameter: string;
+    segments: number;
+    elevationFrom: number;
+    elevationTo: number;
+    totalDuration: number;
+    totalLength: number;
+    colorIdx: number;
+  }
+  
+  const statsMap: Record<string, LayerStat> = {};
+  let colorCounter = 0;
+  const colorMap: Record<string, number> = {};
+
+  history.forEach(res => {
+    (res.layers || []).forEach(layer => {
+      const design = (layer.layerDesign || 'Chưa xác định').trim();
+      const dia = res.diameter || '—';
+      const key = `${design}|||${dia}`;
+      
+      if (!statsMap[key]) {
+        if (colorMap[design] === undefined) {
+          colorMap[design] = colorCounter % GROUP_COLORS.length;
+          colorCounter++;
+        }
+        statsMap[key] = {
+          layerDesign: design,
+          diameter: dia,
+          segments: 0,
+          elevationFrom: layer.elevationFrom,
+          elevationTo: layer.elevationTo,
+          totalDuration: 0,
+          totalLength: 0,
+          colorIdx: colorMap[design]
+        };
+      }
+      
+      const stat = statsMap[key];
+      stat.segments += 1;
+      stat.totalDuration += layer.durationHours;
+      stat.totalLength += layer.lengthMeters;
+      // Cập nhật cao độ (giả định cao độ từ là giá trị lớn nhất/đầu tiên và đến là nhỏ nhất/cuối cùng)
+      if (layer.elevationFrom > stat.elevationFrom) stat.elevationFrom = layer.elevationFrom;
+      if (layer.elevationTo < stat.elevationTo) stat.elevationTo = layer.elevationTo;
+    });
+  });
+
+  const designLayerStats = Object.values(statsMap).sort((a, b) => b.elevationFrom - a.elevationFrom);
+  const totalSegments = designLayerStats.reduce((s, g) => s + g.segments, 0);
+  const totalDur = designLayerStats.reduce((s, g) => s + g.totalDuration, 0);
+  const totalLen = designLayerStats.reduce((s, g) => s + g.totalLength, 0);
+  const totalAvgSpd = totalDur > 0 ? totalLen / totalDur : 0;
 
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
@@ -3606,6 +3676,75 @@ function SummaryView({
         </div>
       )}
 
+      {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm mt-8">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+          <BarChart3 size={18} className="text-blue-600" />
+          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">
+            Tổng hợp thống kê theo lớp thiết kế
+          </h4>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-blue-900 text-white">
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-12 text-center">STT</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-24 text-center">Đường kính</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30">Lớp thiết kế</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-24 text-center">Số đoạn</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Cao độ từ (m)</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Cao độ đến (m)</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Tổng T.Gian (h)</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Tổng Dài (m)</th>
+                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest w-24 text-center">V TB (m/h)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {designLayerStats.map((stat, i) => {
+                const { bg, font: fontColor } = GROUP_COLORS[stat.colorIdx];
+                const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
+                const isSlow = avgSpd > 0 && avgSpd <= 1;
+                
+                return (
+                  <tr key={i} style={{ backgroundColor: bg }} className="hover:brightness-95 transition-all">
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-600 text-center border-r border-black/5">{i + 1}</td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.diameter}</td>
+                    <td className="px-4 py-3 text-[11px] font-medium text-slate-800 border-r border-black/5 leading-relaxed">{stat.layerDesign}</td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.segments}</td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.elevationFrom.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.elevationTo.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-[11px] font-black text-blue-700 text-center border-r border-black/5">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={cn(
+                        "inline-block px-2 py-1 rounded text-[11px] font-black min-w-[50px]",
+                        isSlow ? "bg-red-500 text-white" : "bg-orange-100 text-orange-700"
+                      )}>
+                        {avgSpd.toFixed(2)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 font-black text-slate-900 border-t-2 border-slate-200">
+                <td colSpan={3} className="px-4 py-4 text-[11px] uppercase tracking-widest text-right pr-10">Tổng cộng</td>
+                <td className="px-4 py-4 text-[12px] text-center">{totalSegments}</td>
+                <td className="px-4 py-4 text-[12px] text-center text-slate-400">—</td>
+                <td className="px-4 py-4 text-[12px] text-center text-slate-400">—</td>
+                <td className="px-4 py-4 text-[12px] text-center">{totalDur.toFixed(2)}</td>
+                <td className="px-4 py-4 text-[12px] text-center text-blue-700">{totalLen.toFixed(2)}</td>
+                <td className="px-4 py-4 text-[12px] text-center">
+                  <span className="inline-block px-2 py-1 bg-slate-900 text-white rounded text-[11px]">
+                    {totalAvgSpd.toFixed(2)}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
 
     </div>
   );
