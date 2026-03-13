@@ -5066,6 +5066,70 @@ function SummaryView({
   };
 
 
+  // ── Weekly report data computation (ALL hooks MUST be before any early return) ──
+  // Ngày ghi nhận biên bản = ngày kết thúc thi công (constructionEnd)
+  const weeklyData = React.useMemo(() => {
+    const map: Record<string, ExtractionResult[]> = {};
+    history.forEach(r => {
+      const dateStr = r.constructionEnd; // Thống nhất dùng ngày kết thúc
+      const d = parseViDate(dateStr);
+      if (!d) return;
+      const key = getWeekKey(d);
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return map;
+  }, [history]);
+
+  const availableYears = React.useMemo(() => {
+    const years = new Set<number>();
+    Object.keys(weeklyData).forEach(k => {
+      years.add(getWeekStartDate(k).getFullYear());
+    });
+    if (years.size === 0) years.add(new Date().getFullYear());
+    return Array.from(years).sort((a,b) => b - a);
+  }, [weeklyData]);
+
+  const weekKeys = React.useMemo(() => {
+    return Object.keys(weeklyData)
+      .filter(k => {
+        const d = getWeekStartDate(k);
+        return d.getFullYear() === weeklyYear;
+      })
+      .sort((a,b) => a.localeCompare(b));
+  }, [weeklyData, weeklyYear]);
+
+  // Auto-select latest week when year changes or data loads
+  React.useEffect(() => {
+    if (weekKeys.length > 0 && (!selectedWeekKey || !weekKeys.includes(selectedWeekKey))) {
+      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
+    }
+  }, [weekKeys]);
+
+  // Auto-select correct year based on available data
+  React.useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(weeklyYear)) {
+      setWeeklyYear(availableYears[0]);
+    }
+  }, [availableYears]);
+
+  const selectedWeekRecords = selectedWeekKey ? (weeklyData[selectedWeekKey] || []) : [];
+
+  // Per-project stats for selected week
+  const weeklyProjectStats = React.useMemo(() => {
+    const projs = [...new Set(selectedWeekRecords.map(r => r.project).filter(Boolean))];
+    return projs.map(proj => {
+      const recs = selectedWeekRecords.filter(r => r.project === proj);
+      const totalPiles = recs.length;
+      const totalDepth = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0), 0);
+      const totalDuration = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0), 0);
+      const avgSpeed = totalDuration > 0 ? totalDepth / totalDuration : 0;
+      const diameters = [...new Set(recs.map(r=>r.diameter).filter(Boolean))].join(', ');
+      const items = [...new Set(recs.map(r=>r.item||r.componentName).filter(Boolean))];
+      return { proj, totalPiles, totalDepth, totalDuration, avgSpeed, diameters, items, recs };
+    }).sort((a,b) => b.totalPiles - a.totalPiles);
+  }, [selectedWeekRecords]);
+
   if (history.length === 0) return (
     <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
       <div className="bg-slate-100 p-8 rounded-full mb-6"><BarChart3 className="text-slate-300 w-12 h-12" /></div>
@@ -5080,65 +5144,6 @@ function SummaryView({
       </button>
     </div>
   );
-
-  // ── Weekly report data computation ──
-  const weeklyData = React.useMemo(() => {
-    const map: Record<string, ExtractionResult[]> = {};
-    history.forEach(r => {
-      const dateStr = r.constructionEnd || r.constructionStart;
-      const d = parseViDate(dateStr);
-      if (!d) return;
-      const key = getWeekKey(d);
-      if (!map[key]) map[key] = [];
-      map[key].push(r);
-    });
-    return map;
-  }, [history]);
-
-  const weekKeys = React.useMemo(() => {
-    return Object.keys(weeklyData)
-      .filter(k => {
-        const d = getWeekStartDate(k);
-        return d.getFullYear() === weeklyYear;
-      })
-      .sort((a,b) => a.localeCompare(b));
-  }, [weeklyData, weeklyYear]);
-
-  const availableYears = React.useMemo(() => {
-    const years = new Set<number>();
-    Object.keys(weeklyData).forEach(k => {
-      years.add(getWeekStartDate(k).getFullYear());
-    });
-    if (years.size === 0) years.add(new Date().getFullYear());
-    return Array.from(years).sort((a,b) => b - a);
-  }, [weeklyData]);
-
-  // Auto-select latest week
-  React.useEffect(() => {
-    if (weekKeys.length > 0 && !selectedWeekKey) {
-      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
-    }
-    if (weekKeys.length > 0 && !weekKeys.includes(selectedWeekKey)) {
-      setSelectedWeekKey(weekKeys[weekKeys.length - 1]);
-    }
-  }, [weekKeys, selectedWeekKey]);
-
-  const selectedWeekRecords = selectedWeekKey ? (weeklyData[selectedWeekKey] || []) : [];
-
-  // Per-project stats for selected week
-  const weeklyProjectStats = React.useMemo(() => {
-    const projects = [...new Set(selectedWeekRecords.map(r => r.project).filter(Boolean))];
-    return projects.map(proj => {
-      const recs = selectedWeekRecords.filter(r => r.project === proj);
-      const totalPiles = recs.length;
-      const totalDepth = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0), 0);
-      const totalDuration = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0), 0);
-      const avgSpeed = totalDuration > 0 ? totalDepth / totalDuration : 0;
-      const diameters = [...new Set(recs.map(r=>r.diameter).filter(Boolean))].join(', ');
-      const items = [...new Set(recs.map(r=>r.item||r.componentName).filter(Boolean))];
-      return { proj, totalPiles, totalDepth, totalDuration, avgSpeed, diameters, items, recs };
-    }).sort((a,b) => b.totalPiles - a.totalPiles);
-  }, [selectedWeekRecords]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
@@ -5183,16 +5188,40 @@ function SummaryView({
                   <p className="text-[10px] text-blue-200 font-medium mt-0.5">Chu kỳ Thứ 6 – Thứ 5 · So sánh các dự án</p>
                 </div>
               </div>
-              {/* Year selector */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Năm:</span>
-                <select
-                  value={weeklyYear}
-                  onChange={e => { setWeeklyYear(+e.target.value); setSelectedWeekKey(''); }}
-                  className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
-                >
-                  {availableYears.map(y => <option key={y} value={y} className="text-slate-900">{y}</option>)}
-                </select>
+              {/* Year + Week selectors */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Năm:</span>
+                  <select
+                    value={weeklyYear}
+                    onChange={e => { setWeeklyYear(+e.target.value); setSelectedWeekKey(''); }}
+                    className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
+                  >
+                    {availableYears.map(y => <option key={y} value={y} className="text-slate-900 bg-white">{y}</option>)}
+                  </select>
+                </div>
+                {weekKeys.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Tuần:</span>
+                    <select
+                      value={selectedWeekKey}
+                      onChange={e => setSelectedWeekKey(e.target.value)}
+                      className="text-[12px] font-bold bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer min-w-[200px]"
+                    >
+                      {weekKeys.map(key => {
+                        const ws = getWeekStartDate(key);
+                        const startOfYear = new Date(ws.getFullYear(), 0, 1);
+                        const weekNo = Math.ceil(((ws.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+                        const recs = weeklyData[key] || [];
+                        return (
+                          <option key={key} value={key} className="text-slate-900 bg-white">
+                            Tuần {weekNo} · {getWeekLabel(ws)} ({recs.length} cọc)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -5237,12 +5266,24 @@ function SummaryView({
             return (
               <div className="space-y-5">
                 {/* Week summary KPIs */}
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-1 h-5 bg-orange-500 rounded-full"/>
-                  <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wide">
-                    Tuần {weekNo} · {getWeekLabel(weekStart)}
-                  </h4>
-                  <span className="ml-2 text-[10px] font-bold text-slate-400">(Thứ 6 → Thứ 5)</span>
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-5 bg-orange-500 rounded-full"/>
+                    <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wide">
+                      Tuần {weekNo} · {getWeekLabel(weekStart)}
+                    </h4>
+                    <span className="ml-2 text-[10px] font-bold text-slate-400">(Thứ 6 → Thứ 5)</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                    <Calendar size={13} className="text-blue-500 shrink-0"/>
+                    <div className="text-[11px] font-bold text-blue-700">
+                      {(() => {
+                        const thu5 = new Date(weekStart); thu5.setDate(thu5.getDate() + 6);
+                        const fmt = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+                        return <><span className="text-blue-500">Thứ 6:</span> {fmt(weekStart)} &nbsp;→&nbsp; <span className="text-blue-500">Thứ 5:</span> {fmt(thu5)}</>;
+                      })()}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-3">
