@@ -4943,8 +4943,8 @@ function SummaryView({
       )}
 
       {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm mt-8">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
+      <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
+        <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
           <div className="flex items-center gap-2">
             <BarChart3 size={18} className="text-blue-300" />
             <h4 className="text-[12px] font-black text-white uppercase tracking-widest">
@@ -4962,8 +4962,7 @@ function SummaryView({
               return diameters.length > 1 ? (
                 <select
                   id="dia-filter"
-                  className="text-[12px] font-semibold bg-white/10 border border-white/30 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/30 cursor-pointer"
-                  style={{ colorScheme: 'dark' }}
+                  className="text-[12px] font-semibold bg-white border border-white/40 text-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/50 cursor-pointer shadow-sm"
                   onChange={e => {
                     const val = e.target.value;
                     const rows = document.querySelectorAll('[data-dia-row]');
@@ -4996,7 +4995,7 @@ function SummaryView({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr style={{ background: '#1a3a6b' }}>
+              <tr style={{ background: '#2d5496' }}>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-10">STT</th>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">Đường kính</th>
                 <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-white border border-white/20">Mô tả lớp thiết kế tương ứng</th>
