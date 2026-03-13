@@ -4034,127 +4034,111 @@ export default function App() {
         )}
       </main>
 
-      {/* Settings Modal */}
+      {/* Settings Modal — Navy Dark Theme, A4 Landscape */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 bg-blue-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-sky-100">
-            <div className="bg-blue-600 p-8 text-white flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-sm border border-white/10">
-                  <Settings size={20} />
+        <div className="fixed inset-0 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300"
+          style={{background:'rgba(10,22,50,0.75)'}}>
+          <div className="w-full rounded-2xl shadow-2xl overflow-hidden border"
+            style={{maxWidth:'1100px', maxHeight:'92vh', display:'flex', flexDirection:'column',
+              background:'linear-gradient(160deg,#1a3a6b 0%,#1e4480 50%,#163570 100%)',
+              borderColor:'#2a4f8f'}}>
+
+            {/* ── HEADER ── */}
+            <div className="px-8 py-4 flex items-center justify-between shrink-0 border-b" style={{borderColor:'#2a4f8f'}}>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl" style={{background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.15)'}}>
+                  <Settings size={18} className="text-sky-300" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold uppercase tracking-tight leading-none">Cấu hình hệ thống</h3>
-                  <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest mt-1.5">Quản lý API & Giao diện</p>
+                  <h3 className="text-base font-black uppercase tracking-tight leading-none text-white">Cấu hình hệ thống</h3>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mt-1" style={{color:'#7eb8f7'}}>Quản lý API & Giao diện</p>
                 </div>
               </div>
-              <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <button onClick={() => setIsSettingsOpen(false)}
+                className="p-2 rounded-full transition-colors text-sky-300 hover:text-white"
+                style={{background:'rgba(255,255,255,0.05)'}}>
                 <X size={18} />
               </button>
             </div>
-            <div className="p-8 space-y-8">
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Logo tùy chỉnh</label>
-                  <div className="flex items-center gap-4 p-4 bg-sky-50 rounded-2xl border border-sky-100">
-                    <div className="w-14 h-14 bg-white rounded-xl overflow-hidden flex items-center justify-center shadow-sm border border-sky-200">
-                      {customLogo ? (
-                        <img src={customLogo} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Construction className="text-sky-300 w-6 h-6" />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <button 
-                        onClick={() => logoInputRef.current?.click()}
-                        className="w-full py-2 bg-white border border-sky-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-blue-900 hover:bg-sky-50 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <ImageIcon size={14} />
-                        Thay đổi Logo
-                      </button>
-                      {customLogo && (
-                        <button 
-                          onClick={resetLogo}
-                          className="w-full py-2 bg-white border border-sky-200 rounded-lg text-[10px] font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
-                        >
-                          <RotateCcw size={14} />
-                          Đặt lại mặc định
+
+            {/* ── BODY — 3 cột ── */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="p-6 grid gap-5" style={{gridTemplateColumns:'1fr 1fr 1fr'}}>
+
+                {/* ═══ CỘT 1: Logo + GitHub ═══ */}
+                <div className="space-y-4">
+
+                  {/* Logo */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] block mb-2" style={{color:'#7eb8f7'}}>Logo tùy chỉnh</label>
+                    <div className="flex items-center gap-3 p-3 rounded-xl border" style={{background:'rgba(255,255,255,0.06)', borderColor:'rgba(255,255,255,0.12)'}}>
+                      <div className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center shrink-0 border" style={{background:'rgba(255,255,255,0.1)', borderColor:'rgba(255,255,255,0.2)'}}>
+                        {customLogo
+                          ? <img src={customLogo} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          : <Construction className="w-6 h-6" style={{color:'#7eb8f7'}} />}
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <button onClick={() => logoInputRef.current?.click()}
+                          className="w-full py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 text-white hover:opacity-80"
+                          style={{background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)'}}>
+                          <ImageIcon size={13} /> Thay đổi Logo
                         </button>
-                      )}
+                        {customLogo && (
+                          <button onClick={resetLogo}
+                            className="w-full py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 hover:opacity-80"
+                            style={{background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', color:'#fca5a5'}}>
+                            <RotateCcw size={13} /> Đặt lại mặc định
+                          </button>
+                        )}
+                      </div>
+                      <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
                     </div>
-                    <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
                   </div>
-                </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] ml-1">Kết nối GitHub</label>
-                  <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 space-y-3">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className={cn("p-2 rounded-lg", isGithubConnected ? "bg-emerald-100 text-emerald-600" : "bg-sky-200 text-sky-400")}>
-                        <Github size={18} />
+                  {/* GitHub */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] block mb-2" style={{color:'#7eb8f7'}}>Kết nối GitHub</label>
+                    <div className="rounded-xl border p-4 space-y-3" style={{background:'rgba(255,255,255,0.06)', borderColor:'rgba(255,255,255,0.12)'}}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg shrink-0" style={{background: isGithubConnected ? 'rgba(52,211,153,0.15)' : 'rgba(255,255,255,0.08)'}}>
+                          <Github size={16} style={{color: isGithubConnected ? '#34d399' : '#7eb8f7'}} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-tight text-white">
+                            {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
+                          </p>
+                          <p className="text-[9px] font-bold uppercase tracking-widest leading-none mt-0.5" style={{color: isGithubConnected ? '#34d399' : '#7eb8f7'}}>
+                            {isGithubConnected ? "Đang đồng bộ tự động" : "Điền thông tin để đồng bộ"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-blue-900 uppercase tracking-tight">
-                          {isGithubConnected ? "Đã kết nối GitHub" : "Chưa kết nối GitHub"}
-                        </p>
-                        <p className="text-[9px] text-sky-400 font-bold uppercase tracking-widest leading-none mt-1">
-                          {isGithubConnected ? "Đang đồng bộ tự động" : "Điền thông tin để đồng bộ"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Personal Access Token</label>
-                      <input
-                        type="password"
-                        value={githubTokenInput}
-                        onChange={(e) => setGithubTokenInput(e.target.value)}
-                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">GitHub Username</label>
-                      <input
-                        type="text"
-                        value={githubUsernameInput}
-                        onChange={(e) => setGithubUsernameInput(e.target.value)}
-                        placeholder="username"
-                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Repository Name</label>
-                      <input
-                        type="text"
-                        value={githubRepoInput}
-                        onChange={(e) => setGithubRepoInput(e.target.value)}
-                        placeholder="construction-reports"
-                        className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-blue-900 text-sm font-medium focus:border-blue-500 outline-none transition-all"
-                      />
-                    </div>
-                    <button
-                      onClick={connectGithub}
-                      disabled={isConnectingGithub}
-                      className={cn(
-                        "w-full py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all",
-                        isGithubConnected
-                          ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
-                          : "bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-100"
-                      )}
-                    >
-                      {isConnectingGithub ? "Đang lưu..." : isGithubConnected ? "✓ Cập nhật kết nối" : "Lưu & kết nối"}
-                    </button>
-
-                    {/* Nút dọn rác GitHub: xóa file mồ côi không có trong Supabase */}
-                    {isGithubConnected && (
-                      <button
-                        onClick={async () => {
+                      {[
+                        {label:'Personal Access Token', value:githubTokenInput, set:setGithubTokenInput, type:'password', ph:'ghp_xxxxxxxxxxxxxxxxxxxx'},
+                        {label:'GitHub Username', value:githubUsernameInput, set:setGithubUsernameInput, type:'text', ph:'username'},
+                        {label:'Repository Name', value:githubRepoInput, set:setGithubRepoInput, type:'text', ph:'construction-reports'},
+                      ].map(f => (
+                        <div key={f.label}>
+                          <label className="text-[10px] font-bold uppercase tracking-widest block mb-1" style={{color:'rgba(255,255,255,0.5)'}}>{f.label}</label>
+                          <input type={f.type} value={f.value} onChange={(e) => f.set(e.target.value)} placeholder={f.ph}
+                            className="w-full px-3 py-2 rounded-lg text-sm font-medium outline-none transition-all text-white placeholder-white/30"
+                            style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)'}}
+                            onFocus={e => e.currentTarget.style.borderColor='rgba(126,184,247,0.6)'}
+                            onBlur={e => e.currentTarget.style.borderColor='rgba(255,255,255,0.15)'} />
+                        </div>
+                      ))}
+                      <button onClick={connectGithub} disabled={isConnectingGithub}
+                        className="w-full py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all"
+                        style={isGithubConnected
+                          ? {background:'rgba(52,211,153,0.15)', color:'#34d399', border:'1px solid rgba(52,211,153,0.3)'}
+                          : {background:'#f97316', color:'#fff', border:'none'}}>
+                        {isConnectingGithub ? "Đang lưu..." : isGithubConnected ? "✓ Cập nhật kết nối" : "Lưu & kết nối"}
+                      </button>
+                      {isGithubConnected && (
+                        <button onClick={async () => {
                           if (!githubCreds) return;
                           if (!window.confirm("Tính năng này sẽ quét GitHub và xóa các file Excel/ảnh KHÔNG có trong Supabase.\n\nTiếp tục?")) return;
                           const { token, username, repo } = githubCreds;
                           const headers = { 'Authorization': `token ${token.trim()}`, 'Accept': 'application/vnd.github.v3+json' };
-
-                          // Lấy danh sách excelUrl và fileUrl đang có trong Supabase
                           const validUrls = new Set<string>();
                           if (supabase) {
                             const { data } = await supabase.from('drill_extractions').select('excelUrl, fileUrl');
@@ -4163,8 +4147,6 @@ export default function App() {
                               if (r.fileUrl) validUrls.add(r.fileUrl.split('?')[0]);
                             });
                           }
-
-                          // Quét thư mục SGC-CKN/Excel trên GitHub
                           let deleted = 0;
                           try {
                             const listRes = await fetch(`https://api.github.com/repos/${username}/${repo}/contents/SGC-CKN/Excel`, { headers });
@@ -4182,125 +4164,166 @@ export default function App() {
                               }
                             }
                           } catch (e) { console.error(e); }
-
                           alert(deleted > 0 ? `✅ Đã dọn ${deleted} file mồ côi trên GitHub.` : "✅ GitHub sạch, không có file mồ côi.");
                         }}
-                        className="w-full py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all bg-red-50 text-red-500 hover:bg-red-100 border border-red-200 flex items-center justify-center gap-2"
-                      >
-                        <Trash2 size={12} /> Dọn rác GitHub
-                      </button>
-                    )}
+                          className="w-full py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          style={{background:'rgba(239,68,68,0.12)', color:'#fca5a5', border:'1px solid rgba(239,68,68,0.25)'}}>
+                          <Trash2 size={12} /> Dọn rác GitHub
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </div>{/* end col 1 */}
 
+                {/* ═══ CỘT 2: Gemini API Keys ═══ */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between ml-1">
-                    <label className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em]">Gemini API Keys</label>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tự động xoay vòng khi hết quota</span>
-                  </div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] block" style={{color:'#7eb8f7'}}>Gemini API Keys</label>
+                  <p className="text-[10px] font-bold uppercase tracking-widest -mt-2" style={{color:'rgba(255,255,255,0.35)'}}>Tự động xoay vòng khi hết quota</p>
 
-                  {/* Status bar: hiển thị key nào đang active / exhausted */}
-                  <div className="flex gap-1.5 mb-1">
+                  {/* Thanh trạng thái */}
+                  <div className="flex gap-1.5">
                     {geminiApiKeys.map((k, i) => {
                       const hasKey = k.trim().length > 0;
                       const isActive = hasKey && i === activeKeyIndex && !exhaustedKeys.has(i);
                       const isExhausted = hasKey && exhaustedKeys.has(i);
                       return (
-                        <div
-                          key={i}
+                        <div key={i}
                           title={isActive ? `Key #${i+1} đang dùng` : isExhausted ? `Key #${i+1} hết quota` : !hasKey ? `Key #${i+1} chưa điền` : `Key #${i+1} sẵn sàng`}
-                          className={`flex-1 h-1.5 rounded-full transition-all ${
-                            isActive ? 'bg-emerald-500' :
-                            isExhausted ? 'bg-red-400' :
-                            hasKey ? 'bg-sky-300' :
-                            'bg-slate-200'
-                          }`}
-                        />
+                          className="flex-1 h-2 rounded-full transition-all"
+                          style={{background: isActive ? '#34d399' : isExhausted ? '#f87171' : hasKey ? '#7eb8f7' : 'rgba(255,255,255,0.15)'}} />
                       );
                     })}
                   </div>
-                  <div className="flex gap-2 mb-1 px-0.5">
+                  <div className="flex gap-1">
                     {geminiApiKeys.map((k, i) => {
                       const hasKey = k.trim().length > 0;
                       const isActive = hasKey && i === activeKeyIndex && !exhaustedKeys.has(i);
                       const isExhausted = hasKey && exhaustedKeys.has(i);
                       return (
-                        <span key={i} className={`flex-1 text-center text-[9px] font-black uppercase tracking-widest ${
-                          isActive ? 'text-emerald-600' :
-                          isExhausted ? 'text-red-400' :
-                          hasKey ? 'text-sky-500' :
-                          'text-slate-300'
-                        }`}>
-                          {isActive ? '● Đang dùng' : isExhausted ? '✕ Hết quota' : hasKey ? '○ Sẵn sàng' : `— Key ${i+1}`}
+                        <span key={i} className="flex-1 text-center text-[9px] font-black uppercase tracking-widest"
+                          style={{color: isActive ? '#34d399' : isExhausted ? '#f87171' : hasKey ? '#7eb8f7' : 'rgba(255,255,255,0.25)'}}>
+                          {isActive ? '● Dùng' : isExhausted ? '✕ Quota' : hasKey ? '○ Sẵn' : `K${i+1}`}
                         </span>
                       );
                     })}
                   </div>
 
-                  {/* 5 ô nhập key */}
+                  {/* 5 ô key */}
                   {geminiApiKeys.map((k, i) => {
-                    const isActive = k.trim() && i === activeKeyIndex && !exhaustedKeys.has(i);
-                    const isExhausted = k.trim() && exhaustedKeys.has(i);
+                    const isActive = !!k.trim() && i === activeKeyIndex && !exhaustedKeys.has(i);
+                    const isExhausted = !!k.trim() && exhaustedKeys.has(i);
+                    const borderCol = isActive ? 'rgba(52,211,153,0.5)' : isExhausted ? 'rgba(248,113,113,0.5)' : 'rgba(255,255,255,0.15)';
+                    const bgCol = isActive ? 'rgba(52,211,153,0.08)' : isExhausted ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.06)';
+                    const textCol = isActive ? '#34d399' : isExhausted ? '#fca5a5' : '#e2eeff';
                     return (
                       <div key={i} className="relative">
-                        <div className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black
-                          ${isActive ? 'bg-emerald-500 text-white' : isExhausted ? 'bg-red-400 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black"
+                          style={{background: isActive ? '#34d399' : isExhausted ? '#f87171' : 'rgba(255,255,255,0.15)', color: isActive || isExhausted ? '#fff' : 'rgba(255,255,255,0.6)'}}>
                           {i + 1}
                         </div>
-                        <input
-                          type="password"
-                          value={k}
-                          onChange={(e) => {
-                            const next = [...geminiApiKeys];
-                            next[i] = e.target.value;
-                            setGeminiApiKeys(next);
-                          }}
-                          placeholder={`API Key #${i + 1}${i === 0 ? ' (chính)' : ` (dự phòng ${i})`}`}
-                          className={`w-full pl-10 pr-4 py-3 rounded-xl text-sm font-medium outline-none transition-all border
-                            ${isActive ? 'bg-emerald-50 border-emerald-300 text-emerald-800 focus:border-emerald-500' :
-                              isExhausted ? 'bg-red-50 border-red-200 text-red-700 focus:border-red-400' :
-                              'bg-sky-50 border-sky-200 text-blue-900 focus:border-blue-500'}`}
-                        />
-                        {isExhausted && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-red-500 uppercase tracking-widest">Hết quota</span>
-                        )}
-                        {isActive && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-emerald-600 uppercase tracking-widest">Đang dùng</span>
-                        )}
+                        <input type="password" value={k}
+                          onChange={(e) => { const next = [...geminiApiKeys]; next[i] = e.target.value; setGeminiApiKeys(next); }}
+                          placeholder={i === 0 ? 'API Key #1 (chính)' : `API Key #${i+1} (dự phòng ${i})`}
+                          className="w-full pl-10 pr-24 py-2.5 rounded-xl text-sm font-medium outline-none transition-all placeholder-white/25"
+                          style={{background:bgCol, border:`1px solid ${borderCol}`, color:textCol}} />
+                        {isActive && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-widest" style={{color:'#34d399'}}>Đang dùng</span>}
+                        {isExhausted && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-widest" style={{color:'#fca5a5'}}>Hết quota</span>}
                       </div>
                     );
                   })}
 
-                  {/* Cảnh báo khi tất cả key hết quota */}
                   {geminiApiKeys.some(k => k.trim()) && exhaustedKeys.size > 0 && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
-                    <div className="bg-red-50 border border-red-300 rounded-xl px-4 py-3 flex items-start gap-3">
-                      <span className="text-red-500 text-lg mt-0.5">⛔</span>
+                    <div className="rounded-xl px-4 py-3 flex items-start gap-3" style={{background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.3)'}}>
+                      <span className="text-lg mt-0.5">⛔</span>
                       <div>
-                        <p className="text-red-700 font-black text-[11px] uppercase tracking-widest">Tất cả API Key đã hết quota!</p>
-                        <p className="text-red-500 text-[11px] mt-0.5">Vui lòng thêm key mới vào ô trống hoặc chờ quota reset (thường sau 24h).</p>
+                        <p className="font-black text-[11px] uppercase tracking-widest" style={{color:'#fca5a5'}}>Tất cả API Key đã hết quota!</p>
+                        <p className="text-[11px] mt-0.5" style={{color:'rgba(252,165,165,0.7)'}}>Thêm key mới vào ô trống hoặc chờ quota reset (sau 24h).</p>
                       </div>
                     </div>
                   )}
 
-                  <button
-                    onClick={() => { setExhaustedKeys(new Set()); setActiveKeyIndex(0); }}
-                    className="text-[10px] font-bold text-sky-500 hover:text-sky-700 uppercase tracking-widest transition-colors"
-                  >
-                    ↺ Reset trạng thái quota (thử lại từ Key #1)
+                  <button onClick={() => { setExhaustedKeys(new Set()); setActiveKeyIndex(0); }}
+                    className="text-[10px] font-bold uppercase tracking-widest transition-colors"
+                    style={{color:'#7eb8f7'}}
+                    onMouseEnter={e => (e.currentTarget.style.color='#bfdbfe')}
+                    onMouseLeave={e => (e.currentTarget.style.color='#7eb8f7')}>
+                    ↺ Reset quota — thử lại từ Key #1
                   </button>
-                </div>
+                </div>{/* end col 2 */}
+
+                {/* ═══ CỘT 3: Hướng dẫn + Trạng thái + Nút Lưu ═══ */}
+                <div className="flex flex-col gap-4">
+
+                  {/* Hướng dẫn */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] block mb-2" style={{color:'#7eb8f7'}}>Hướng dẫn sử dụng</label>
+                    <div className="rounded-xl p-4 space-y-3" style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)'}}>
+                      {[
+                        {n:'1', col:'#7eb8f7', title:'GitHub Token:', body:'Vào github.com → Settings → Developer settings → Personal access tokens → Tạo token với quyền repo'},
+                        {n:'2', col:'#7eb8f7', title:'Gemini API Key:', body:'Vào aistudio.google.com → Get API Key → Tạo key miễn phí (1,500 req/ngày)'},
+                        {n:'3', col:'#7eb8f7', title:'Xoay vòng Key:', body:'Thêm nhiều key vào ô 2–5, hệ thống tự chuyển khi key #1 hết quota'},
+                        {n:'✓', col:'#34d399', title:'Dọn rác GitHub:', body:'Xóa file Excel & ảnh cũ không liên kết trong database, giải phóng dung lượng repo'},
+                      ].map(item => (
+                        <div key={item.n} className="flex gap-2 text-[12px]">
+                          <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5 text-white"
+                            style={{background: item.col === '#34d399' ? '#34d399' : 'rgba(126,184,247,0.3)'}}>
+                            {item.n}
+                          </span>
+                          <p style={{color:'rgba(255,255,255,0.65)'}}><span className="font-black" style={{color:'rgba(255,255,255,0.9)'}}>{item.title}</span> {item.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Trạng thái hệ thống */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] block mb-2" style={{color:'#7eb8f7'}}>Trạng thái hệ thống</label>
+                    <div className="rounded-xl p-4 space-y-2.5" style={{background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)'}}>
+                      {[
+                        {name:'Supabase', ok:!!supabase, okLabel:'● Đã kết nối', nokLabel:'○ Chưa kết nối'},
+                        {name:'GitHub', ok:isGithubConnected, okLabel:'● Đã kết nối', nokLabel:'○ Chưa kết nối'},
+                      ].map(item => (
+                        <div key={item.name} className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-widest" style={{color:'rgba(255,255,255,0.5)'}}>{item.name}</span>
+                          <span className="text-[11px] font-black uppercase tracking-widest" style={{color: item.ok ? '#34d399' : '#fbbf24'}}>
+                            {item.ok ? item.okLabel : item.nokLabel}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{color:'rgba(255,255,255,0.5)'}}>Gemini AI</span>
+                        <span className="text-[11px] font-black uppercase tracking-widest"
+                          style={{color: geminiApiKeys.some(k=>k.trim())
+                            ? exhaustedKeys.size > 0 && geminiApiKeys.every((k,i)=>!k.trim()||exhaustedKeys.has(i)) ? '#f87171' : '#34d399'
+                            : '#fbbf24'}}>
+                          {geminiApiKeys.some(k=>k.trim())
+                            ? exhaustedKeys.size > 0 && geminiApiKeys.every((k,i)=>!k.trim()||exhaustedKeys.has(i))
+                              ? '⛔ Hết quota' : `● ${geminiApiKeys.filter(k=>k.trim()).length} key sẵn sàng`
+                            : '○ Chưa có key'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nút Lưu */}
+                  <div className="mt-auto">
+                    <button onClick={() => saveAllApiKeys(geminiApiKeys)}
+                      className="w-full py-4 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 text-white"
+                      style={{background:'linear-gradient(135deg,#2563eb,#1d4ed8)', boxShadow:'0 4px 20px rgba(37,99,235,0.4)'}}>
+                      <Save size={18} />
+                      Lưu cấu hình
+                    </button>
+                  </div>
+                </div>{/* end col 3 */}
+
               </div>
-              <button 
-                onClick={() => saveAllApiKeys(geminiApiKeys)}
-                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
-              >
-                <Save size={18} />
-                Lưu cấu hình
-              </button>
-            </div>
+            </div>{/* end body */}
           </div>
         </div>
       )}
+
+
+
 
       <footer className="bg-sky-50 border-t border-sky-200 px-8 py-4 text-center mt-auto">
         <p className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">
