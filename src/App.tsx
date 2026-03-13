@@ -41,7 +41,8 @@ import {
   Filter,
   Search,
   ChevronDown,
-  RotateCw
+  RotateCw,
+  FileDown
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -267,110 +268,252 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'SGC-CKN'; wb.created = new Date();
-    const ws = wb.addWorksheet('Dữ liệu thi công');
+    const dateStr2 = new Date().toLocaleDateString('vi-VN');
 
-    ws.columns = [
-      { width: 6  },  // STT
-      { width: 40 },  // Dự án
-      { width: 34 },  // Hạng mục
-      { width: 30 },  // Tên bộ phận
-      { width: 11 },  // Số hiệu
-      { width: 13 },  // Biên bản số
-      { width: 11 },  // Đường kính
-      { width: 22 },  // Bắt đầu
-      { width: 22 },  // Kết thúc
-      { width: 14 },  // Chiều dài (m)
-      { width: 14 },  // T.Gian TC (h)
-      { width: 16 },  // Vận tốc TB (m/h)
-      { width: 30 },  // File dữ liệu
+    // ── Sheet 1: Chi tiết Các lớp địa chất ──
+    const ws1 = wb.addWorksheet('Chi tiết Các lớp địa chất');
+    ws1.columns = [
+      { width: 6 },   // STT
+      { width: 25 },  // Dự án
+      { width: 25 },  // Hạng mục
+      { width: 25 },  // Tên bộ phận
+      { width: 10 },  // Số hiệu
+      { width: 12 },  // Biên bản số
+      { width: 10 },  // ĐC thực tế
+      { width: 12 },  // Đường kính
+      { width: 40 },  // Mô tả lớp thiết kế
+      { width: 18 },  // Từ (h)
+      { width: 18 },  // Đến (h)
+      { width: 12 },  // Cao độ từ
+      { width: 12 },  // Cao độ đến
+      { width: 10 },  // T.Gian (h)
+      { width: 10 },  // Dài (m)
+      { width: 10 },  // V (m/h)
+      { width: 20 },  // Ghi chú
     ];
 
-    const NCOLS = 13; // Tổng số cột bao gồm cột File dữ liệu mới
+    const r1_1 = ws1.addRow(['CHI TIẾT CÁC LỚP ĐỊA CHẤT - TẤT CẢ BIÊN BẢN']);
+    r1_1.height = 30;
+    cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+    ws1.mergeCells(r1_1.number, 1, r1_1.number, 17);
 
-    const r1 = ws.addRow(['TỔNG HỢP DỮ LIỆU THI CÔNG']);
-    r1.height = 30;
-    cell(r1.getCell(1), 'TỔNG HỢP DỮ LIỆU THI CÔNG', '1A3A6B', 'FFFFFF', true, 'center', 14);
-    ws.mergeCells(r1.number, 1, r1.number, NCOLS);
-
-    const dateStr2 = new Date().toLocaleDateString('vi-VN');
-    const r2 = ws.addRow([`Ngày xuất: ${dateStr2}   |   Tổng số biên bản: ${rows.length}`]);
-    r2.height = 18;
-    cell(r2.getCell(1), r2.getCell(1).value, 'EFF6FF', '1E3A6E', false, 'center', 10);
-    ws.mergeCells(r2.number, 1, r2.number, NCOLS);
-
-    ws.addRow([]).height = 6;
-
-    const HEADERS = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'File dữ liệu'];
-    const HDR_ALIGN: any[] = ['center','left','left','left','center','center','center','center','center','center','center','center', 'left'];
-    const r4 = ws.addRow(HEADERS);
-    r4.height = 38;
-    HEADERS.forEach((h, ci) => {
-      cell(r4.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, HDR_ALIGN[ci], 11, true);
-      r4.getCell(ci + 1).border = border('FFFFFF');
+    const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+    const r2_1 = ws1.addRow(HDRS1);
+    r2_1.height = 25;
+    HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+    ws1.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 17 } };
+    // Thiết lập Wrap Text cho các cột chứa văn bản dài
+    [2, 3, 4, 6, 9, 17].forEach(col => {
+      ws1.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     });
 
-    const EVEN_BG = 'F8FAFC';
-    const ODD_BG  = 'EFF6FF';
+    rows.forEach((res, idx) => {
+      const reportStt = rows.length - idx;
+      (res.layers || []).forEach((layer) => {
+        const row = ws1.addRow([
+          reportStt,
+          res.project,
+          res.item,
+          res.componentName,
+          res.pileId,
+          res.reportNumber,
+          layer.actualGeology,
+          res.diameter,
+          layer.layerDesign,
+          layer.timeFrom + ' ' + layer.dateFrom,
+          layer.timeTo + ' ' + layer.dateTo,
+          layer.elevationFrom,
+          layer.elevationTo,
+          parseFloat(layer.durationHours.toFixed(2)),
+          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(layer.speedMph.toFixed(2)),
+          layer.notes
+        ]);
+        const wrapCols = [2, 3, 4, 6, 9, 17];
+        row.eachCell((c, ci) => {
+          const shouldWrap = wrapCols.includes(ci);
+          cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+        });
+      });
+    });
 
-    rows.forEach((item, idx) => {
-      const totalLen  = (item.layers || []).reduce((s, l) => s + (Number(l.lengthMeters)  || 0), 0);
-      const totalHrs  = (item.layers || []).reduce((s, l) => s + (Number(l.durationHours) || 0), 0);
-      const spd       = totalHrs > 0 ? totalLen / totalHrs : 0;
-      const isSlow    = spd > 0 && spd <= 1;
-      const spdBg     = isSlow ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
-      const spdFc     = isSlow ? 'FFFFFF' : 'C2410C';
-      const rowBg     = idx % 2 === 0 ? EVEN_BG : ODD_BG;
+    // ── Sheet 2: Thống kê theo từng biên bản ──
+    const ws2 = wb.addWorksheet('Thống kê theo từng biên bản');
+    ws2.columns = [
+      { width: 6 },   // STT
+      { width: 20 },  // Dự án
+      { width: 20 },  // Hạng mục
+      { width: 20 },  // Tên bộ phận
+      { width: 10 },  // Số hiệu
+      { width: 12 },  // Biên bản số
+      { width: 12 },  // Đường kính
+      { width: 12 },  // Ký hiệu ĐC
+      { width: 40 },  // Mô tả lớp thiết kế
+      { width: 10 },  // Số mẫu
+      { width: 12 },  // Tổng Dài (m)
+      { width: 12 },  // Tổng T.Gian (h)
+      { width: 12 },  // V.TB (m/h)
+    ];
 
-      const vals = [
-        rows.length - idx,
-        item.project || '',
-        item.item || '',
-        item.componentName || '',
-        item.pileId || '',
-        item.reportNumber || '',
-        item.diameter || '',
-        item.constructionStart || '',
-        item.constructionEnd || '',
-        parseFloat(totalLen.toFixed(2)),
-        totalHrs > 0 ? parseFloat(totalHrs.toFixed(2)) : '—',
-        parseFloat(spd.toFixed(2)),
-        item.excelUrl || '',
-      ];
-      const dr = ws.addRow(vals);
-      dr.height = 22;
-      vals.forEach((v, ci) => {
-        const isSpd = ci === 11;
-        const isLen = ci === 9;
-        const isFile = ci === 12;
+    const r1_2 = ws2.addRow(['THỐNG KÊ THEO LỚP THIẾT KẾ - TỪNG BIÊN BẢN']);
+    r1_2.height = 30;
+    cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+    ws2.mergeCells(r1_2.number, 1, r1_2.number, 13);
+
+    const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
+    const r2_2 = ws2.addRow(HDRS2);
+    r2_2.height = 25;
+    HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+    ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+    // Thiết lập Wrap Text cho các cột chứa văn bản dài
+    [2, 3, 4, 6, 9].forEach(col => {
+      ws2.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    });
+
+    rows.forEach((res, idx) => {
+      const reportStt = rows.length - idx;
+      const perReportStats: Record<string, any> = {};
+      (res.layers || []).forEach(layer => {
+        const key = `${layer.designLayerCode}|||${layer.layerDesign}`;
+        if (!perReportStats[key]) {
+          perReportStats[key] = {
+            code: layer.designLayerCode,
+            design: layer.layerDesign,
+            segments: 0,
+            totalLen: 0,
+            totalDur: 0
+          };
+        }
+        perReportStats[key].segments++;
+        perReportStats[key].totalLen += layer.lengthMeters;
+        perReportStats[key].totalDur += layer.durationHours;
+      });
+
+      Object.values(perReportStats).forEach((stat: any) => {
+        const avg = stat.totalDur > 0 ? stat.totalLen / stat.totalDur : 0;
+        const row = ws2.addRow([
+          reportStt,
+          res.project,
+          res.item,
+          res.componentName,
+          res.pileId,
+          res.reportNumber,
+          res.diameter,
+          stat.code,
+          stat.design,
+          stat.segments,
+          parseFloat(stat.totalLen.toFixed(2)),
+          parseFloat(stat.totalDur.toFixed(2)),
+          parseFloat(avg.toFixed(2))
+        ]);
+        const wrapCols = [2, 3, 4, 6, 9];
+        row.eachCell((c, ci) => {
+          const shouldWrap = wrapCols.includes(ci);
+          cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+        });
+      });
+    });
+
+    // ── Sheet 3: Tổng hợp lớp thiết kế (Toàn bộ) ──
+    const ws3 = wb.addWorksheet('Tổng hợp lớp thiết kế');
+    ws3.columns = [
+      { width: 6  },  // STT
+      { width: 15 },  // Đường kính
+      { width: 15 },  // Ký hiệu ĐC
+      { width: 45 },  // Mô tả lớp thiết kế tương ứng
+      { width: 10 },  // Số cọc
+      { width: 10 },  // Số mẫu
+      { width: 15 },  // Tổng Dài (m)
+      { width: 15 },  // Tổng T.Gian (h)
+      { width: 15 },  // V.Min (m/h)
+      { width: 15 },  // V.Max (m/h)
+      { width: 15 },  // V.TB (m/h)
+    ];
+
+    const r1_3 = ws3.addRow(['TỔNG HỢP THỐNG KÊ THEO LỚP THIẾT KẾ - TOÀN BỘ']);
+    r1_3.height = 30;
+    cell(r1_3.getCell(1), r1_3.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
+    ws3.mergeCells(r1_3.number, 1, r1_3.number, 11);
+
+    const HDRS3 = ['STT', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế tương ứng', 'Số cọc', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.Min (m/h)', 'V.Max (m/h)', 'V.TB (m/h)'];
+    const r2_3 = ws3.addRow(HDRS3);
+    r2_3.height = 25;
+    HDRS3.forEach((h, ci) => cell(r2_3.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
+    ws3.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 11 } };
+    // Thiết lập Wrap Text cho cột mô tả lớp thiết kế
+    ws3.getColumn(4).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+    const excelStatsMap: Record<string, any> = {};
+    const normalizeForGrouping = (str: string) => {
+      if (!str) return '';
+      return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]/g, '');
+    };
+
+    rows.forEach(res => {
+      (res.layers || []).forEach(layer => {
+        const code = (layer.designLayerCode || '').trim();
+        const design = (layer.layerDesign || 'Chưa xác định').trim();
+        const dia = (res.diameter || '—').trim();
+        const key = `${normalizeForGrouping(code)}|||${normalizeForGrouping(design)}|||${normalizeForGrouping(dia)}`;
         
-        const cellObj = dr.getCell(ci + 1);
-        cell(
-          cellObj, v,
-          isSpd ? spdBg : rowBg,
-          isFile ? '2563EB' : (isSpd ? spdFc : isLen ? 'C2410C' : '1E293B'),
-          (isSpd && isSlow) || isLen || isFile,
-          HDR_ALIGN[ci], 10
-        );
-        
-        if (isFile && v) {
-          cellObj.value = { text: 'Xem file chi tiết', hyperlink: v };
-          cellObj.font = { ...cellObj.font, underline: true };
+        if (!excelStatsMap[key]) {
+          excelStatsMap[key] = { code, design, dia, pileIds: new Set(), segments: 0, minSpeed: Infinity, maxSpeed: -Infinity, totalDuration: 0, totalLength: 0 };
+        }
+        const s = excelStatsMap[key];
+        s.pileIds.add((res.pileId || res.id).trim());
+        s.segments += 1;
+        s.totalDuration += layer.durationHours;
+        s.totalLength += layer.lengthMeters;
+        if (layer.speedMph > 0) {
+          if (layer.speedMph < s.minSpeed) s.minSpeed = layer.speedMph;
+          if (layer.speedMph > s.maxSpeed) s.maxSpeed = layer.speedMph;
         }
       });
     });
 
-    const sumLen = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.lengthMeters) || 0), 0), 0);
-    const sumHrs = rows.reduce((s, item) => s + (item.layers || []).reduce((s2, l) => s2 + (Number(l.durationHours) || 0), 0), 0);
-    const sumSpd = sumHrs > 0 ? sumLen / sumHrs : 0;
-    const sumVals = ['', '', '', '', '', '', '', '', 'TỔNG CỘNG', parseFloat(sumLen.toFixed(2)), parseFloat(sumHrs.toFixed(2)), parseFloat(sumSpd.toFixed(2)), ''];
-    const sr = ws.addRow(sumVals);
-    sr.height = 26;
-    sumVals.forEach((v, ci) => {
-      const isNum = ci >= 9 && ci <= 11;
-      cell(sr.getCell(ci + 1), v, 'E2E8F0', '1E3A6E', true, ci === 8 ? 'right' : isNum ? 'center' : 'left', 11);
-      sr.getCell(ci + 1).border = { ...border('94A3B8'), top: { style: 'medium' as const, color: { argb: argb('1E3A6E') } } };
+    const excelStats = Object.values(excelStatsMap).sort((a, b) => {
+      if (a.code && b.code) return a.code.localeCompare(b.code, undefined, { numeric: true });
+      return a.design.localeCompare(b.design);
     });
-    ws.mergeCells(sr.number, 1, sr.number, 8);
+
+    excelStats.forEach((stat, idx) => {
+      const avg = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
+      const row = ws3.addRow([
+        idx + 1,
+        stat.dia,
+        stat.code || '—',
+        stat.design,
+        stat.pileIds.size,
+        stat.segments,
+        parseFloat(stat.totalLength.toFixed(2)),
+        parseFloat(stat.totalDuration.toFixed(2)),
+        stat.minSpeed === Infinity ? '—' : parseFloat(stat.minSpeed.toFixed(2)),
+        stat.maxSpeed === -Infinity ? '—' : parseFloat(stat.maxSpeed.toFixed(2)),
+        parseFloat(avg.toFixed(2))
+      ]);
+      // row.height = 20; // Remove fixed height to allow auto-fit
+      row.eachCell((c, ci) => {
+        const shouldWrap = ci === 4;
+        cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
+      });
+    });
+
+    const totalPilesCount3 = rows.length;
+    let totalSegs3 = 0, totalLen3 = 0, totalDur3 = 0, gMin3 = Infinity, gMax3 = -Infinity;
+    excelStats.forEach(s => {
+      totalSegs3 += s.segments; totalLen3 += s.totalLength; totalDur3 += s.totalDuration;
+      if (s.minSpeed < gMin3) gMin3 = s.minSpeed;
+      if (s.maxSpeed > gMax3) gMax3 = s.maxSpeed;
+    });
+    const totalAvg3 = totalDur3 > 0 ? totalLen3 / totalDur3 : 0;
+
+    const footer3 = ws3.addRow(['TỔNG CỘNG', '', '', '', totalPilesCount3, totalSegs3, parseFloat(totalLen3.toFixed(2)), parseFloat(totalDur3.toFixed(2)), gMin3 === Infinity ? '—' : parseFloat(gMin3.toFixed(2)), gMax3 === -Infinity ? '—' : parseFloat(gMax3.toFixed(2)), parseFloat(totalAvg3.toFixed(2))]);
+    footer3.height = 24;
+    ws3.mergeCells(footer3.number, 1, footer3.number, 4);
+    footer3.eachCell((c, ci) => {
+      cell(c, c.value, 'E2E8F0', '1E3A6E', true, 'center', 10);
+      if (ci === 1) c.alignment = { horizontal: 'right', vertical: 'middle' };
+    });
 
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -379,7 +522,7 @@ const exportAllToExcel = (rows: ExtractionResult[]) => {
     a.href = url;
     a.style.display = 'none';
     const dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
-    a.download = `SGC-CKN_TongHop_${rows.length}BienBan_${dateStr}.xlsx`;
+    a.download = `SGC-CKN_TongHop_3Sheets_${dateStr}.xlsx`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
@@ -961,6 +1104,7 @@ export default function App() {
   // Bộ lọc Sheet 1
   const [filterProject, setFilterProject] = useState('');
   const [filterItem, setFilterItem] = useState('');
+  const [filterStt, setFilterStt] = useState('');
   const [filterComponentName, setFilterComponentName] = useState('');
   const [filterReportNumber, setFilterReportNumber] = useState('');
   const [filterDiameter, setFilterDiameter] = useState('');
@@ -2311,7 +2455,9 @@ export default function App() {
                 return new Date(parseInt(y), parseInt(mo) - 1, parseInt(d));
               };
 
-              const filtered = history.filter(item => {
+              const filtered = history.filter((item, idx) => {
+                const reportStt = (history.length - idx).toString();
+                if (filterStt && !reportStt.includes(filterStt)) return false;
                 if (filterProject && !item.project?.toLowerCase().includes(filterProject.toLowerCase())) return false;
                 if (filterItem && !item.item?.toLowerCase().includes(filterItem.toLowerCase())) return false;
                 if (filterComponentName && !item.componentName?.toLowerCase().includes(filterComponentName.toLowerCase())) return false;
@@ -2330,12 +2476,13 @@ export default function App() {
                 return true;
               });
 
-              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterReportNumber || filterDiameter || filterDateFrom || filterDateTo;
+              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterReportNumber || filterDiameter || filterDateFrom || filterDateTo || filterStt;
 
               const resetFilters = () => {
                 setFilterProject(''); setFilterItem(''); setFilterComponentName('');
                 setFilterReportNumber(''); setFilterDiameter('');
                 setFilterDateFrom(''); setFilterDateTo('');
+                setFilterStt('');
               };
 
               return (
@@ -2400,7 +2547,7 @@ export default function App() {
                       Bộ lọc
                       {hasActiveFilter && (
                         <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
-                          {[filterProject, filterItem, filterComponentName, filterReportNumber, filterDiameter, filterDateFrom, filterDateTo].filter(Boolean).length}
+                          {[filterProject, filterItem, filterComponentName, filterReportNumber, filterDiameter, filterDateFrom, filterDateTo, filterStt].filter(Boolean).length}
                         </span>
                       )}
                     </button>
@@ -2417,6 +2564,16 @@ export default function App() {
                 {showFilters && (
                   <div className="rounded-2xl border border-slate-300/50 bg-[#f5f2e1] shadow-xl animate-in fade-in slide-in-from-top-2 duration-200" style={{ overflow: 'visible' }}>
                     <div className="px-6 py-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" style={{ overflow: 'visible' }}>
+                      {/* STT */}
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">STT</label>
+                        <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
+                          <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          <input value={filterStt} onChange={e => setFilterStt(e.target.value)} placeholder="Lọc theo STT..."
+                            className="w-full pl-9 pr-9 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                          {filterStt && <button onClick={() => setFilterStt('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                        </div>
+                      </div>
                       {/* Dự án - Dropdown + Search */}
                       {(() => {
                         const opts = [...new Set(history.map(r => r.project).filter(Boolean))].sort();
@@ -3311,10 +3468,11 @@ function SummaryView({
   onDelete: (id: string) => void
 }) {
   const projects = [...new Set(history.map(r => r.project).filter(Boolean))];
+  // Đếm tổng số biên bản (mỗi file/biên bản được coi là 1 thực thể cọc trong thống kê này nếu người dùng muốn khớp với số lượng file đã upload)
   const totalPiles = history.length;
-  const totalDepth = history.reduce((acc, r) => acc + r.layers.reduce((s, l) => s + l.lengthMeters, 0), 0);
+  const totalDepth = history.reduce((acc, r) => acc + (r.layers || []).reduce((s, l) => s + (l.lengthMeters || 0), 0), 0);
   const avgSpeed = history.length > 0
-    ? history.reduce((acc, r) => acc + (r.layers.reduce((s, l) => s + l.speedMph, 0) / (r.layers.length || 1)), 0) / history.length
+    ? history.reduce((acc, r) => acc + ((r.layers || []).reduce((s, l) => s + (l.speedMph || 0), 0) / (r.layers?.length || 1)), 0) / history.length
     : 0;
 
   // Tìm các cọc có vận tốc khoan < 1m/h
@@ -3386,11 +3544,13 @@ function SummaryView({
 
   // ── Tính toán Thống kê theo lớp thiết kế (Tổng hợp từ tất cả biên bản) ──
   interface LayerStat {
+    designLayerCode: string;
     layerDesign: string;
     diameter: string;
+    pileIds: Set<string>;
     segments: number;
-    elevationFrom: number;
-    elevationTo: number;
+    minSpeed: number;
+    maxSpeed: number;
     totalDuration: number;
     totalLength: number;
     colorIdx: number;
@@ -3400,40 +3560,81 @@ function SummaryView({
   let colorCounter = 0;
   const colorMap: Record<string, number> = {};
 
+  const normalizeForGrouping = (str: string) => {
+    if (!str) return '';
+    return str.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      // Loại bỏ các từ đệm phổ biến trong mô tả địa chất để gộp nhóm thông minh hơn
+      .replace(/\b(mau|trang thai|ket cau|lop|lan|phan)\b/g, '')
+      .replace(/[^a-z0-9]/g, '');
+  };
+
   history.forEach(res => {
     (res.layers || []).forEach(layer => {
+      const code = (layer.designLayerCode || '').trim();
       const design = (layer.layerDesign || 'Chưa xác định').trim();
-      const dia = res.diameter || '—';
-      const key = `${design}|||${dia}`;
+      const dia = (res.diameter || '—').trim();
+      
+      const cleanCode = normalizeForGrouping(code);
+      const cleanDesign = normalizeForGrouping(design);
+      const cleanDia = normalizeForGrouping(dia);
+      
+      const key = `${cleanCode}|||${cleanDesign}|||${cleanDia}`;
       
       if (!statsMap[key]) {
-        if (colorMap[design] === undefined) {
-          colorMap[design] = colorCounter % GROUP_COLORS.length;
+        const colorKey = code || design;
+        if (colorMap[colorKey] === undefined) {
+          colorMap[colorKey] = colorCounter % GROUP_COLORS.length;
           colorCounter++;
         }
         statsMap[key] = {
+          designLayerCode: code,
           layerDesign: design,
           diameter: dia,
+          pileIds: new Set(),
           segments: 0,
-          elevationFrom: layer.elevationFrom,
-          elevationTo: layer.elevationTo,
+          minSpeed: Infinity,
+          maxSpeed: -Infinity,
           totalDuration: 0,
           totalLength: 0,
-          colorIdx: colorMap[design]
+          colorIdx: colorMap[colorKey]
         };
       }
       
       const stat = statsMap[key];
+      stat.pileIds.add((res.pileId || res.id).trim());
       stat.segments += 1;
       stat.totalDuration += layer.durationHours;
       stat.totalLength += layer.lengthMeters;
-      // Cập nhật cao độ (giả định cao độ từ là giá trị lớn nhất/đầu tiên và đến là nhỏ nhất/cuối cùng)
-      if (layer.elevationFrom > stat.elevationFrom) stat.elevationFrom = layer.elevationFrom;
-      if (layer.elevationTo < stat.elevationTo) stat.elevationTo = layer.elevationTo;
+      
+      const spd = layer.speedMph;
+      if (spd > 0) {
+        if (spd < stat.minSpeed) stat.minSpeed = spd;
+        if (spd > stat.maxSpeed) stat.maxSpeed = spd;
+      }
     });
   });
 
-  const designLayerStats = Object.values(statsMap).sort((a, b) => b.elevationFrom - a.elevationFrom);
+  const designLayerStats = Object.values(statsMap).sort((a, b) => {
+    // Sắp xếp theo mã lớp nếu có, không thì theo tên
+    if (a.designLayerCode && b.designLayerCode) {
+      return a.designLayerCode.localeCompare(b.designLayerCode, undefined, { numeric: true });
+    }
+    return a.layerDesign.localeCompare(b.layerDesign);
+  });
+
+  // allPileIds nên lấy từ history để đảm bảo đếm đủ số cọc đã upload
+  const allPileIdsCount = history.length;
+  
+  let globalMinSpeed = Infinity;
+  let globalMaxSpeed = -Infinity;
+  designLayerStats.forEach(s => {
+    if (s.minSpeed < globalMinSpeed) globalMinSpeed = s.minSpeed;
+    if (s.maxSpeed > globalMaxSpeed) globalMaxSpeed = s.maxSpeed;
+  });
+
   const totalSegments = designLayerStats.reduce((s, g) => s + g.segments, 0);
   const totalDur = designLayerStats.reduce((s, g) => s + g.totalDuration, 0);
   const totalLen = designLayerStats.reduce((s, g) => s + g.totalLength, 0);
@@ -3678,47 +3879,76 @@ function SummaryView({
 
       {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
       <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm mt-8">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-          <BarChart3 size={18} className="text-blue-600" />
-          <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">
-            Tổng hợp thống kê theo lớp thiết kế
-          </h4>
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-blue-600" />
+            <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">
+              Tổng hợp thống kê theo lớp thiết kế
+            </h4>
+          </div>
+          <button
+            onClick={() => exportAllToExcel(history)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md"
+          >
+            <FileDown size={14} />
+            Xuất Excel
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-blue-900 text-white">
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-12 text-center">STT</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-24 text-center">Đường kính</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30">Lớp thiết kế</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-24 text-center">Số đoạn</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Cao độ từ (m)</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Cao độ đến (m)</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Tổng T.Gian (h)</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest border-r border-blue-800/30 w-32 text-center">Tổng Dài (m)</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest w-24 text-center">V TB (m/h)</th>
+              <tr className="bg-[#1e3a8a] text-white">
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-12 text-center">STT</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Đường kính</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Ký hiệu ĐC</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20">Mô tả lớp thiết kế tương ứng</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số cọc</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-24 text-center">Số mẫu</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Tổng Dài (m)</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">Tổng T.Gian (h)</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">V.Min (m/h)</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest border border-white/20 w-28 text-center">V.Max (m/h)</th>
+                <th className="px-4 py-4 text-[10px] font-black uppercase tracking-widest bg-[#f97316] border border-white/20 w-28 text-center">V.TB (m/h)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {designLayerStats.map((stat, i) => {
-                const { bg, font: fontColor } = GROUP_COLORS[stat.colorIdx];
                 const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
                 const isSlow = avgSpd > 0 && avgSpd <= 1;
+                const isFast = avgSpd >= 5;
                 
                 return (
-                  <tr key={i} style={{ backgroundColor: bg }} className="hover:brightness-95 transition-all">
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-600 text-center border-r border-black/5">{i + 1}</td>
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.diameter}</td>
-                    <td className="px-4 py-3 text-[11px] font-medium text-slate-800 border-r border-black/5 leading-relaxed">{stat.layerDesign}</td>
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.segments}</td>
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.elevationFrom.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.elevationTo.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-[11px] font-bold text-slate-700 text-center border-r border-black/5">{stat.totalDuration.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-[11px] font-black text-blue-700 text-center border-r border-black/5">{stat.totalLength.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-center">
+                  <tr key={i} className="hover:bg-slate-50 transition-all group">
+                    <td className="px-4 py-4 text-[11px] font-bold text-blue-600 text-center border border-slate-200">{i + 1}</td>
+                    <td className="px-4 py-4 text-[11px] font-black text-slate-700 text-center border border-slate-200">{stat.diameter}</td>
+                    <td className="px-4 py-4 text-center border border-slate-200">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-black text-[11px] border border-slate-200">
+                        {stat.designLayerCode || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-[11px] font-medium text-slate-600 border border-slate-200 leading-relaxed italic">
+                      {stat.layerDesign}
+                    </td>
+                    <td className="px-4 py-4 text-[11px] font-black text-slate-700 text-center border border-slate-200">{stat.pileIds.size}</td>
+                    <td className="px-4 py-4 text-[11px] font-bold text-slate-500 text-center border border-slate-200">{stat.segments}</td>
+                    <td className="px-4 py-4 text-[11px] font-bold text-blue-600 text-center border border-slate-200 bg-blue-50/10">
+                      {stat.totalLength.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-4 text-[11px] font-bold text-indigo-600 text-center border border-slate-200 bg-indigo-50/10">
+                      {stat.totalDuration.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-center border border-slate-200 bg-slate-50/30">
+                      {stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-4 text-[11px] font-bold text-slate-700 text-center border border-slate-200 bg-slate-50/30">
+                      {stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-4 text-center border border-slate-200 bg-orange-50/20">
                       <span className={cn(
-                        "inline-block px-2 py-1 rounded text-[11px] font-black min-w-[50px]",
-                        isSlow ? "bg-red-500 text-white" : "bg-orange-100 text-orange-700"
+                        "inline-block px-3 py-1 rounded-full text-[11px] font-black min-w-[60px] shadow-sm",
+                        isSlow ? "bg-red-500 text-white" : 
+                        isFast ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                        "bg-orange-100 text-orange-700 border border-orange-200"
                       )}>
                         {avgSpd.toFixed(2)}
                       </span>
@@ -3729,14 +3959,19 @@ function SummaryView({
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-black text-slate-900 border-t-2 border-slate-200">
-                <td colSpan={3} className="px-4 py-4 text-[11px] uppercase tracking-widest text-right pr-10">Tổng cộng</td>
-                <td className="px-4 py-4 text-[12px] text-center">{totalSegments}</td>
-                <td className="px-4 py-4 text-[12px] text-center text-slate-400">—</td>
-                <td className="px-4 py-4 text-[12px] text-center text-slate-400">—</td>
-                <td className="px-4 py-4 text-[12px] text-center">{totalDur.toFixed(2)}</td>
-                <td className="px-4 py-4 text-[12px] text-center text-blue-700">{totalLen.toFixed(2)}</td>
-                <td className="px-4 py-4 text-[12px] text-center">
-                  <span className="inline-block px-2 py-1 bg-slate-900 text-white rounded text-[11px]">
+                <td colSpan={4} className="px-6 py-4 text-[11px] uppercase tracking-[0.2em] text-left font-black border border-slate-200">Tổng hợp toàn bộ</td>
+                <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200">{allPileIdsCount}</td>
+                <td className="px-4 py-4 text-[12px] text-center border border-slate-200">{totalSegments}</td>
+                <td className="px-4 py-4 text-[12px] text-center text-blue-700 border border-slate-200 bg-blue-50/30">{totalLen.toFixed(2)}</td>
+                <td className="px-4 py-4 text-[12px] text-center text-indigo-700 border border-slate-200 bg-indigo-50/30">{totalDur.toFixed(2)}</td>
+                <td className="px-4 py-4 text-[12px] text-center text-slate-600 border border-slate-200">
+                  {globalMinSpeed === Infinity ? '—' : globalMinSpeed.toFixed(2)}
+                </td>
+                <td className="px-4 py-4 text-[12px] text-center text-slate-600 border border-slate-200">
+                  {globalMaxSpeed === -Infinity ? '—' : globalMaxSpeed.toFixed(2)}
+                </td>
+                <td className="px-4 py-4 text-center border border-slate-200">
+                  <span className="inline-block px-4 py-1.5 bg-blue-700 text-white rounded-full text-[11px] shadow-md">
                     {totalAvgSpd.toFixed(2)}
                   </span>
                 </td>
