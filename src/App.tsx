@@ -264,7 +264,7 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary' | 'pdf-splitter';
+type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology';
 
 // --- Helper Functions ---
 
@@ -2646,6 +2646,229 @@ export default function App() {
     });
   };
 
+  };
+
+  // ── GeologyView: Cấu tạo lớp địa chất ──
+  const GeologyView = () => {
+    const [searchText, setSearchText] = React.useState('');
+    const [editingCell, setEditingCell] = React.useState<{ resultId: string; layerIdx: number; field: keyof DrillLayer } | null>(null);
+    const [editValue, setEditValue] = React.useState('');
+    const [savingCell, setSavingCell] = React.useState<string | null>(null);
+    const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+
+    type LayerRow = DrillLayer & { resultId: string; resultStt: number };
+    const allLayers: LayerRow[] = React.useMemo(() => {
+      const rows: LayerRow[] = [];
+      history.forEach(res => {
+        (res.layers || []).forEach(layer => {
+          rows.push({ ...layer, resultId: res.id, resultStt: res.stt || 0 });
+        });
+      });
+      rows.sort((a, b) => (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' }));
+      return rows;
+    }, [history]);
+
+    const filtered = React.useMemo(() => {
+      if (!searchText.trim()) return allLayers;
+      const q = searchText.toLowerCase();
+      return allLayers.filter(r =>
+        (r.layerDesign || '').toLowerCase().includes(q) ||
+        (r.actualGeology || '').toLowerCase().includes(q) ||
+        (r.pileId || '').toLowerCase().includes(q) ||
+        (r.componentName || '').toLowerCase().includes(q)
+      );
+    }, [allLayers, searchText]);
+
+    const stats = React.useMemo(() => {
+      const designSet = new Set(allLayers.map(r => r.layerDesign?.trim()).filter(Boolean));
+      const geoSet = new Set(allLayers.map(r => r.actualGeology?.trim()).filter(Boolean));
+      const totalLen = allLayers.reduce((s, r) => s + (r.lengthMeters || 0), 0);
+      return { totalLayers: allLayers.length, uniqueDesigns: designSet.size, uniqueGeo: geoSet.size, totalLen };
+    }, [allLayers]);
+
+    const startEdit = (resultId: string, layerIdx: number, field: keyof DrillLayer, currentVal: any) => {
+      setEditingCell({ resultId, layerIdx, field });
+      setEditValue(String(currentVal ?? ''));
+    };
+    const cancelEdit = () => { setEditingCell(null); setEditValue(''); };
+
+    const commitEdit = async () => {
+      if (!editingCell) return;
+      const { resultId, layerIdx, field } = editingCell;
+      const result = history.find(r => r.id === resultId);
+      if (!result) return;
+
+      const newLayers = result.layers.map((l, i) => {
+        if (i !== layerIdx) return l;
+        const parsed = ['elevationFrom', 'elevationTo', 'durationHours', 'lengthMeters', 'speedMph', 'layerNumber'].includes(field)
+          ? parseFloat(editValue) || 0 : editValue;
+        return { ...l, [field]: parsed };
+      });
+      const updatedResult = { ...result, layers: newLayers };
+      setHistory(prev => prev.map(r => r.id === resultId ? updatedResult : r));
+      cancelEdit();
+
+      const cellKey = `${resultId}_${layerIdx}_${field}`;
+      setSavingCell(cellKey);
+      setSyncStatus('syncing');
+      try {
+        if (supabase) {
+          const { error } = await supabase.from('drill_extractions').update({ layers: newLayers }).eq('id', resultId);
+          if (error) throw error;
+          try {
+            const savedHistory = localStorage.getItem('pile_drill_history');
+            if (savedHistory) {
+              const arr = JSON.parse(savedHistory);
+              localStorage.setItem('pile_drill_history', JSON.stringify(
+                arr.map((r: any) => r.id === resultId ? { ...r, layers: newLayers } : r)
+              ));
+            }
+          } catch {}
+          setSyncStatus('done');
+          showToast('✅ Đã đồng bộ lớp địa chất!', 'success', 2500);
+        } else {
+          setSyncStatus('error');
+          showToast('⚠️ Chưa kết nối Supabase', 'error', 3000);
+        }
+      } catch (e: any) {
+        setSyncStatus('error');
+        showToast(`⚠️ Lỗi: ${e?.message || 'Không xác định'}`, 'error', 4000);
+      } finally {
+        setSavingCell(null);
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      }
+    };
+
+    const EditableCell = ({ resultId, layerIdx, field, value, align = 'center', extraClass = '' }: {
+      resultId: string; layerIdx: number; field: keyof DrillLayer;
+      value: any; align?: string; extraClass?: string;
+    }) => {
+      const cellKey = `${resultId}_${layerIdx}_${field}`;
+      const isEditing = editingCell?.resultId === resultId && editingCell?.layerIdx === layerIdx && editingCell?.field === field;
+      const isSaving = savingCell === cellKey;
+      if (isEditing) {
+        return (
+          <td className={`px-1 py-0.5 ${extraClass}`}>
+            <div className="flex gap-0.5 items-center">
+              <input autoFocus className="w-full border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300"
+                value={editValue} onChange={e => setEditValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }} />
+              <button onClick={commitEdit} className="text-green-600 hover:text-green-800 flex-shrink-0 ml-0.5"><CheckCircle2 size={13} /></button>
+              <button onClick={cancelEdit} className="text-red-400 hover:text-red-600 flex-shrink-0"><X size={13} /></button>
+            </div>
+          </td>
+        );
+      }
+      return (
+        <td className={`px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-50 group relative ${extraClass}`}
+          style={{ textAlign: align as any }} onClick={() => startEdit(resultId, layerIdx, field, value)} title="Click để chỉnh sửa">
+          {isSaving ? <Loader2 size={12} className="animate-spin inline" /> : (
+            <><span>{String(value ?? '')}</span><Edit2 size={9} className="absolute top-1 right-0.5 text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity" /></>
+          )}
+        </td>
+      );
+    };
+
+    return (
+      <div className="w-full space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+              <Layers size={24} className="text-blue-600" /> Cấu tạo lớp địa chất
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">Tổng hợp toàn bộ — click ô để chỉnh sửa, tự động đồng bộ Supabase</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {syncStatus === 'syncing' && <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200"><Loader2 size={12} className="animate-spin" /> Đang đồng bộ...</span>}
+            {syncStatus === 'done' && <span className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-200"><CheckCircle2 size={12} /> Đã đồng bộ</span>}
+            {syncStatus === 'error' && <span className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-full border border-red-200"><AlertCircle size={12} /> Lỗi đồng bộ</span>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: 'Tổng số lớp', value: stats.totalLayers, color: '#1a3a6b' },
+            { label: 'Lớp thiết kế (unique)', value: stats.uniqueDesigns, color: '#4f46e5' },
+            { label: 'Địa chất TT (unique)', value: stats.uniqueGeo, color: '#7c3aed' },
+            { label: 'Tổng chiều sâu', value: `${stats.totalLen.toFixed(1)} m`, color: '#059669' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <p className="text-xs text-slate-500 font-medium">{s.label}</p>
+              <p className="text-2xl font-black mt-1" style={{ color: s.color }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 bg-slate-50"
+              placeholder="Tìm theo lớp thiết kế, địa chất TT, số hiệu cọc, bộ phận..."
+              value={searchText} onChange={e => setSearchText(e.target.value)} />
+          </div>
+          <p className="text-xs text-slate-400 mt-2">
+            Hiển thị <span className="font-semibold text-blue-600">{filtered.length}</span> / {allLayers.length} lớp — sắp xếp A→Z theo lớp thiết kế.
+            <span className="ml-2 text-amber-600">💡 Click vào ô để chỉnh sửa trực tiếp, nhấn Enter để lưu.</span>
+          </p>
+        </div>
+
+        {allLayers.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
+            <Layers size={48} className="text-slate-200 mx-auto mb-4" />
+            <p className="text-slate-500 font-medium">Chưa có dữ liệu lớp địa chất</p>
+            <p className="text-sm text-slate-400 mt-1">Hãy upload biên bản để xem dữ liệu</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr style={{ background: '#1a3a6b' }}>
+                    {['#', 'Cọc', 'Bộ phận', 'Địa chất TT', 'Lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'].map(h => (
+                      <th key={h} className="px-2 py-3 text-xs font-bold text-white text-center whitespace-nowrap border-r border-blue-800/30 last:border-r-0">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row, idx) => {
+                    const result = history.find(r => r.id === row.resultId);
+                    const actualIdx = result?.layers.findIndex(
+                      (l, i) => l.layerNumber === row.layerNumber && l.actualGeology === row.actualGeology && l.timeFrom === row.timeFrom
+                    ) ?? -1;
+                    const rowBg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
+                    return (
+                      <tr key={`${row.resultId}-${idx}`} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors border-b border-slate-100">
+                        <td className="px-2 py-1.5 text-xs text-center text-slate-400">{idx + 1}</td>
+                        <td className="px-2 py-1.5 text-xs text-center font-bold text-blue-700 whitespace-nowrap">{row.pileId}</td>
+                        <td className="px-2 py-1.5 text-xs text-slate-600 max-w-[130px] truncate" title={row.componentName}>{row.componentName}</td>
+                        {actualIdx >= 0 ? (
+                          <>
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="actualGeology" value={row.actualGeology} />
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="layerDesign" value={row.layerDesign} align="left" extraClass="max-w-[200px]" />
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="timeFrom" value={row.timeFrom} />
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="timeTo" value={row.timeTo} />
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="elevationFrom" value={row.elevationFrom} />
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="elevationTo" value={row.elevationTo} />
+                            <td className="px-2 py-1.5 text-xs text-center text-slate-600">{row.durationHours?.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 text-xs text-center text-slate-600">{row.lengthMeters?.toFixed(2)}</td>
+                            <td className={`px-2 py-1.5 text-xs text-center font-bold ${row.speedMph <= 1 ? 'text-red-600' : row.speedMph > 5 ? 'text-green-600' : 'text-orange-500'}`}>{row.speedMph?.toFixed(2)}</td>
+                            <EditableCell resultId={row.resultId} layerIdx={actualIdx} field="notes" value={row.notes} align="left" extraClass="max-w-[140px]" />
+                          </>
+                        ) : (
+                          <td colSpan={10} className="px-2 py-1.5 text-xs text-center text-red-400">Lỗi dữ liệu</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans overflow-x-hidden">
 
@@ -2840,6 +3063,19 @@ export default function App() {
             >
               <Scissors size={18} className={activeSheet === 'pdf-splitter' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Tách file PDF</span>
+            </button>
+
+            <button 
+              onClick={() => { setActiveSheet('geology'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'geology' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <Layers size={18} className={activeSheet === 'geology' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Cấu tạo lớp địa chất</span>
             </button>
           </nav>
 
@@ -3534,6 +3770,8 @@ export default function App() {
           </div>
         ) : activeSheet === 'pdf-splitter' ? (
           <PdfSplitterView />
+        ) : activeSheet === 'geology' ? (
+          <GeologyView />
         ) : (
           <SummaryView 
             history={history} 
