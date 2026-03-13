@@ -4654,23 +4654,6 @@ function SummaryView({
         ))}
       </div>
 
-      {/* ── Banner tổng hợp cảnh báo (hiện khi có vấn đề) ── */}
-      {(missingDataRecords.length > 0 || duplicateGroups.length > 0 || inconsistentRecords.length > 0 || slowPiles.length > 0) && (
-        <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-amber-600 shrink-0">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <span className="text-[11px] font-bold text-amber-700 flex-1">Hệ thống phát hiện một số vấn đề cần xử lý:</span>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {missingDataRecords.length > 0 && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-violet-600 text-white">{missingDataRecords.length} thiếu dữ liệu</span>}
-            {duplicateGroups.length > 0    && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500 text-white">{duplicateGroups.length} trùng lặp</span>}
-            {inconsistentRecords.length > 0 && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-red-600 text-white">{inconsistentRecords.length} địa chất lỗi</span>}
-            {slowPiles.length > 0           && <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-orange-500 text-white">{slowPiles.length} vận tốc thấp</span>}
-          </div>
-        </div>
-      )}
-
       {/* ── Cảnh báo trùng Hạng mục + Số hiệu cọc ── */}
       {/* ── Cảnh báo không nhất quán địa chất ── */}
       {inconsistentRecords.length > 0 && (
@@ -4961,42 +4944,69 @@ function SummaryView({
 
       {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
       <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm mt-8">
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
           <div className="flex items-center gap-2">
-            <BarChart3 size={18} className="text-blue-600" />
-            <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">
+            <BarChart3 size={18} className="text-blue-300" />
+            <h4 className="text-[12px] font-black text-white uppercase tracking-widest">
               Tổng hợp thống kê theo lớp thiết kế
             </h4>
           </div>
-          <button
-            onClick={() => !isExportingAll && onExportAll(history)}
-            disabled={isExportingAll}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md",
-              isExportingAll ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
-            )}
-          >
-            {isExportingAll ? (
-              <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>Đang xuất...</>
-            ) : (
-              <><FileDown size={14} />Xuất Excel</>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Dropdown lọc đường kính */}
+            {(() => {
+              const diameters = Array.from(new Set(designLayerStats.map(s => s.diameter))).sort((a, b) => {
+                const na = parseInt(a.replace(/\D/g, '')) || 0;
+                const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                return na - nb;
+              });
+              return diameters.length > 1 ? (
+                <select
+                  id="dia-filter"
+                  className="text-[12px] font-semibold bg-white/10 border border-white/30 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/30 cursor-pointer"
+                  style={{ colorScheme: 'dark' }}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const rows = document.querySelectorAll('[data-dia-row]');
+                    rows.forEach((r: any) => {
+                      r.style.display = (!val || r.dataset.diaRow === val) ? '' : 'none';
+                    });
+                  }}
+                >
+                  <option value="">Tất cả đường kính</option>
+                  {diameters.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              ) : null;
+            })()}
+            <button
+              onClick={() => !isExportingAll && onExportAll(history)}
+              disabled={isExportingAll}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md",
+                isExportingAll ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-500 hover:bg-emerald-400"
+              )}
+            >
+              {isExportingAll ? (
+                <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>Đang xuất...</>
+              ) : (
+                <><FileDown size={14} />Xuất Excel</>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
+        <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr style={{ background: '#1a3a6b' }}>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-10">STT</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">Đường kính</th>
-                <th className="px-4 py-3.5 text-[11px] font-black uppercase tracking-wider text-white border-r border-white/10">Mô tả lớp thiết kế tương ứng</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-20">Số cọc</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-20">Số mẫu</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-28">Tổng dài (m)</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-28">T.Gian (h)</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">V.Min</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center border-r border-white/10 w-24">V.Max</th>
-                <th className="px-3 py-3.5 text-[11px] font-black uppercase tracking-wider text-white text-center w-24" style={{ background: '#f97316' }}>V.TB (m/h)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-10">STT</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">Đường kính</th>
+                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-white border border-white/20">Mô tả lớp thiết kế tương ứng</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-20">Số cọc</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-20">Số mẫu</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-28">Tổng dài (m)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-28">T.Gian (h)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">V.Min</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24">V.Max</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-white text-center border border-white/20 w-24" style={{ background: '#f97316' }}>V.TB (m/h)</th>
               </tr>
             </thead>
             <tbody>
@@ -5006,21 +5016,19 @@ function SummaryView({
                 const isFast = avgSpd >= 5;
                 const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
                 return (
-                  <tr key={i} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors border-b border-slate-100">
-                    <td className="px-3 py-3 text-[12px] font-bold text-blue-600 text-center border-r border-slate-100">{i + 1}</td>
-                    <td className="px-3 py-3 text-[12px] font-black text-slate-700 text-center border-r border-slate-100">
-                      <span className="inline-block bg-slate-100 text-slate-700 rounded-lg px-2 py-0.5 text-[11px] font-black">{stat.diameter}</span>
-                    </td>
-                    <td className="px-4 py-3 text-[12px] text-slate-700 border-r border-slate-100 leading-snug">{stat.layerDesign}</td>
-                    <td className="px-3 py-3 text-[12px] font-bold text-slate-700 text-center border-r border-slate-100">{stat.pileIds.size}</td>
-                    <td className="px-3 py-3 text-[12px] font-bold text-slate-500 text-center border-r border-slate-100">{stat.segments}</td>
-                    <td className="px-3 py-3 text-[12px] font-bold text-blue-600 text-center border-r border-slate-100">{stat.totalLength.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-[12px] font-bold text-indigo-600 text-center border-r border-slate-100">{stat.totalDuration.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-100">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-100">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-3 text-center">
+                  <tr key={i} data-dia-row={stat.diameter} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{i + 1}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-800 text-center border border-slate-200">{stat.diameter}</td>
+                    <td className="px-4 py-3 text-[12px] text-slate-800 border border-slate-200 leading-snug">{stat.layerDesign}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.pileIds.size}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.segments}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-blue-600 text-center border border-slate-200">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-indigo-600 text-center border border-slate-200">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-center border border-slate-200">
                       <span className={cn(
-                        "inline-block px-3 py-1 rounded-full text-[12px] font-black min-w-[52px] text-center",
+                        "inline-block px-3 py-0.5 rounded-full text-[12px] font-black min-w-[52px] text-center",
                         isSlow ? "bg-red-500 text-white shadow-sm" :
                         isFast ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
                         "bg-orange-100 text-orange-700 border border-orange-200"
@@ -5031,15 +5039,15 @@ function SummaryView({
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#f1f5f9', borderTop: '2px solid #cbd5e1' }}>
-                <td colSpan={3} className="px-5 py-3.5 text-[12px] font-black text-slate-800 uppercase tracking-widest border-r border-slate-200">Tổng hợp toàn bộ</td>
-                <td className="px-3 py-3.5 text-[12px] font-black text-blue-700 text-center border-r border-slate-200">{allPileIdsCount}</td>
-                <td className="px-3 py-3.5 text-[12px] font-bold text-slate-600 text-center border-r border-slate-200">{totalSegments}</td>
-                <td className="px-3 py-3.5 text-[12px] font-black text-blue-700 text-center border-r border-slate-200">{totalLen.toFixed(2)}</td>
-                <td className="px-3 py-3.5 text-[12px] font-black text-indigo-700 text-center border-r border-slate-200">{totalDur.toFixed(2)}</td>
-                <td className="px-3 py-3.5 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-200">{globalMinSpeed === Infinity ? '—' : globalMinSpeed.toFixed(2)}</td>
-                <td className="px-3 py-3.5 text-[12px] font-semibold text-slate-600 text-center border-r border-slate-200">{globalMaxSpeed === -Infinity ? '—' : globalMaxSpeed.toFixed(2)}</td>
-                <td className="px-3 py-3.5 text-center">
+              <tr style={{ background: '#f1f5f9', borderTop: '2px solid #1a3a6b' }}>
+                <td colSpan={3} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{allPileIdsCount}</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalSegments}</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalLen.toFixed(2)}</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalDur.toFixed(2)}</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{globalMinSpeed === Infinity ? '—' : globalMinSpeed.toFixed(2)}</td>
+                <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{globalMaxSpeed === -Infinity ? '—' : globalMaxSpeed.toFixed(2)}</td>
+                <td className="px-3 py-3 text-center border border-slate-300">
                   <span className="inline-block px-4 py-1 bg-blue-700 text-white rounded-full text-[12px] font-black shadow">{totalAvgSpd.toFixed(2)}</span>
                 </td>
               </tr>
