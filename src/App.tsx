@@ -5612,7 +5612,9 @@ function EditSplitView({
             img.src = `data:${imgMime};base64,${imgBase64}`;
           });
 
-          const rawResult = await callExtractWithRotation(normalized.base64, normalized.mime);
+          const rawResult = onExtract
+            ? await onExtract(normalized.base64, normalized.mime)
+            : await extractDataFromFile(normalized.base64, normalized.mime, userApiKey);
           const map = rawResult.designLayerMap || {};
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
             const geoCode = (layer.actualGeology || '').trim();
