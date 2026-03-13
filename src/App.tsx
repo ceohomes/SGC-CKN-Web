@@ -2646,8 +2646,6 @@ export default function App() {
     });
   };
 
-  };
-
   // ── GeologyView: Cấu tạo lớp địa chất ──
   const GeologyView = () => {
     const [searchText, setSearchText] = React.useState('');
