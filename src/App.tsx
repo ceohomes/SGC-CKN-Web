@@ -711,6 +711,11 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     });
   };
 
+  // Phát hiện Loại B: designLayerMap rỗng VÀ actualGeology lớp đầu là chữ (không phải số thuần)
+  const hasVlookupMap = Object.keys(vlookupMap).length > 0;
+  const firstLayerGeo = (rawData.layers?.[0]?.actualGeology || '').toString().trim();
+  const isTypeB = !hasVlookupMap && firstLayerGeo.length > 2 && !/^\d+$/.test(firstLayerGeo);
+
   const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
     
