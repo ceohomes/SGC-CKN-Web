@@ -513,33 +513,34 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
 
   CẤU TRÚC BẢNG LOẠI B:
   Bảng có cột "Độ sâu (từ đỉnh casing)" gồm 2 phần:
-    • Cột trái: Chiều cao lớp địa chất (m) — đây là ĐỘ DÀY của lớp (ví dụ: 1,227 hoặc 6,5)
-    • Cột phải: Số cộng dồn — chiều sâu tích lũy từ đỉnh casing (ví dụ: 7,72)
+    • Cột trái: Chiều cao lớp địa chất (m) — đây là ĐỘ DÀY / CHIỀU DÀI thực tế của lớp (ví dụ: 1,227 hoặc 6,5)
+    • Cột phải: Số cộng dồn — chiều sâu tích lũy từ đỉnh casing
   Cột "Địa chất thực tế" — mô tả bằng chữ
 
-  CÁCH TÍNH CAO ĐỘ TUYỆT ĐỐI CHO LOẠI B:
+  ⭐ LOẠI B — KHÔNG CẦN TÍNH CAO ĐỘ:
   ┌─────────────────────────────────────────────────────────────────┐
-  │ Lấy "Cao độ đỉnh casing" từ header biên bản (ví dụ: 3.63m)     │
-  │ Nếu không có → mặc định = 0.00                                  │
-  │                                                                  │
-  │ elevationFrom[0] = cao_do_dinh_casing                           │
-  │ elevationTo[0]   = cao_do_dinh_casing - do_day_lop_0            │
-  │ elevationFrom[1] = elevationTo[0]                               │
-  │ elevationTo[1]   = elevationFrom[1] - do_day_lop_1              │
-  │ ... tiếp tục cộng dồn ĐỘ DÀY từng lớp                         │
+  │ TUYỆT ĐỐI KHÔNG tính toán hay suy diễn giá trị cao độ.         │
+  │ Đặt: elevationFrom = 0, elevationTo = 0 cho TẤT CẢ các lớp.    │
+  │ Lý do: Biên bản đại trà không ghi cao độ tuyệt đối —            │
+  │         hệ thống sẽ tự tính từ chiều dài sau khi nhập.          │
   └─────────────────────────────────────────────────────────────────┘
 
-  VÍ DỤ THỰC TẾ (từ biên bản mẫu Vinhomes Thanh Hóa):
-    Cao độ đỉnh casing = 3.63m
-    Lớp 1: Đất san lấp, độ dày = 1.227m
-      → elevationFrom = 3.63, elevationTo = 3.63 - 1.227 = 2.403
-    Lớp 2: Sét lẫn hữu cơ, xám nâu, độ dày = 6.5m (số tích lũy = 7.72)
-      → elevationFrom = 2.403, elevationTo = 2.403 - 6.5 = -4.097
-    Lớp 3: Cát pha xám ghi, xám nâu TT dẻo, độ dày = 2m (tích lũy 9.72)
-      → elevationFrom = -4.097, elevationTo = -4.097 - 2 = -6.097
-    Lớp 4: Sét xám trắng, xám xanh dẻo chảy, độ dày = 8.2m (tích lũy 19.7 sic — 17.92)
-      → elevationFrom = -6.097, elevationTo = -6.097 - 8.2 = -14.297
-    ...
+  ⭐ LOẠI B — CHIỀU DÀI LỚP (QUAN TRỌNG NHẤT):
+  Trích xuất CHÍNH XÁC giá trị từ CỘT TRÁI của "Độ sâu (từ đỉnh casing)":
+    → Đây chính là CHIỀU DÀI thực tế (m) của từng lớp địa chất
+    → Dùng giá trị này làm "elevationTo" âm: elevationFrom = 0, elevationTo = -chieu_dai
+    → Ví dụ: lớp dày 1.227m → elevationFrom = 0, elevationTo = -1.227
+    → Ví dụ: lớp dày 6.5m   → elevationFrom = 0, elevationTo = -6.5
+    → Ví dụ: lớp dày 8.2m   → elevationFrom = 0, elevationTo = -8.2
+
+  ⚠️ LỖI PHỔ BIẾN KHI ĐỌC CHIỀU DÀI LOẠI B:
+    • Nhầm cột phải (tích lũy) với cột trái (độ dày từng lớp)
+    • Cột TRÁI là số NHỎ HƠN (độ dày từng lớp riêng lẻ)
+    • Cột PHẢI là số LỚN HƠN (tổng cộng dồn, luôn tăng dần)
+    • PHẢI lấy cột TRÁI (số nhỏ) — đó mới là chiều dài thực lớp đó
+    • VÍ DỤ: nếu thấy "1,227 | 1,227" → lấy 1.227
+    •        nếu thấy "6,5 | 7,72"   → lấy 6.5 (KHÔNG phải 7.72)
+    •        nếu thấy "8,2 | 19,7"   → lấy 8.2 (KHÔNG phải 19.7)
 
   CÁCH LẤY "actualGeology" LOẠI B:
     • PHẢI là MÔ TẢ ĐẦY ĐỦ bằng chữ từ cột "Địa chất thực tế"
@@ -596,18 +597,19 @@ BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
 - constructionStart / constructionEnd: lấy từ "Bắt đầu" / "Kết thúc" ở header biên bản.
 
 ════════════════════════════════════════════════════
-BƯỚC 4: TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN THẬP PHÂN)
+BƯỚC 4: TRÍCH XUẤT CAO ĐỘ VÀ CHIỀU DÀI
 ════════════════════════════════════════════════════
 
-Loại A:
+Loại A — trích xuất cao độ tuyệt đối:
 - Tất cả cao độ là số ÂM, giảm dần theo chiều sâu.
 - "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
 - ⚠️ ĐỌC SÓT CHỮ SỐ: "-35.08" có thể bị đọc thành "-3.08". Kiểm tra tính liên tục.
 
-Loại B:
-- Tính từ đỉnh casing: elevationTo = elevationFrom - do_day_lop (xem công thức Bước 2).
-- Các lớp trên đỉnh casing có cao độ dương, bên dưới mức 0 là âm.
-- "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
+Loại B — KHÔNG trích xuất cao độ:
+- elevationFrom = 0, elevationTo = -(chiều_dài_lớp) cho TẤT CẢ dòng.
+- Chiều dài lớp = giá trị cột TRÁI trong "Độ sâu (từ đỉnh casing)" (số nhỏ hơn).
+- KHÔNG tính toán hay cộng dồn bất kỳ giá trị cao độ nào.
+- Ưu tiên tuyệt đối: CHIỀU DÀI phải chính xác 100%, đây là dữ liệu cốt lõi của Loại B.
 
 Yêu cầu JSON đầu ra:
 - project, item, componentName, pileId, reportNumber, diameter.
@@ -619,9 +621,11 @@ Yêu cầu JSON đầu ra:
 KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 1. Đã xác định đúng loại biên bản chưa?
 2. "item" có lấy từ dòng "Hạng mục" không? (không nhầm với Công trình/Dự án)
-3. Loại B: "actualGeology" là MÔ TẢ CHỮ? Cao độ đã tính từ đỉnh casing chưa?
-4. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
-5. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)`
+3. Loại B: "actualGeology" là MÔ TẢ CHỮ? elevationFrom=0, elevationTo=-(chiều_dài)?
+4. Loại B: Chiều dài lấy từ CỘT TRÁI (số nhỏ), KHÔNG phải cột tích lũy (số lớn)?
+5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
+6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
+7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?`
           },
           {
             inlineData: {
@@ -770,12 +774,37 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     if (durationMinutes < 0) durationMinutes += 24 * 60;
     if (durationMinutes <= 0) durationMinutes = 30; 
     const durationHours = durationMinutes / 60;
-    const length = Math.abs(layer.elevationTo - layer.elevationFrom);
+
+    let length: number;
+    let finalElevationFrom = layer.elevationFrom;
+    let finalElevationTo = layer.elevationTo;
+
+    if (isTypeB) {
+      // Loại B: chiều dài = |elevationTo| vì AI đặt elevationFrom=0, elevationTo=-chieu_dai
+      // Nếu AI vẫn trả về giá trị tích lũy nhầm, tính từ |elevationTo - elevationFrom|
+      const rawLength = Math.abs(layer.elevationTo - layer.elevationFrom);
+      // Nếu elevationFrom = 0 (đúng chuẩn): length = |elevationTo|
+      if (layer.elevationFrom === 0) {
+        length = Math.abs(layer.elevationTo);
+      } else {
+        // Fallback: lấy khoảng cách tuyệt đối
+        length = rawLength;
+      }
+      // Normalize: set elevationFrom = 0, elevationTo = -length
+      finalElevationFrom = 0;
+      finalElevationTo = -length;
+    } else {
+      // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
+      length = Math.abs(layer.elevationTo - layer.elevationFrom);
+    }
+
     const speed = durationHours > 0 ? length / durationHours : 0;
 
     return {
       ...layer,
       actualGeology: geoCode,
+      elevationFrom: finalElevationFrom,
+      elevationTo: finalElevationTo,
       project: rawData.project,
       item: rawData.item,
       componentName: rawData.componentName,
