@@ -3001,108 +3001,217 @@ export default function App() {
     });
   };
 
-  // ── GeologyView: Cấu tạo lớp địa chất ──
+  // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
   const GeologyView = () => {
-    const [editingKey, setEditingKey] = React.useState<string | null>(null);
-    const [editValue, setEditValue] = React.useState('');
-    const [savingKey, setSavingKey] = React.useState<string | null>(null);
-    const [syncStatus, setSyncStatus] = React.useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
-    const [syncCount, setSyncCount] = React.useState(0);
+    type DataTab = 'geology' | 'project' | 'diameter';
+    const [activeTab, setActiveTab] = React.useState<DataTab>('geology');
 
-    // UNIQUE chỉ theo layerDesign
-    type UniqueLayer = { layerDesign: string; count: number; };
+    // ── Generic editable-list hook ──
+    const useEditableList = <T extends { value: string; count: number }>(
+      getItems: () => T[],
+      getField: (layer: DrillLayer, res: ExtractionResult) => string,
+      setField: (layer: DrillLayer, newVal: string) => DrillLayer,
+      getResField?: (res: ExtractionResult) => string,
+      setResField?: (res: ExtractionResult, newVal: string) => ExtractionResult
+    ) => {
+      const [editingKey, setEditingKey] = React.useState<string | null>(null);
+      const [editValue, setEditValue] = React.useState('');
+      const [savingKey, setSavingKey] = React.useState<string | null>(null);
+      const [syncStatus, setSyncStatus] = React.useState<'idle'|'syncing'|'done'|'error'>('idle');
+      const [syncCount, setSyncCount] = React.useState(0);
 
-    const uniqueLayers: UniqueLayer[] = React.useMemo(() => {
-      // Map key = layerDesign.trim() (case-sensitive để giữ nguyên chữ)
-      const map = new Map<string, UniqueLayer>();
-      history.forEach(res => {
-        (res.layers || []).forEach(layer => {
-          const design = (layer.layerDesign || '').trim();
-          if (!design) return;
-          const key = design;
-          if (map.has(key)) {
-            map.get(key)!.count++;
-          } else {
-            map.set(key, { layerDesign: design, count: 1 });
-          }
-        });
-      });
-      // Sắp xếp A-Z theo layerDesign
-      return Array.from(map.values()).sort((a, b) =>
-        (a.layerDesign || '').localeCompare(b.layerDesign || '', 'vi', { sensitivity: 'base' })
-      );
-    }, [history]);
+      const items = React.useMemo(getItems, [history]);
 
-    const startEdit = (layerDesign: string) => {
-      setEditingKey(layerDesign);
-      setEditValue(layerDesign);
-    };
-    const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
+      const startEdit = (key: string) => { setEditingKey(key); setEditValue(key); };
+      const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
 
-    // Khi lưu: cập nhật TẤT CẢ layers trong TẤT CẢ biên bản có cùng layerDesign cũ
-    const commitEdit = async (oldDesign: string) => {
-      const newDesign = editValue.trim();
-      if (!newDesign || newDesign === oldDesign) { cancelEdit(); return; }
+      const commitEdit = async (oldVal: string) => {
+        const newVal = editValue.trim();
+        if (!newVal || newVal === oldVal) { cancelEdit(); return; }
 
-      type ToUpdate = { result: ExtractionResult; newLayers: DrillLayer[] };
-      const toUpdateList: ToUpdate[] = [];
-      history.forEach(res => {
-        const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === oldDesign);
-        if (!hasMatch) return;
-        const newLayers = res.layers.map(l =>
-          (l.layerDesign || '').trim() === oldDesign ? { ...l, layerDesign: newDesign } : l
-        );
-        toUpdateList.push({ result: res, newLayers });
-      });
+        type ToUpdate = { result: ExtractionResult; newLayers?: DrillLayer[]; newRes?: Partial<ExtractionResult> };
+        const toUpdateList: ToUpdate[] = [];
 
-      // Cập nhật local state ngay lập tức
-      setHistory(prev => prev.map(res => {
-        const found = toUpdateList.find(u => u.result.id === res.id);
-        return found ? { ...res, layers: found.newLayers } : res;
-      }));
-      cancelEdit();
-
-      setSavingKey(newDesign);
-      setSyncStatus('syncing');
-      setSyncCount(toUpdateList.length);
-      let errorCount = 0;
-      try {
-        if (supabase) {
-          await Promise.all(toUpdateList.map(async ({ result, newLayers }) => {
-            try {
-              const { error } = await supabase.from('drill_extractions').update({ layers: newLayers }).eq('id', result.id);
-              if (error) errorCount++;
-            } catch { errorCount++; }
-          }));
-          try {
-            const savedHistory = localStorage.getItem('pile_drill_history');
-            if (savedHistory) {
-              const arr = JSON.parse(savedHistory);
-              const updatedMap = new Map(toUpdateList.map(u => [u.result.id, u.newLayers]));
-              localStorage.setItem('pile_drill_history', JSON.stringify(
-                arr.map((r: any) => updatedMap.has(r.id) ? { ...r, layers: updatedMap.get(r.id) } : r)
-              ));
+        history.forEach(res => {
+          // Nếu có setResField (cho project/diameter) → cập nhật cả header biên bản
+          if (setResField && getResField) {
+            const resVal = (getResField(res) || '').trim();
+            if (resVal === oldVal) {
+              const newRes = setResField(res, newVal);
+              // Cập nhật layers cũng nếu có
+              const newLayers = res.layers.map(l => {
+                const layerVal = (getField(l, res) || '').trim();
+                return layerVal === oldVal ? setField(l, newVal) : l;
+              });
+              toUpdateList.push({ result: res, newLayers, newRes });
+              return;
             }
-          } catch {}
-          if (errorCount === 0) {
-            setSyncStatus('done');
-            showToast(`✅ Đã cập nhật "${newDesign}" trong ${toUpdateList.length} biên bản!`, 'success', 3000);
+          }
+          // Cập nhật trong layers
+          const hasMatch = (res.layers || []).some(l => (getField(l, res) || '').trim() === oldVal);
+          if (!hasMatch) return;
+          const newLayers = res.layers.map(l =>
+            (getField(l, res) || '').trim() === oldVal ? setField(l, newVal) : l
+          );
+          toUpdateList.push({ result: res, newLayers });
+        });
+
+        // Optimistic UI update
+        setHistory(prev => prev.map(res => {
+          const found = toUpdateList.find(u => u.result.id === res.id);
+          if (!found) return res;
+          return {
+            ...res,
+            ...(found.newRes || {}),
+            ...(found.newLayers ? { layers: found.newLayers } : {}),
+          };
+        }));
+        cancelEdit();
+
+        setSavingKey(newVal);
+        setSyncStatus('syncing');
+        setSyncCount(toUpdateList.length);
+        let errorCount = 0;
+        try {
+          if (supabase) {
+            await Promise.all(toUpdateList.map(async ({ result, newLayers, newRes }) => {
+              try {
+                const updatePayload: any = {};
+                if (newLayers) updatePayload.layers = newLayers;
+                if (newRes) Object.assign(updatePayload, newRes);
+                const { error } = await supabase.from('drill_extractions').update(updatePayload).eq('id', result.id);
+                if (error) errorCount++;
+              } catch { errorCount++; }
+            }));
+            // Sync localStorage
+            try {
+              const saved = localStorage.getItem('pile_drill_history');
+              if (saved) {
+                const arr = JSON.parse(saved);
+                const updMap = new Map(toUpdateList.map(u => [u.result.id, u]));
+                localStorage.setItem('pile_drill_history', JSON.stringify(
+                  arr.map((r: any) => {
+                    const found = updMap.get(r.id);
+                    if (!found) return r;
+                    return { ...r, ...(found.newRes || {}), ...(found.newLayers ? { layers: found.newLayers } : {}) };
+                  })
+                ));
+              }
+            } catch {}
+            if (errorCount === 0) {
+              setSyncStatus('done');
+              showToast(`✅ Đã cập nhật "${newVal}" trong ${toUpdateList.length} biên bản!`, 'success', 3000);
+            } else {
+              setSyncStatus('error');
+              showToast(`⚠️ Lỗi ${errorCount}/${toUpdateList.length} biên bản`, 'error', 4000);
+            }
           } else {
             setSyncStatus('error');
-            showToast(`⚠️ Lỗi ${errorCount}/${toUpdateList.length} biên bản`, 'error', 4000);
+            showToast('⚠️ Chưa kết nối Supabase', 'error', 3000);
           }
-        } else {
+        } catch (e: any) {
           setSyncStatus('error');
-          showToast('⚠️ Chưa kết nối Supabase', 'error', 3000);
+          showToast(`⚠️ Lỗi: ${e?.message}`, 'error', 4000);
+        } finally {
+          setSavingKey(null);
+          setTimeout(() => setSyncStatus('idle'), 3500);
         }
-      } catch (e: any) {
-        setSyncStatus('error');
-        showToast(`⚠️ Lỗi: ${e?.message}`, 'error', 4000);
-      } finally {
-        setSavingKey(null);
-        setTimeout(() => setSyncStatus('idle'), 3500);
-      }
+      };
+
+      return { items, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit };
     };
+
+    // ── Tab 1: Cấu tạo lớp địa chất ──
+    const geoList = useEditableList(
+      () => {
+        const map = new Map<string, { value: string; count: number }>();
+        history.forEach(res => {
+          (res.layers || []).forEach(layer => {
+            const v = (layer.layerDesign || '').trim();
+            if (!v) return;
+            map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
+          });
+        });
+        return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
+      },
+      (layer) => layer.layerDesign || '',
+      (layer, newVal) => ({ ...layer, layerDesign: newVal, actualGeology: newVal })
+    );
+
+    // ── Tab 2: Dự án ──
+    const projectList = useEditableList(
+      () => {
+        const map = new Map<string, { value: string; count: number }>();
+        history.forEach(res => {
+          const v = (res.project || '').trim();
+          if (!v) return;
+          map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
+        });
+        return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
+      },
+      (_layer, res) => res.project || '',
+      (layer) => layer,
+      (res) => res.project || '',
+      (res, newVal) => ({ ...res, project: newVal })
+    );
+
+    // ── Tab 3: Đường kính ──
+    const diameterList = useEditableList(
+      () => {
+        const map = new Map<string, { value: string; count: number }>();
+        history.forEach(res => {
+          const v = (res.diameter || '').trim();
+          if (!v) return;
+          map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
+        });
+        return Array.from(map.values()).sort((a, b) => {
+          const na = parseInt(a.value.replace(/\D/g, '')) || 0;
+          const nb = parseInt(b.value.replace(/\D/g, '')) || 0;
+          return na - nb;
+        });
+      },
+      (_layer, res) => res.diameter || '',
+      (layer) => layer,
+      (res) => res.diameter || '',
+      (res, newVal) => ({ ...res, diameter: newVal })
+    );
+
+    const tabs: { id: DataTab; label: string; icon: React.ReactNode; list: typeof geoList; emptyMsg: string; colHeader: string }[] = [
+      {
+        id: 'geology',
+        label: 'Cấu tạo lớp địa chất',
+        icon: <Layers size={14} />,
+        list: geoList,
+        emptyMsg: 'Chưa có dữ liệu lớp địa chất',
+        colHeader: 'Mô tả lớp thiết kế',
+      },
+      {
+        id: 'project',
+        label: 'Dự án',
+        icon: <Building2 size={14} />,
+        list: projectList,
+        emptyMsg: 'Chưa có dữ liệu dự án',
+        colHeader: 'Tên dự án',
+      },
+      {
+        id: 'diameter',
+        label: 'Đường kính',
+        icon: <Activity size={14} />,
+        list: diameterList,
+        emptyMsg: 'Chưa có dữ liệu đường kính',
+        colHeader: 'Đường kính cọc',
+      },
+    ];
+
+    const activeTabData = tabs.find(t => t.id === activeTab)!;
+    const { list, emptyMsg, colHeader } = activeTabData;
+    const { items, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit } = list;
+
+    const ROWS_PER_COL = 15;
+    const cols: typeof items[] = [];
+    for (let i = 0; i < items.length; i += ROWS_PER_COL) {
+      cols.push(items.slice(i, i + ROWS_PER_COL));
+    }
 
     return (
       <div className="w-full space-y-6">
@@ -3110,10 +3219,10 @@ export default function App() {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
-              <Layers size={24} className="text-blue-600" /> Cấu tạo lớp địa chất
+              <Filter size={24} className="text-orange-500" /> Chuẩn hóa data
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Danh sách <strong>không trùng lặp</strong> — chỉnh sửa tên lớp sẽ <strong>đồng bộ toàn bộ biên bản</strong> liên quan
+              Chỉnh sửa tên sẽ <strong>đồng bộ toàn bộ biên bản</strong> liên quan
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -3135,100 +3244,124 @@ export default function App() {
           </div>
         </div>
 
-        {/* Table — multi-column để hiển thị vừa màn hình không cần scroll */}
-        {uniqueLayers.length === 0 ? (
+        {/* 3 Tab buttons */}
+        <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all',
+                activeTab === tab.id
+                  ? 'bg-white text-slate-900 shadow-md'
+                  : 'text-slate-500 hover:text-slate-700'
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+              <span className={cn(
+                'text-[10px] font-black px-2 py-0.5 rounded-full',
+                activeTab === tab.id ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'
+              )}>
+                {tab.list.items.length}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Tab description */}
+        <div className="text-xs text-slate-400 font-medium -mt-3">
+          {activeTab === 'geology' && 'Danh sách không trùng lặp các lớp địa chất — chỉnh sửa sẽ cập nhật layerDesign trong tất cả biên bản'}
+          {activeTab === 'project' && 'Danh sách dự án — chỉnh sửa sẽ cập nhật trường "project" trong tất cả biên bản liên quan'}
+          {activeTab === 'diameter' && 'Danh sách đường kính cọc — chỉnh sửa sẽ cập nhật trường "diameter" trong tất cả biên bản liên quan'}
+        </div>
+
+        {/* Table */}
+        {items.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
             <Layers size={48} className="text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-500 font-medium">Chưa có dữ liệu lớp địa chất</p>
+            <p className="text-slate-500 font-medium">{emptyMsg}</p>
             <p className="text-sm text-slate-400 mt-1">Hãy upload biên bản để xem dữ liệu</p>
           </div>
-        ) : (() => {
-          // Chia uniqueLayers thành các cột, mỗi cột tối đa 15 dòng
-          const ROWS_PER_COL = 15;
-          const cols: typeof uniqueLayers[] = [];
-          for (let i = 0; i < uniqueLayers.length; i += ROWS_PER_COL) {
-            cols.push(uniqueLayers.slice(i, i + ROWS_PER_COL));
-          }
-          return (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex gap-0 divide-x divide-slate-200">
-                {cols.map((colRows, colIdx) => (
-                  <div key={colIdx} className="flex-1 min-w-0">
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr style={{ background: '#1a3a6b' }}>
-                          <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-blue-800/30">#</th>
-                          <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">Mô tả lớp thiết kế</th>
-                          <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số lần</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {colRows.map((row, rowIdx) => {
-                          const globalIdx = colIdx * ROWS_PER_COL + rowIdx;
-                          const isEditing = editingKey === row.layerDesign;
-                          const isSaving = savingKey === row.layerDesign;
-                          const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
-                          return (
-                            <tr key={row.layerDesign} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
-                              <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono">{globalIdx + 1}</td>
-                              <td className="px-3 py-2.5">
-                                {isEditing ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <input
-                                      autoFocus
-                                      className="flex-1 border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                      value={editValue}
-                                      onChange={e => setEditValue(e.target.value)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') commitEdit(row.layerDesign);
-                                        if (e.key === 'Escape') cancelEdit();
-                                      }}
-                                    />
-                                    <button onClick={() => commitEdit(row.layerDesign)}
-                                      className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
-                                      <CheckCircle2 size={11} /> Lưu
-                                    </button>
-                                    <button onClick={cancelEdit}
-                                      className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-lg font-semibold transition-colors">
-                                      <X size={11} /> Hủy
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => !isSaving && startEdit(row.layerDesign)}>
-                                    {isSaving ? (
-                                      <span className="flex items-center gap-1.5 text-blue-600 text-xs">
-                                        <Loader2 size={12} className="animate-spin" /> Đang lưu...
-                                      </span>
-                                    ) : (
-                                      <>
-                                        <span className="text-xs text-slate-700 leading-snug">{row.layerDesign}</span>
-                                        <Edit2 size={11} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5 text-center">
-                                <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200">
-                                  {row.count}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex gap-0 divide-x divide-slate-200">
+              {cols.map((colRows, colIdx) => (
+                <div key={colIdx} className="flex-1 min-w-0">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr style={{ background: '#1a3a6b' }}>
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-blue-800/30">#</th>
+                        <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">{colHeader}</th>
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số biên bản</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {colRows.map((row, rowIdx) => {
+                        const globalIdx = colIdx * ROWS_PER_COL + rowIdx;
+                        const isEditing = editingKey === row.value;
+                        const isSaving = savingKey === row.value;
+                        const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
+                        return (
+                          <tr key={row.value} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono">{globalIdx + 1}</td>
+                            <td className="px-3 py-2.5">
+                              {isEditing ? (
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    autoFocus
+                                    className="flex-1 border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                    value={editValue}
+                                    onChange={e => setEditValue(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') commitEdit(row.value);
+                                      if (e.key === 'Escape') cancelEdit();
+                                    }}
+                                  />
+                                  <button onClick={() => commitEdit(row.value)}
+                                    className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
+                                    <CheckCircle2 size={11} /> Lưu
+                                  </button>
+                                  <button onClick={cancelEdit}
+                                    className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-lg font-semibold transition-colors">
+                                    <X size={11} /> Hủy
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => !isSaving && startEdit(row.value)}>
+                                  {isSaving ? (
+                                    <span className="flex items-center gap-1.5 text-blue-600 text-xs">
+                                      <Loader2 size={12} className="animate-spin" /> Đang lưu...
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs text-slate-700 leading-snug">{row.value}</span>
+                                      <Edit2 size={11} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200">
+                                {row.count}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
-          );
-        })()}
+          </div>
+        )}
       </div>
     );
   };
 
-  return (
+    return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans overflow-x-hidden">
 
       {/* ── Splash Screen Loading — hiển thị khi F5, dùng logo của người dùng ── */}
@@ -3421,7 +3554,7 @@ export default function App() {
               )}
             >
               <Layers size={18} className={activeSheet === 'geology' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Cấu tạo lớp địa chất</span>
+              <span className="font-medium text-sm">Chuẩn hóa data</span>
             </button>
 
             <button 
