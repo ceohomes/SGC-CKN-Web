@@ -121,6 +121,17 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Helper: Lấy giá trị hiển thị cho cột "Địa chất thực tế"
+// Loại A: actualGeology là số (1,2,3) → hiển thị số đó
+// Loại B: actualGeology là chữ dài → hiển thị designLayerCode (STT tự đánh)
+function getGeoDisplay(layer: { actualGeology?: string; designLayerCode?: string }): string {
+  const geo = (layer.actualGeology || '').trim();
+  const code = (layer.designLayerCode || '').trim();
+  if (/^\d+$/.test(geo)) return geo;
+  if (code) return code;
+  return geo;
+}
+
 // --- Types ---
 
 interface DrillLayer {
@@ -1783,7 +1794,7 @@ export default function App() {
         const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
         const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
         const vals = [
-          layer.actualGeology, result.diameter, layer.layerDesign,
+          getGeoDisplay(layer), result.diameter, layer.layerDesign,
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
@@ -2427,7 +2438,7 @@ export default function App() {
         const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
         const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
         const vals = [
-          layer.actualGeology, item.diameter, layer.layerDesign,
+          getGeoDisplay(layer), item.diameter, layer.layerDesign,
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
@@ -2623,7 +2634,7 @@ export default function App() {
         (res.layers || []).forEach((layer) => {
           const row = ws1.addRow([
             reportStt, res.project, res.item, res.componentName, res.pileId,
-            res.reportNumber, layer.actualGeology, res.diameter, layer.layerDesign,
+            res.reportNumber, getGeoDisplay(layer), res.diameter, layer.layerDesign,
             layer.timeFrom + ' ' + layer.dateFrom, layer.timeTo + ' ' + layer.dateTo,
             layer.elevationFrom, layer.elevationTo,
             parseFloat(layer.durationHours.toFixed(2)), parseFloat(layer.lengthMeters.toFixed(2)),
@@ -2844,7 +2855,7 @@ export default function App() {
           const spdBg = isSlowSpd ? 'DC2626' : spd > 5 ? 'D1FAE5' : 'FFF7ED';
           const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
           const vals = [
-            layer.actualGeology, res.diameter, layer.layerDesign,
+            getGeoDisplay(layer), res.diameter, layer.layerDesign,
             layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
             layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
             layer.elevationFrom, layer.elevationTo,
@@ -4712,7 +4723,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
               {result.layers.map((layer, idx) => (
                 <tr key={idx} className="group hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 bg-white group-hover:bg-slate-50 z-10 text-center font-bold text-blue-700 px-4 py-3 text-[12px] border-r border-slate-200">
-                    <div className="text-sm">{layer.actualGeology}</div>
+                    <div className="text-sm">{getGeoDisplay(layer)}</div>
                   </td>
                   <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{result.reportNumber}</td>
                   <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{layer.diameter}</td>
@@ -6940,7 +6951,7 @@ function EditSplitView({
         const spdFontColor = isSlowSpd ? 'FFFFFF' : 'C2410C';
 
         const vals = [
-          layer.actualGeology, result.diameter, layer.layerDesign,
+          getGeoDisplay(layer), result.diameter, layer.layerDesign,
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
@@ -7473,7 +7484,7 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'60px'}}>
                           <div className="flex flex-col items-center px-1 py-1">
                             <input 
-                              value={layer.actualGeology ?? ''} 
+                              value={getGeoDisplay(layer)} 
                               onChange={(e) => updateLayer(idx, 'actualGeology', e.target.value)}
                               className={`w-full bg-transparent border-none text-[12px] text-blue-800 font-black focus:bg-white px-1 py-0 text-center outline-none transition-all`}
                               placeholder="..."
