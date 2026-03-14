@@ -44,7 +44,9 @@ import {
   ChevronDown,
   RotateCw,
   FileDown,
-  ArrowRight
+  ArrowRight,
+  Sparkles,
+  CircleDot
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -3176,7 +3178,7 @@ export default function App() {
       (res, newVal) => ({ ...res, diameter: newVal })
     );
 
-    const tabs: { id: DataTab; label: string; icon: React.ReactNode; list: typeof geoList; emptyMsg: string; colHeader: string }[] = [
+    const tabs: { id: DataTab; label: string; icon: React.ReactNode; list: typeof geoList; emptyMsg: string; colHeader: string; activeClass: string; badgeClass: string; headerBg: string }[] = [
       {
         id: 'geology',
         label: 'Cấu tạo lớp địa chất',
@@ -3184,6 +3186,9 @@ export default function App() {
         list: geoList,
         emptyMsg: 'Chưa có dữ liệu lớp địa chất',
         colHeader: 'Mô tả lớp thiết kế',
+        activeClass: 'bg-white text-emerald-700 shadow-md border-b-2 border-emerald-500',
+        badgeClass: 'bg-emerald-100 text-emerald-700',
+        headerBg: '#065f46',
       },
       {
         id: 'project',
@@ -3192,14 +3197,20 @@ export default function App() {
         list: projectList,
         emptyMsg: 'Chưa có dữ liệu dự án',
         colHeader: 'Tên dự án',
+        activeClass: 'bg-white text-blue-700 shadow-md border-b-2 border-blue-500',
+        badgeClass: 'bg-blue-100 text-blue-700',
+        headerBg: '#1e3a8a',
       },
       {
         id: 'diameter',
         label: 'Đường kính',
-        icon: <Activity size={14} />,
+        icon: <CircleDot size={14} />,
         list: diameterList,
         emptyMsg: 'Chưa có dữ liệu đường kính',
         colHeader: 'Đường kính cọc',
+        activeClass: 'bg-white text-violet-700 shadow-md border-b-2 border-violet-500',
+        badgeClass: 'bg-violet-100 text-violet-700',
+        headerBg: '#4c1d95',
       },
     ];
 
@@ -3219,7 +3230,7 @@ export default function App() {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
-              <Filter size={24} className="text-orange-500" /> Chuẩn hóa data
+              <Sparkles size={24} className="text-orange-500" /> Chuẩn hóa data
             </h2>
             <p className="text-sm text-slate-500 mt-1">
               Chỉnh sửa tên sẽ <strong>đồng bộ toàn bộ biên bản</strong> liên quan
@@ -3253,7 +3264,7 @@ export default function App() {
               className={cn(
                 'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all',
                 activeTab === tab.id
-                  ? 'bg-white text-slate-900 shadow-md'
+                  ? tab.activeClass
                   : 'text-slate-500 hover:text-slate-700'
               )}
             >
@@ -3261,7 +3272,7 @@ export default function App() {
               {tab.label}
               <span className={cn(
                 'text-[10px] font-black px-2 py-0.5 rounded-full',
-                activeTab === tab.id ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'
+                activeTab === tab.id ? tab.badgeClass : 'bg-slate-200 text-slate-500'
               )}>
                 {tab.list.items.length}
               </span>
@@ -3290,9 +3301,9 @@ export default function App() {
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr style={{ background: '#1a3a6b' }}>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-blue-800/30">#</th>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-blue-800/30">{colHeader}</th>
+                      <tr style={{ background: activeTabData.headerBg }}>
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-white/20">#</th>
+                        <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-white/20">{colHeader}</th>
                         <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số biên bản</th>
                       </tr>
                     </thead>
