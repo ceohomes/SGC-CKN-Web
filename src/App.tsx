@@ -428,73 +428,171 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
       {
         parts: [
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF "Biên bản theo dõi địa chất khoan cọc nhồi" với độ chính xác tuyệt đối 100%.
-            
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF biên bản khoan cọc nhồi với độ chính xác tuyệt đối 100%.
+
 THÔNG TIN NGỮ CẢNH:
 - Ngày hiện tại: ${currentFormattedDate}
 - Năm hiện tại: ${currentYear}
 - LƯU Ý QUAN TRỌNG: Nếu năm trong văn bản trông giống "2024" nhưng hiện tại là năm ${currentYear}, hãy kiểm tra kỹ xem có phải đó là số "${currentYear.toString().slice(-1)}" viết tay không. Ưu tiên tính logic của thời gian thực tế.
 
-QUY TẮC TRÍCH XUẤT (BẮT BUỘC):
-1. THÔNG TIN CHUNG (HEADER):
-   - "project" (Dự án): Trích xuất từ dòng "Dự án: ...".
-   - "item" (Hạng mục): Trích xuất CHÍNH XÁC từ dòng "Hạng mục: ...". LƯU Ý: Trong văn bản có cả dòng "Công trình" và "Hạng mục", bạn PHẢI lấy dữ liệu từ dòng "Hạng mục". Ví dụ: Nếu thấy "Hạng mục: Thi công cầu vượt...", hãy lấy "Thi công cầu vượt...".
-   - "componentName" (Tên bộ phận): Trích xuất từ dòng "Tên bộ phận: ...". Phải bao gồm cả phần chữ viết tay (ví dụ: "Cọc khoan nhồi - Trụ HN P479").
-   - "pileId" (Số hiệu cọc): Trích xuất từ dòng "Cọc: ...". Đây thường là phần chữ viết tay (ví dụ: "C9").
-   - "reportNumber" (Biên bản số): Trích xuất từ dòng "Biên bản số: ...". (ví dụ: "01/BB-TDC").
-   - "diameter" (Đường kính): Trích xuất từ dòng "Đường kính: ...". (ví dụ: "D2000").
+════════════════════════════════════════════════════
+BƯỚC 0: XÁC ĐỊNH LOẠI BIÊN BẢN (BẮT BUỘC ĐẦU TIÊN)
+════════════════════════════════════════════════════
 
-2. ĐỊA TẦNG VÀ BẢNG TRA CỨU (CỰC KỲ QUAN TRỌNG):
-   - BƯỚC 1: Tìm bảng "Căn cứ Hồ sơ BVBPCT được duyệt" (thường nằm ở phía trên bên trái). Đây là bảng quy định mô tả địa chất cho từng lớp.
-   - BƯỚC 2: Trích xuất bảng này thành "designLayerMap". Ví dụ: { "1": "Sét pha màu xám đen...", "2": "Sét màu xám ghi...", "3": "Cát xám ghi..." }. PHẢI ĐỐI CHIẾU TỪNG DÒNG, KHÔNG ĐƯỢC NHẦM LẪN.
-   - BƯỚC 3: Khi trích xuất các dòng trong bảng "Chi tiết các lớp địa chất" (bảng chính bên dưới):
-     - "actualGeology": Lấy số hiệu từ cột "Địa chất thực tế" (ví dụ: "1", "2").
-     - "layerDesign": BẮT BUỘC phải lấy mô tả tương ứng với số hiệu đó từ bảng "designLayerMap" đã trích xuất ở Bước 2. Đây chính là logic VLOOKUP.
-   - "designLayerCode": Là số hiệu lớp thiết kế (lấy từ cột đầu tiên của bảng tra cứu).
-   - "actualGeology": Trích xuất CHÍNH XÁC số hiệu từ cột "Địa chất thực tế". Đây PHẢI là một con số (ví dụ: "1", "2", "3"). TUYỆT ĐỐI KHÔNG trích xuất mô tả bằng chữ vào ô này.
-   - "layerNumber": Số thứ tự dòng trong bảng (1, 2, 3...).
+Nhìn vào tiêu đề và cấu trúc biên bản để xác định LOẠI BIÊN BẢN:
 
-3. TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (CỰC KỲ QUAN TRỌNG - KIỂM TRA 3 LẦN):
-   - Thời gian (timeFrom, timeTo): Trích xuất CHÍNH XÁC từng chữ số giờ và phút (ví dụ: 10h57, 11h26, 12h55, 17h20).
-   - Format bắt buộc: "HHhmm" — luôn ghi ĐỦ số giờ. Giờ từ 10–23 PHẢI có 2 chữ số. TUYỆT ĐỐI không rút gọn "17h20" thành "7h20".
-   
-   - ⚠️ LỖI PHỔ BIẾN NHẤT - ĐỌC SÓT CHỮ SỐ 1 ĐẦU: Trong chữ viết tay, số "1" thường mảnh và nhỏ, đặc biệt khi đứng trước "7", "6", "5" dễ bị bỏ qua.
-     Ví dụ lỗi: đọc "17h20" → "7h20", đọc "16h33" → "6h33", đọc "13h58" → "3h58".
-     QUY TẮC KIỂM TRA: Nếu trích xuất được giờ từ 0–9 (1 chữ số), hãy nhìn lại hình ảnh thật kỹ xem trước chữ số đó có dấu "1" nào không. Trong biên bản khoan cọc nhồi, ca thi công thường kéo dài liên tục nhiều giờ — thời gian thường nằm trong khoảng 06h00 đến 23h59.
-     
-   - ⚠️ KIỂM TRA TÍNH LIÊN TỤC CỦA THỜI GIAN: Thời gian các dòng phải tăng dần và liên tiếp nhau. Nếu dòng trước kết thúc lúc "16h57" mà dòng sau bắt đầu lúc "7h20" — đây CHẮC CHẮN là lỗi đọc sót "1", phải là "17h20".
-   
-   - ⚠️ KIỂM TRA TÍNH HỢP LÝ: Thời gian không thể đột ngột giảm xuống (ví dụ từ 16h → 7h) trừ khi sang ngày mới (qua 00h). Nếu ngày không đổi mà giờ giảm mạnh > 5 tiếng, PHẢI kiểm tra lại xem có bị sót chữ số "1" không.
-   
-   - Ngày tháng (dateFrom, dateTo, constructionStart, constructionEnd): Trích xuất CHÍNH XÁC ngày, tháng, năm. 
-   - CẢNH BÁO NĂM: Nếu năm viết tay trông mập mờ, hãy đối chiếu với năm hiện tại (${currentYear}). Nếu văn bản ghi "2026" thì PHẢI trích xuất là "2026", KHÔNG ĐƯỢC tự ý đổi thành "2024".
-   - CẢNH BÁO CHỮ VIẾT TAY: Chữ viết tay số "1" và "2", hoặc "4" và "6" có thể giống nhau. Hãy nhìn kỹ ngữ cảnh và hình dạng nét vẽ. 
-   - KHÔNG ĐƯỢC tự ý làm tròn hoặc tự ý gán thời gian bắt đầu của dòng sau bằng thời gian kết thúc của dòng trước nếu hình ảnh không ghi như vậy. Nếu có khoảng nghỉ (ví dụ từ 11h26 đến 12h55), hãy trích xuất đúng các mốc thời gian ghi trên giấy.
-   - Kiểm tra tính logic: Thời gian kết thúc phải sau thời gian bắt đầu trong cùng 1 dòng. Nếu thấy vô lý (ví dụ 10h57 đến 10h26), hãy xem lại có phải đọc nhầm không.
+▶ LOẠI A — "Biên bản theo dõi địa chất / Chi tiết các lớp địa chất"
+  Dấu hiệu nhận biết:
+  • Có bảng tra cứu "Căn cứ Hồ sơ BVBPCT" ở phía trên (liệt kê lớp số 1, 2, 3... kèm mô tả)
+  • Cột "Địa chất thực tế" chứa SỐ (1, 2, 3...)
+  • Có trường "Tên bộ phận", "Biên bản số", "Cọc số"
 
-4. TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN TỪNG CHỮ SỐ THẬP PHÂN):
-   - Cao độ (elevationFrom, elevationTo): Trích xuất ĐẦY ĐỦ số thập phân (ví dụ: -8.81, -10.88, -12.94, -35.08, -37.06).
-   - Tuyệt đối không bỏ sót dấu phẩy/chấm thập phân. Kiểm tra kỹ từng chữ số.
-   
-   - ⚠️ LỖI PHỔ BIẾN - ĐỌC SÓT CHỮ SỐ: Trong chữ viết tay, số "-35.08" có thể bị đọc thành "-3.08" hoặc "-5.08". Nếu cao độ các dòng giảm dần (sâu hơn), kiểm tra tính liên tục: không được đột ngột nhảy vọt (ví dụ -33.12 → -5.08 là sai, phải là -35.08).
-   - ⚠️ KIỂM TRA TÍNH LIÊN TỤC CỦA CAO ĐỘ: "elevationFrom" của dòng N phải bằng "elevationTo" của dòng N-1. Nếu không khớp, kiểm tra lại chữ số.
-   - ⚠️ DẤU ÂM: Tất cả cao độ trong biên bản khoan cọc nhồi đều là số ÂM (vì tính từ mặt đất xuống). Nếu thấy số dương, hãy kiểm tra lại xem có bị sót dấu "-" không.
-   - Cao độ phải giảm dần (ngày càng âm hơn) theo chiều sâu khoan. Nếu thấy cao độ tăng bất thường, kiểm tra lại ngay.
+▶ LOẠI B — "Biên bản kiểm tra công tác khoan tạo lỗ cọc khoan nhồi đại trà"
+  Dấu hiệu nhận biết:
+  • Tiêu đề có chữ "KIỂM TRA CÔNG TÁC KHOAN TẠO LỖ" hoặc "ĐẠI TRÀ"
+  • KHÔNG có bảng tra cứu địa chất số hiệu
+  • Cột "Địa chất thực tế" chứa MÔ TẢ BẰNG CHỮ (ví dụ: "Đất san lấp", "Sét lẫn hữu cơ...")
+  • Có cột "Chiều cao lớp" hoặc số (m) cộng dần bên cạnh mô tả địa chất
+  • Bảng gồm các cột: Khoan | Ko đến | Chờ | Hư hỏng Sửa chữa | Thời gian | Ghi chú | Độ sâu (từ đỉnh casing) | Địa chất thực tế | XÁC NHẬN
+  • Trường thông tin: Công trình, Hạng mục, Địa điểm, Máy khoan, Đường kính cọc, Độ sâu kiểm tra, Cao độ đỉnh casing, Cọc số
 
-Yêu cầu JSON:
+════════════════════════════════════════════════════
+BƯỚC 1: TRÍCH XUẤT THÔNG TIN CHUNG (HEADER)
+════════════════════════════════════════════════════
+
+ÁP DỤNG CHO CẢ 2 LOẠI:
+- "project" (Dự án/Công trình):
+  • Loại A: Dòng "Dự án: ..."
+  • Loại B: Dòng "Công trình: ..." (ví dụ: "Dự án số 1 khu đô thị trung tâm thành phố Thanh Hóa (Vinhomes Star City)")
+- "item" (Hạng mục):
+  • Cả 2: Dòng "Hạng mục: ..." — PHẢI lấy đúng dòng Hạng mục, KHÔNG nhầm với Công trình/Dự án
+  • Loại B ví dụ: "Thi công cọc khoan nhồi đại trà_lô đất ký hiệu CT-02"
+- "componentName" (Tên bộ phận / Địa điểm):
+  • Loại A: Dòng "Tên bộ phận: ..."
+  • Loại B: Dòng "Địa điểm: ..." (ví dụ: "Phường Hạc Thành, tỉnh Thanh Hoá")
+- "pileId" (Số hiệu cọc):
+  • Loại A: Dòng "Cọc: ..." (ví dụ: "C9")
+  • Loại B: Dòng "Cọc số ..." — viết tay (ví dụ: "17-05")
+- "reportNumber" (Biên bản số / Máy khoan):
+  • Loại A: Dòng "Biên bản số: ..."
+  • Loại B: Dòng "Máy khoan: ..." (ví dụ: "KL-002")
+- "diameter" (Đường kính):
+  • Cả 2: Trích xuất từ "Đường kính cọc" hoặc "Đường kính" (ví dụ: "D800", "D2000")
+
+════════════════════════════════════════════════════
+BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
+════════════════════════════════════════════════════
+
+━━━ XỬ LÝ LOẠI A (có bảng tra cứu số hiệu) ━━━
+
+  • BƯỚC A1: Tìm bảng "Căn cứ Hồ sơ BVBPCT được duyệt". Trích xuất thành "designLayerMap":
+    Ví dụ: { "1": "Sét pha màu xám đen...", "2": "Sét màu xám ghi...", "3": "Cát xám ghi..." }
+    PHẢI ĐỐI CHIẾU TỪNG DÒNG, KHÔNG ĐƯỢC NHẦM LẪN.
+  • BƯỚC A2: Với mỗi dòng trong bảng Chi tiết:
+    - "actualGeology": SỐ HIỆU từ cột "Địa chất thực tế" (ví dụ: "1", "2", "3")
+    - "layerDesign": Mô tả từ designLayerMap tương ứng (VLOOKUP logic)
+    - "designLayerCode": Giống actualGeology
+  • "elevationFrom" / "elevationTo": Số ÂM, giảm dần theo chiều sâu
+
+━━━ XỬ LÝ LOẠI B (biên bản đại trà, mô tả địa chất bằng chữ) ━━━
+
+  ⚠️ ĐÂY LÀ TRƯỜNG HỢP QUAN TRỌNG CẦN XỬ LÝ ĐẶC BIỆT:
+
+  CẤU TRÚC BẢNG LOẠI B:
+  Bảng có cột "Độ sâu (từ đỉnh casing)" gồm 2 phần:
+    • Cột trái: Chiều cao lớp địa chất (m) — đây là ĐỘ DÀY của lớp (ví dụ: 1,227 hoặc 6,5)
+    • Cột phải: Số cộng dồn — chiều sâu tích lũy từ đỉnh casing (ví dụ: 7,72)
+  Cột "Địa chất thực tế" — mô tả bằng chữ
+
+  CÁCH TÍNH CAO ĐỘ TUYỆT ĐỐI CHO LOẠI B:
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ Lấy "Cao độ đỉnh casing" từ header biên bản (ví dụ: 3.63m)     │
+  │ Nếu không có → mặc định = 0.00                                  │
+  │                                                                  │
+  │ elevationFrom[0] = cao_do_dinh_casing                           │
+  │ elevationTo[0]   = cao_do_dinh_casing - do_day_lop_0            │
+  │ elevationFrom[1] = elevationTo[0]                               │
+  │ elevationTo[1]   = elevationFrom[1] - do_day_lop_1              │
+  │ ... tiếp tục cộng dồn ĐỘ DÀY từng lớp                         │
+  └─────────────────────────────────────────────────────────────────┘
+
+  VÍ DỤ THỰC TẾ (từ biên bản mẫu Vinhomes Thanh Hóa):
+    Cao độ đỉnh casing = 3.63m
+    Lớp 1: Đất san lấp, độ dày = 1.227m
+      → elevationFrom = 3.63, elevationTo = 3.63 - 1.227 = 2.403
+    Lớp 2: Sét lẫn hữu cơ, xám nâu, độ dày = 6.5m (số tích lũy = 7.72)
+      → elevationFrom = 2.403, elevationTo = 2.403 - 6.5 = -4.097
+    Lớp 3: Cát pha xám ghi, xám nâu TT dẻo, độ dày = 2m (tích lũy 9.72)
+      → elevationFrom = -4.097, elevationTo = -4.097 - 2 = -6.097
+    Lớp 4: Sét xám trắng, xám xanh dẻo chảy, độ dày = 8.2m (tích lũy 19.7 sic — 17.92)
+      → elevationFrom = -6.097, elevationTo = -6.097 - 8.2 = -14.297
+    ...
+
+  CÁCH LẤY "actualGeology" LOẠI B:
+    • PHẢI là MÔ TẢ ĐẦY ĐỦ bằng chữ từ cột "Địa chất thực tế"
+    • Ví dụ: "Đất san lấp", "Sét lẫn hữu cơ, xám nâu, xám đen TT dẻo chảy"
+    • "layerDesign": GIỐNG HỆT "actualGeology"
+    • "designLayerCode": Số thứ tự lớp ("1", "2", "3"...)
+    • "designLayerMap": {} (để trống)
+
+  CÁCH LẤY THỜI GIAN LOẠI B:
+    Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (hoặc "HHhMM + HHhMM") và ngày bên dưới.
+    
+    ⚠️ MỘT Ô THỜI GIAN CÓ THỂ ỨNG VỚI NHIỀU LỚP ĐỊA CHẤT:
+    Nếu 1 ô thời gian ứng với N lớp địa chất liên tiếp → chia theo tỉ lệ độ dày:
+    
+    Ví dụ: 14h40 ÷ 15h45 (65 phút tổng) cho 2 lớp:
+      Lớp "Sét lẫn hữu cơ" dày 6.5m, Lớp "Cát pha" dày 2m → tổng 8.5m
+      → Lớp Sét: 65 × (6.5/8.5) ≈ 49.7 phút
+        timeFrom = "14h40", timeTo = "15h30" (14h40 + 49.7 phút ≈ 15h30)
+      → Lớp Cát: 65 × (2/8.5) ≈ 15.3 phút
+        timeFrom = "15h30", timeTo = "15h45"
+
+════════════════════════════════════════════════════
+BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
+════════════════════════════════════════════════════
+
+- Thời gian (timeFrom, timeTo): Format "HHhmm" — ĐỦ 2 chữ số giờ.
+  TUYỆT ĐỐI không rút gọn "17h20" thành "7h20".
+
+- ⚠️ LỖI PHỔ BIẾN NHẤT: ĐỌC SÓT CHỮ SỐ "1" ĐẦU TRONG CHỮ VIẾT TAY
+  Số "1" viết tay thường mảnh, dễ bị bỏ qua trước 7, 6, 5.
+  Ví dụ lỗi: "17h20"→"7h20", "16h33"→"6h33", "13h58"→"3h58"
+  QUY TẮC: Nếu trích xuất giờ từ 0-9, nhìn lại kỹ xem có "1" đứng trước không.
+  Ca thi công thường 06h00–23h59. Thời gian phải TĂNG DẦN theo thứ tự các lớp.
+
+- ⚠️ KIỂM TRA LIÊN TỤC: Nếu dòng trước kết thúc 16h57 mà dòng sau bắt đầu 7h20 → phải là 17h20.
+
+- Ngày tháng: Đối chiếu với năm hiện tại (${currentYear}). Văn bản ghi "2026" → trích xuất "2026".
+- constructionStart / constructionEnd: lấy từ "Bắt đầu" / "Kết thúc" ở header biên bản.
+
+════════════════════════════════════════════════════
+BƯỚC 4: TRÍCH XUẤT CAO ĐỘ (CHÍNH XÁC ĐẾN THẬP PHÂN)
+════════════════════════════════════════════════════
+
+Loại A:
+- Tất cả cao độ là số ÂM, giảm dần theo chiều sâu.
+- "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
+- ⚠️ ĐỌC SÓT CHỮ SỐ: "-35.08" có thể bị đọc thành "-3.08". Kiểm tra tính liên tục.
+
+Loại B:
+- Tính từ đỉnh casing: elevationTo = elevationFrom - do_day_lop (xem công thức Bước 2).
+- Các lớp trên đỉnh casing có cao độ dương, bên dưới mức 0 là âm.
+- "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
+
+Yêu cầu JSON đầu ra:
 - project, item, componentName, pileId, reportNumber, diameter.
 - constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
-- layers: [
-    {
-      designLayerCode, actualGeology, layerNumber, layerDesign,
-      timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo,
-      notes
-    }
-  ]
-- designLayerMap: { "1": "mô tả 1", ... }
-- notes: Ghi chú tổng hợp cho toàn bộ biên bản (nếu có).
+- layers: [{ designLayerCode, actualGeology, layerNumber, layerDesign, timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo, notes }]
+- designLayerMap: { "1": "mô tả 1", ... } (để {} cho Loại B)
+- notes: Ghi chú tổng hợp (nếu có).
 
-LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại xem "item" có đúng là lấy từ dòng "Hạng mục" không, và "componentName" có đúng là lấy từ dòng "Tên bộ phận" không. Đừng nhầm lẫn giữa Dự án, Công trình, Hạng mục và Tên bộ phận.`
+KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
+1. Đã xác định đúng loại biên bản chưa?
+2. "item" có lấy từ dòng "Hạng mục" không? (không nhầm với Công trình/Dự án)
+3. Loại B: "actualGeology" là MÔ TẢ CHỮ? Cao độ đã tính từ đỉnh casing chưa?
+4. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
+5. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)`
           },
           {
             inlineData: {
@@ -616,10 +714,21 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
   const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
     
-    // Áp dụng VLOOKUP: Nếu mã địa chất thực tế có trong bảng tra cứu, lấy mô tả từ đó
-    if (geoCode && vlookupMap[geoCode]) {
-      layer.layerDesign = vlookupMap[geoCode];
-      layer.designLayerCode = geoCode; // Đồng bộ luôn mã thiết kế
+    if (isTypeB) {
+      // Loại B: actualGeology là mô tả chữ → layerDesign = actualGeology (không VLOOKUP)
+      if (!layer.layerDesign || layer.layerDesign.trim().length < 3) {
+        layer.layerDesign = geoCode;
+      }
+      // designLayerCode = số thứ tự lớp nếu chưa có
+      if (!layer.designLayerCode) {
+        layer.designLayerCode = String(layer.layerNumber || '');
+      }
+    } else {
+      // Loại A: VLOOKUP từ designLayerMap
+      if (geoCode && vlookupMap[geoCode]) {
+        layer.layerDesign = vlookupMap[geoCode];
+        layer.designLayerCode = geoCode;
+      }
     }
 
     const startMinutes = parseTimeToMinutes(layer.timeFrom);
@@ -631,12 +740,9 @@ LƯU Ý QUAN TRỌNG: Trước khi trả về kết quả, hãy kiểm tra lại
     const length = Math.abs(layer.elevationTo - layer.elevationFrom);
     const speed = durationHours > 0 ? length / durationHours : 0;
 
-    // Giữ nguyên actualGeology từ AI (đã yêu cầu lấy số hiệu lớp "1", "2"...)
-    const cleanGeo = (layer.actualGeology || '').toString().trim();
-
     return {
       ...layer,
-      actualGeology: cleanGeo,
+      actualGeology: geoCode,
       project: rawData.project,
       item: rawData.item,
       componentName: rawData.componentName,
@@ -1433,22 +1539,20 @@ export default function App() {
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
 
             // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
+            // Chỉ áp dụng VLOOKUP cho Loại A (có designLayerMap), không áp dụng cho Loại B
             const map = rawResult.designLayerMap || {};
+            const hasMap = Object.keys(map).length > 0;
             const normalizedLayers = (rawResult.layers || []).map(layer => {
               const geoCode = (layer.actualGeology || '').trim();
               const currentDesign = (layer.layerDesign || '').trim();
               
-              // Nếu dòng đã có mô tả và mô tả đó dài hơn/chi tiết hơn Map, giữ nguyên dòng
-              if (geoCode && map[geoCode]) {
-                if (!currentDesign || currentDesign.length < 5) {
-                  return { ...layer, layerDesign: map[geoCode] };
-                }
-                // Nếu mô tả dòng và Map khác nhau, ưu tiên Map vì người dùng muốn tính nhất quán (VLOOKUP)
-                // Nhưng chỉ khi Map có dữ liệu thực sự khác biệt
-                if (currentDesign !== map[geoCode]) {
+              // Chỉ VLOOKUP nếu có map VÀ geoCode là số (Loại A)
+              if (hasMap && geoCode && /^\d+$/.test(geoCode) && map[geoCode]) {
+                if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
                   return { ...layer, layerDesign: map[geoCode] };
                 }
               }
+              // Loại B: giữ nguyên actualGeology và layerDesign từ AI
               return layer;
             });
 
