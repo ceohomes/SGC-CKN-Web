@@ -525,22 +525,50 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
   │         hệ thống sẽ tự tính từ chiều dài sau khi nhập.          │
   └─────────────────────────────────────────────────────────────────┘
 
-  ⭐ LOẠI B — CHIỀU DÀI LỚP (QUAN TRỌNG NHẤT):
-  Trích xuất CHÍNH XÁC giá trị từ CỘT TRÁI của "Độ sâu (từ đỉnh casing)":
-    → Đây chính là CHIỀU DÀI thực tế (m) của từng lớp địa chất
-    → Dùng giá trị này làm "elevationTo" âm: elevationFrom = 0, elevationTo = -chieu_dai
-    → Ví dụ: lớp dày 1.227m → elevationFrom = 0, elevationTo = -1.227
-    → Ví dụ: lớp dày 6.5m   → elevationFrom = 0, elevationTo = -6.5
-    → Ví dụ: lớp dày 8.2m   → elevationFrom = 0, elevationTo = -8.2
+  ⭐ LOẠI B — CHIỀU DÀI LỚP (TRỌNG TÂM SỐ 1, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
 
-  ⚠️ LỖI PHỔ BIẾN KHI ĐỌC CHIỀU DÀI LOẠI B:
-    • Nhầm cột phải (tích lũy) với cột trái (độ dày từng lớp)
-    • Cột TRÁI là số NHỎ HƠN (độ dày từng lớp riêng lẻ)
-    • Cột PHẢI là số LỚN HƠN (tổng cộng dồn, luôn tăng dần)
-    • PHẢI lấy cột TRÁI (số nhỏ) — đó mới là chiều dài thực lớp đó
-    • VÍ DỤ: nếu thấy "1,227 | 1,227" → lấy 1.227
-    •        nếu thấy "6,5 | 7,72"   → lấy 6.5 (KHÔNG phải 7.72)
-    •        nếu thấy "8,2 | 19,7"   → lấy 8.2 (KHÔNG phải 19.7)
+  CẤU TRÚC 2 SỐ TRONG CỘT "Độ sâu":
+    Mỗi dòng có 2 con số xếp theo chiều dọc (hoặc 2 cột sát nhau):
+      • Số TRÊN (nhỏ hơn) = chiều dài lớp đó  → ĐÂY LÀ GIÁ TRỊ CẦN LẤY
+      • Số DƯỚI (lớn hơn) = tổng cộng dồn      → CHỈ DÙNG ĐỂ XÁC NHẬN
+    elevationFrom = 0, elevationTo = -(số trên)
+
+  ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO — BẮT BUỘC THỰC HIỆN:
+    Sau khi đọc được chiều dài từng lớp, PHẢI kiểm tra bằng cách:
+    Cộng dồn từ trên xuống và so sánh với số tích lũy (số dưới/số lớn):
+
+    chiều_dài_lớp_1 = L1
+    chiều_dài_lớp_2 = L2
+    Tổng tích lũy sau lớp 2 = L1 + L2 → phải BẰNG (hoặc xấp xỉ) số tích lũy ghi ở dòng 2
+
+    Nếu KHÔNG khớp → bạn đã đọc sai chiều dài, phải đọc lại.
+
+  VÍ DỤ CỤ THỂ từ biên bản thực tế:
+    Dòng 1: số trên = 1,1 → L1 = 1.1  |  số dưới = 1,1  ✓ (1.1 = 1.1)
+    Dòng 2: số trên = 7,6 → L2 = 7.6  |  số dưới = ?    ✓ (1.1 + 7.6 = 8.7 ≈ số dưới)
+             ❌ KHÔNG ĐỌC là 6,5 vì 1.1 + 6.5 = 7.6 ≠ số tích lũy thực tế
+    Dòng 3: số trên = 1,4 → L3 = 1.4  |  xác nhận: 8.7 + 1.4 = 10.1
+    Dòng 4: số trên = 9,0 → L4 = 9.0  |  xác nhận: 10.1 + 9.0 = 19.1
+    Dòng 5: số trên = 4,1 → L5 = 4.1  |  xác nhận: 19.1 + 4.1 = 23.2
+             ❌ KHÔNG ĐỌC là 4,4 vì 19.1 + 4.4 = 23.5 ≠ số tích lũy thực tế
+
+  ⚠️ CÁC LỖI ĐỌC CHỮ VIẾT TAY PHỔ BIẾN CỦA CHIỀU DÀI:
+    Loại lỗi 1 — NHẦM CHỮ SỐ:
+      • "7,6" bị đọc thành "6,5" (nhầm nét 7→6, nhầm 6→5)
+      • "4,1" bị đọc thành "4,4" (nhầm số 1 thành 4)
+      • "1,1" bị đọc thành "1,7" (nhầm nét 1→7 cuối)
+      • "9,0" bị đọc thành "8,0" hoặc "0,9" (nhầm vị trí)
+    → XÁC NHẬN CHÉO sẽ phát hiện ngay những lỗi này
+
+    Loại lỗi 2 — NHẦM CỘT (lấy số tích lũy thay vì chiều dài):
+      • Thấy "7,6 | 15,0" → lấy nhầm 15.0 thay vì 7.6
+      • Dấu hiệu: số bạn lấy lớn hơn tổng tích lũy lớp trước → SAI
+    → Số chiều dài lớp LUÔN NHỎ HƠN tổng tích lũy (trừ lớp đầu tiên)
+
+    Loại lỗi 3 — ĐỌC THIẾU/THỪA CHỮ SỐ THẬP PHÂN:
+      • "1,227" bị đọc thành "1,22" hoặc "1,27"
+      • "10,00" bị đọc thành "1,0" (bỏ số 0 cuối)
+    → Đọc KỸ từng chữ số, đếm đủ chữ số sau dấu phẩy
 
   CÁCH LẤY "actualGeology" LOẠI B:
     • PHẢI là MÔ TẢ ĐẦY ĐỦ bằng chữ từ cột "Địa chất thực tế"
@@ -565,18 +593,32 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
       Dòng 5: "Sét xám vàng, nâu vàng TT nửa cứng"  → designLayerCode = "5", layerNumber = 5
       ... tiếp tục tăng dần
 
-  CÁCH LẤY THỜI GIAN LOẠI B:
-    Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (hoặc "HHhMM + HHhMM") và ngày bên dưới.
-    
+  CÁCH LẤY THỜI GIAN LOẠI B (TRỌNG TÂM SỐ 2):
+    Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (đôi khi viết tay khó đọc) và ngày bên dưới.
+
+    ⚠️ QUY TẮC ĐỌC GIỜ VIẾT TAY — KIỂM TRA TỪNG KÝ TỰ:
+      Số "0" và "6" dễ nhầm → xem kỹ nét viết
+      Số "1" mảnh dễ bị bỏ qua → nếu đọc được giờ 1 chữ số (5,6,7,8,9) phải nghi ngờ ngay
+      Dấu "÷" hoặc "→" hoặc "-" đều là dấu phân cách từ-đến
+
+    ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO THỜI GIAN:
+      timeFrom của lớp N = timeTo của lớp N-1 (nếu liên tiếp không có khoảng nghỉ)
+      Tổng thời gian tất cả lớp ≈ thời gian từ constructionStart đến constructionEnd
+      Nếu 1 lớp có thời gian âm hoặc = 0 → đọc sai, phải xem lại
+
     ⚠️ MỘT Ô THỜI GIAN CÓ THỂ ỨNG VỚI NHIỀU LỚP ĐỊA CHẤT:
-    Nếu 1 ô thời gian ứng với N lớp địa chất liên tiếp → chia theo tỉ lệ độ dày:
-    
+    Nếu 1 ô thời gian ứng với N lớp địa chất liên tiếp → chia theo tỉ lệ chiều dài:
+
     Ví dụ: 14h40 ÷ 15h45 (65 phút tổng) cho 2 lớp:
-      Lớp "Sét lẫn hữu cơ" dày 6.5m, Lớp "Cát pha" dày 2m → tổng 8.5m
-      → Lớp Sét: 65 × (6.5/8.5) ≈ 49.7 phút
-        timeFrom = "14h40", timeTo = "15h30" (14h40 + 49.7 phút ≈ 15h30)
-      → Lớp Cát: 65 × (2/8.5) ≈ 15.3 phút
-        timeFrom = "15h30", timeTo = "15h45"
+      Lớp "Sét lẫn hữu cơ" dài 7.6m, Lớp "Cát pha" dài 1.4m → tổng 9.0m
+      → Lớp Sét: 65 × (7.6/9.0) ≈ 54.9 phút → timeFrom="14h40", timeTo="15h35"
+      → Lớp Cát: 65 × (1.4/9.0) ≈ 10.1 phút → timeFrom="15h35", timeTo="15h45"
+
+    ⚠️ LỖI ĐỌC GIỜ VIẾT TAY PHỔ BIẾN:
+      • "15h30" bị đọc thành "13h30" (nhầm 5→3)
+      • "06h30" bị đọc thành "08h30" (nhầm 6→8)
+      • "11h10" bị đọc thành "1h10" (sót chữ số 1 đầu)
+      → Luôn kiểm tra tính liên tục: giờ phải tăng dần, không được giảm đột ngột
 
 ════════════════════════════════════════════════════
 BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
@@ -749,6 +791,20 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
   const firstLayerGeo = (rawData.layers?.[0]?.actualGeology || '').toString().trim();
   const isTypeB = !hasVlookupMap && firstLayerGeo.length > 2 && !/^\d+$/.test(firstLayerGeo);
 
+  // ── Loại B: Tính tổng tích lũy từ rawData để có thể xác nhận chéo ──
+  // typeBCumulative[i] = tổng chiều dài tích lũy đến hết lớp i (theo rawData)
+  const typeBCumulative: number[] = [];
+  if (isTypeB) {
+    let cum = 0;
+    rawData.layers.forEach((layer: any) => {
+      const len = layer.elevationFrom === 0
+        ? Math.abs(layer.elevationTo)
+        : Math.abs(layer.elevationTo - layer.elevationFrom);
+      cum += (len || 0);
+      typeBCumulative.push(parseFloat(cum.toFixed(3)));
+    });
+  }
+
   const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any, idx: number) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
     
@@ -776,26 +832,29 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     const durationHours = durationMinutes / 60;
 
     let length: number;
-    let finalElevationFrom = layer.elevationFrom;
-    let finalElevationTo = layer.elevationTo;
+    let finalElevationFrom = 0;
+    let finalElevationTo = 0;
 
     if (isTypeB) {
-      // Loại B: chiều dài = |elevationTo| vì AI đặt elevationFrom=0, elevationTo=-chieu_dai
-      // Nếu AI vẫn trả về giá trị tích lũy nhầm, tính từ |elevationTo - elevationFrom|
-      const rawLength = Math.abs(layer.elevationTo - layer.elevationFrom);
-      // Nếu elevationFrom = 0 (đúng chuẩn): length = |elevationTo|
+      // Loại B: chiều dài lấy từ |elevationTo| (AI đặt elevationFrom=0, elevationTo=-chieu_dai)
       if (layer.elevationFrom === 0) {
         length = Math.abs(layer.elevationTo);
       } else {
-        // Fallback: lấy khoảng cách tuyệt đối
-        length = rawLength;
+        // Fallback: khoảng cách tuyệt đối
+        length = Math.abs(layer.elevationTo - layer.elevationFrom);
       }
-      // Normalize: set elevationFrom = 0, elevationTo = -length
+      // Normalize: luôn set elevationFrom=0, elevationTo=-length
       finalElevationFrom = 0;
-      finalElevationTo = -length;
+      finalElevationTo = parseFloat((-length).toFixed(3));
+      // Log cảnh báo nếu chiều dài có vẻ bất thường (quá nhỏ hoặc quá lớn)
+      if (length < 0.1 || length > 80) {
+        console.warn(\`[TypeB CrossCheck] Lớp \${idx+1} chiều dài = \${length}m — có thể đọc sai. Kiểm tra lại biên bản gốc.\`);
+      }
     } else {
       // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
       length = Math.abs(layer.elevationTo - layer.elevationFrom);
+      finalElevationFrom = layer.elevationFrom;
+      finalElevationTo = layer.elevationTo;
     }
 
     const speed = durationHours > 0 ? length / durationHours : 0;
