@@ -4928,6 +4928,19 @@ function PdfSplitterView() {
   const [pages, setPages] = useState<{ name: string; blob: Blob; url: string; thumbnail: string }[]>([]);
   const [previewPage, setPreviewPage] = useState<{ url: string; name: string; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [prefixText, setPrefixText] = useState<string>('');
+
+  // Helper: build tên file theo format NgayThang_NoiDung_TenFile_Trang_N.pdf
+  const buildPageName = (baseName: string, pageNum: number, prefix: string): string => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const dateStr = `${dd}-${mm}-${yyyy}`;
+    const safePrefix = prefix.trim().replace(/[^a-zA-Z0-9À-ỹĂăÂâĐđÊêÔôƠơƯư\s_\-]/g, '').trim().replace(/\s+/g, '_');
+    const parts = [dateStr, safePrefix, baseName, `Trang_${pageNum}`].filter(Boolean);
+    return parts.join('_') + '.pdf';
+  };
 
   // Render 1 trang PDF thành ảnh thumbnail bằng pdfjs
   const renderPageThumbnail = async (pdfBytes: Uint8Array, scale = 0.5): Promise<string> => {
@@ -4964,7 +4977,7 @@ function PdfSplitterView() {
         const pdfBytes = await newPdf.save();
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        const name = `${selectedFile.name.replace(/\.pdf$/i, '')}_Trang_${i + 1}.pdf`;
+        const name = buildPageName(selectedFile.name.replace(/\.pdf$/i, ''), i + 1, prefixText);
 
         // Render thumbnail
         let thumbnail = '';
@@ -5001,13 +5014,29 @@ function PdfSplitterView() {
       const zip = new JSZip();
       for (const page of pages) { zip.file(page.name, page.blob); }
       const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `${file?.name.replace(/\.pdf$/i, '')}_Tach_File.zip`);
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      const dateStr = `${dd}-${mm}-${yyyy}`;
+      const safePrefix = prefixText.trim().replace(/[^a-zA-Z0-9À-ỹĂăÂâĐđÊêÔôƠơƯư\s_\-]/g, '').trim().replace(/\s+/g, '_');
+      const zipParts = [dateStr, safePrefix, file?.name.replace(/\.pdf$/i, ''), 'Tach_File'].filter(Boolean);
+      saveAs(content, zipParts.join('_') + '.zip');
     } catch (error) {
       alert('Có lỗi xảy ra khi tạo file nén.');
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // Re-derive display names live based on current prefixText (without re-splitting)
+  const displayPages = React.useMemo(() => {
+    if (!file) return pages;
+    return pages.map((p, i) => ({
+      ...p,
+      name: buildPageName(file.name.replace(/\.pdf$/i, ''), i + 1, prefixText),
+    }));
+  }, [pages, prefixText, file]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -5020,10 +5049,40 @@ function PdfSplitterView() {
             <p className="text-xs text-slate-500 font-medium">Tự động tách PDF nhiều trang — xem preview từng trang trước khi tải</p>
           </div>
         </div>
+        {/* Ô nhập nội dung chèn thêm — nằm giữa header */}
+        <div className="flex-1 min-w-0 max-w-xl">
+          <div className="relative">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <Edit2 size={14} />
+            </div>
+            <input
+              type="text"
+              value={prefixText}
+              onChange={e => setPrefixText(e.target.value)}
+              placeholder="Nội dung chèn thêm vào tên file (tuỳ chọn)..."
+              className="w-full pl-9 pr-4 py-2.5 border-2 border-slate-200 hover:border-blue-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-xl text-[13px] font-medium text-slate-800 placeholder-slate-400 outline-none transition-all bg-white shadow-sm"
+            />
+          </div>
+          {prefixText.trim() && (
+            <p className="text-[10px] text-slate-400 font-medium mt-1 ml-1 truncate">
+              📄 Tên file: <span className="text-blue-600 font-bold">
+                {(() => {
+                  const today = new Date();
+                  const dd = String(today.getDate()).padStart(2,'0');
+                  const mm = String(today.getMonth()+1).padStart(2,'0');
+                  const yyyy = today.getFullYear();
+                  const safe = prefixText.trim().replace(/[^a-zA-Z0-9À-ỹĂăÂâĐđÊêÔôƠơƯư\s_\-]/g,'').replace(/\s+/g,'_');
+                  return `${dd}-${mm}-${yyyy}_${safe}_TênFile_Trang_N.pdf`;
+                })()}
+              </span>
+            </p>
+          )}
+        </div>
+
         {pages.length > 0 && (
           <button
             onClick={downloadAll}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 shrink-0"
           >
             <ArrowDownToLine size={15} />
             Tải tất cả ({pages.length} trang)
@@ -5082,7 +5141,7 @@ function PdfSplitterView() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {pages.map((page, i) => (
+            {displayPages.map((page, i) => (
               <div
                 key={i}
                 className="group relative bg-white border-2 border-slate-200 hover:border-blue-400 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer"
@@ -5189,9 +5248,9 @@ function PdfSplitterView() {
 
             {/* Preview image */}
             <div className="flex-1 overflow-auto bg-slate-100 flex items-center justify-center p-4">
-              {pages[previewPage.index]?.thumbnail ? (
+              {displayPages[previewPage.index]?.thumbnail ? (
                 <img
-                  src={pages[previewPage.index].thumbnail}
+                  src={displayPages[previewPage.index].thumbnail}
                   alt={previewPage.name}
                   className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg"
                   draggable={false}
