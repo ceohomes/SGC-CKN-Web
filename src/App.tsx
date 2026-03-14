@@ -848,7 +848,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       finalElevationTo = parseFloat((-length).toFixed(3));
       // Log cảnh báo nếu chiều dài có vẻ bất thường (quá nhỏ hoặc quá lớn)
       if (length < 0.1 || length > 80) {
-        console.warn(\`[TypeB CrossCheck] Lớp \${idx+1} chiều dài = \${length}m — có thể đọc sai. Kiểm tra lại biên bản gốc.\`);
+        console.warn(`[TypeB CrossCheck] Lớp ${idx+1} chiều dài = ${length}m — có thể đọc sai. Kiểm tra lại biên bản gốc.`);
       }
     } else {
       // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
