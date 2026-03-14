@@ -4924,37 +4924,56 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
 function PdfSplitterView() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [pages, setPages] = useState<{ name: string; blob: Blob; url: string }[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [pages, setPages] = useState<{ name: string; blob: Blob; url: string; thumbnail: string }[]>([]);
+  const [previewPage, setPreviewPage] = useState<{ url: string; name: string; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-      setPages([]);
-    } else {
-      alert('Vui lòng chọn file PDF.');
-    }
+  // Render 1 trang PDF thành ảnh thumbnail bằng pdfjs
+  const renderPageThumbnail = async (pdfBytes: Uint8Array, scale = 0.5): Promise<string> => {
+    const loadingTask = pdfjs.getDocument({ data: pdfBytes });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await (page as any).render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL('image/jpeg', 0.8);
   };
 
-  const splitPdf = async () => {
-    if (!file) return;
+  const processFile = async (selectedFile: File) => {
+    setFile(selectedFile);
+    setPages([]);
+    setProgress(0);
     setIsProcessing(true);
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await selectedFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const pageCount = pdfDoc.getPageCount();
-      const newPages = [];
+      const newPages: typeof pages = [];
 
       for (let i = 0; i < pageCount; i++) {
+        // Tách trang thành PDF riêng
         const newPdf = await PDFDocument.create();
         const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
         newPdf.addPage(copiedPage);
         const pdfBytes = await newPdf.save();
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
-        const name = `${file.name.replace('.pdf', '')}_Trang_${i + 1}.pdf`;
-        newPages.push({ name, blob, url });
+        const name = `${selectedFile.name.replace(/\.pdf$/i, '')}_Trang_${i + 1}.pdf`;
+
+        // Render thumbnail
+        let thumbnail = '';
+        try {
+          thumbnail = await renderPageThumbnail(pdfBytes);
+        } catch {}
+
+        newPages.push({ name, blob, url, thumbnail });
+        setProgress(Math.round(((i + 1) / pageCount) * 100));
       }
       setPages(newPages);
     } catch (error) {
@@ -4962,6 +4981,16 @@ function PdfSplitterView() {
       alert('Có lỗi xảy ra khi tách file PDF.');
     } finally {
       setIsProcessing(false);
+      setProgress(0);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      processFile(selectedFile);
+    } else if (selectedFile) {
+      alert('Vui lòng chọn file PDF.');
     }
   };
 
@@ -4970,14 +4999,10 @@ function PdfSplitterView() {
     setIsProcessing(true);
     try {
       const zip = new JSZip();
-      for (const page of pages) {
-        zip.file(page.name, page.blob);
-      }
+      for (const page of pages) { zip.file(page.name, page.blob); }
       const content = await zip.generateAsync({ type: 'blob' });
-      const zipName = `${file?.name.replace('.pdf', '')}_Tach_File.zip`;
-      saveAs(content, zipName);
+      saveAs(content, `${file?.name.replace(/\.pdf$/i, '')}_Tach_File.zip`);
     } catch (error) {
-      console.error('Error creating ZIP:', error);
       alert('Có lỗi xảy ra khi tạo file nén.');
     } finally {
       setIsProcessing(false);
@@ -4985,94 +5010,219 @@ function PdfSplitterView() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-7 bg-orange-500 rounded-full" />
           <div>
             <h3 className="text-[18px] font-black text-black uppercase tracking-tight">Tách file PDF</h3>
-            <p className="text-xs text-slate-500 font-medium">Tự động tách PDF nhiều trang thành các file đơn lẻ</p>
+            <p className="text-xs text-slate-500 font-medium">Tự động tách PDF nhiều trang — xem preview từng trang trước khi tải</p>
           </div>
         </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-3xl p-10 shadow-sm flex flex-col items-center text-center space-y-6">
-        <div className="w-20 h-20 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
-          <Scissors size={40} />
-        </div>
-        
-        <div className="max-w-md">
-          <h4 className="text-lg font-bold text-slate-900">Chọn file PDF cần tách</h4>
-          <p className="text-sm text-slate-500 mt-2">Hệ thống sẽ tách mỗi trang thành một file PDF riêng biệt để bạn dễ dàng quản lý.</p>
-        </div>
-
-        <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            accept="application/pdf" 
-            className="hidden" 
-          />
-          
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full py-4 bg-slate-100 hover:bg-slate-200 text-blue-900 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 border-2 border-dashed border-slate-300"
+        {pages.length > 0 && (
+          <button
+            onClick={downloadAll}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30"
           >
-            {file ? <FileText size={20} /> : <Upload size={20} />}
-            {file ? file.name : 'Chọn file từ máy tính'}
+            <ArrowDownToLine size={15} />
+            Tải tất cả ({pages.length} trang)
           </button>
-
-          {file && !isProcessing && pages.length === 0 && (
-            <button 
-              onClick={splitPdf}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2"
-            >
-              Bắt đầu tách file
-            </button>
-          )}
-
-          {isProcessing && (
-            <div className="flex items-center gap-3 text-blue-600 font-bold">
-              <Loader2 className="animate-spin" />
-              Đang xử lý...
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
+      {/* Upload zone */}
+      <div
+        className="bg-white border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-3xl p-8 flex flex-col items-center text-center gap-4 transition-all cursor-pointer group"
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); }}
+        onDrop={e => {
+          e.preventDefault();
+          const f = e.dataTransfer.files?.[0];
+          if (f?.type === 'application/pdf') processFile(f);
+        }}
+      >
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="application/pdf" className="hidden" />
+        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all ${file ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-500 group-hover:bg-blue-100'}`}>
+          {isProcessing ? <Loader2 size={32} className="animate-spin" /> : <Scissors size={32} />}
+        </div>
+        {isProcessing ? (
+          <div className="space-y-3 w-full max-w-xs">
+            <p className="text-sm font-black text-blue-700 uppercase tracking-widest">Đang tách & render preview...</p>
+            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-500 font-bold">{progress}% — đang xử lý từng trang</p>
+          </div>
+        ) : file && pages.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-sm font-black text-slate-800">{file.name}</p>
+            <p className="text-xs text-emerald-600 font-bold">✓ Đã tách {pages.length} trang — click để đổi file</p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-base font-black text-slate-800">Kéo thả hoặc click để chọn file PDF</p>
+            <p className="text-xs text-slate-400 font-medium">Hệ thống tự động tách và hiển thị preview từng trang</p>
+          </div>
+        )}
+      </div>
+
+      {/* Page grid with thumbnails */}
       {pages.length > 0 && (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Kết quả tách file ({pages.length} trang)</h4>
-            <button 
-              onClick={downloadAll}
-              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest flex items-center gap-1.5"
-            >
-              <ArrowDownToLine size={14} />
-              Tải xuống tất cả
-            </button>
+            <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+              <FileText size={15} className="text-blue-500" />
+              {pages.length} trang — click vào trang để xem to
+            </h4>
+            <p className="text-[11px] text-slate-400 font-medium">Hover để xem nút tải xuống từng trang</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {pages.map((page, i) => (
-              <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between hover:shadow-md transition-all group">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="bg-red-50 p-2 rounded-lg text-red-500 shrink-0">
-                    <FileText size={18} />
+              <div
+                key={i}
+                className="group relative bg-white border-2 border-slate-200 hover:border-blue-400 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer"
+                onClick={() => setPreviewPage({ url: page.url, name: page.name, index: i })}
+              >
+                {/* Thumbnail */}
+                <div className="relative bg-slate-50" style={{ paddingBottom: '141%' }}>
+                  {page.thumbnail ? (
+                    <img
+                      src={page.thumbnail}
+                      alt={`Trang ${i + 1}`}
+                      className="absolute inset-0 w-full h-full object-contain"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <FileText size={32} className="text-slate-300" />
+                    </div>
+                  )}
+                  {/* Overlay khi hover */}
+                  <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-all flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
+                      <div className="bg-white rounded-full p-2.5 shadow-lg">
+                        <ZoomInIcon size={18} className="text-blue-600" />
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-slate-700 truncate">{page.name}</span>
+                  {/* Page number badge */}
+                  <div className="absolute top-2 left-2 bg-[#1a3a6b] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow">
+                    Trang {i + 1}
+                  </div>
                 </div>
-                <a 
-                  href={page.url} 
-                  download={page.name}
-                  className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
-                  title="Tải xuống"
-                >
-                  <ArrowDownToLine size={18} />
-                </a>
+
+                {/* Footer: tên file + nút tải */}
+                <div className="px-2.5 py-2 flex items-center justify-between gap-1 border-t border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-600 truncate flex-1" title={page.name}>
+                    {page.name.split('_Trang_')[1]?.replace('.pdf','') ? `Trang ${i+1}` : page.name}
+                  </span>
+                  <a
+                    href={page.url}
+                    download={page.name}
+                    onClick={e => e.stopPropagation()}
+                    className="shrink-0 p-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white rounded-lg transition-all"
+                    title={`Tải ${page.name}`}
+                  >
+                    <ArrowDownToLine size={13} />
+                  </a>
+                </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen preview modal */}
+      {previewPage && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewPage(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-2xl w-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100" style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/15 flex items-center justify-center">
+                  <FileText size={16} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-white font-black text-[13px]">Trang {previewPage.index + 1} / {pages.length}</p>
+                  <p className="text-blue-200 text-[10px] font-medium truncate max-w-[280px]">{previewPage.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Prev / Next */}
+                <button
+                  disabled={previewPage.index === 0}
+                  onClick={() => setPreviewPage({ url: pages[previewPage.index - 1].url, name: pages[previewPage.index - 1].name, index: previewPage.index - 1 })}
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg disabled:opacity-30 transition-all"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  disabled={previewPage.index === pages.length - 1}
+                  onClick={() => setPreviewPage({ url: pages[previewPage.index + 1].url, name: pages[previewPage.index + 1].name, index: previewPage.index + 1 })}
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg disabled:opacity-30 transition-all"
+                >
+                  <ChevronRight size={16} />
+                </button>
+                <a
+                  href={previewPage.url}
+                  download={previewPage.name}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-lg text-[11px] font-black uppercase tracking-widest transition-all"
+                >
+                  <ArrowDownToLine size={13} /> Tải xuống
+                </a>
+                <button onClick={() => setPreviewPage(null)} className="p-2 bg-white/10 hover:bg-red-500 text-white rounded-lg transition-all">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Preview image */}
+            <div className="flex-1 overflow-auto bg-slate-100 flex items-center justify-center p-4">
+              {pages[previewPage.index]?.thumbnail ? (
+                <img
+                  src={pages[previewPage.index].thumbnail}
+                  alt={previewPage.name}
+                  className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg"
+                  draggable={false}
+                />
+              ) : (
+                <div className="text-slate-400 text-center space-y-2">
+                  <FileText size={48} className="mx-auto opacity-30" />
+                  <p className="text-sm font-bold">Không có preview</p>
+                </div>
+              )}
+            </div>
+
+            {/* Thumbnail strip bottom */}
+            {pages.length > 1 && (
+              <div className="flex gap-2 p-3 border-t border-slate-100 overflow-x-auto bg-slate-50">
+                {pages.map((p, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setPreviewPage({ url: p.url, name: p.name, index: i })}
+                    className={`shrink-0 rounded-lg overflow-hidden border-2 transition-all ${i === previewPage.index ? 'border-blue-500 shadow-md scale-105' : 'border-slate-200 hover:border-blue-300'}`}
+                    style={{ width: 48, height: 68 }}
+                  >
+                    {p.thumbnail ? (
+                      <img src={p.thumbnail} alt={`T${i+1}`} className="w-full h-full object-contain bg-white" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-400">{i+1}</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
