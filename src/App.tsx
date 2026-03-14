@@ -532,8 +532,24 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
     • PHẢI là MÔ TẢ ĐẦY ĐỦ bằng chữ từ cột "Địa chất thực tế"
     • Ví dụ: "Đất san lấp", "Sét lẫn hữu cơ, xám nâu, xám đen TT dẻo chảy"
     • "layerDesign": GIỐNG HỆT "actualGeology"
-    • "designLayerCode": Số thứ tự lớp ("1", "2", "3"...)
     • "designLayerMap": {} (để trống)
+
+  ⭐ QUY TẮC ĐÁNH STT ĐỊA CHẤT LOẠI B (BẮT BUỘC):
+    Biên bản Loại B KHÔNG có số thứ tự địa chất sẵn → BẮT BUỘC tự đánh số từ 1 trở đi từ trên xuống.
+    
+    NGUYÊN TẮC ĐÁNH STT:
+    • Mỗi LỚP ĐỊA CHẤT KHÁC NHAU (tên khác nhau) = 1 số thứ tự riêng
+    • Các lớp có cùng tên (lặp lại) vẫn đánh STT riêng theo thứ tự xuất hiện
+    • "designLayerCode" = STT đánh từ "1", "2", "3"... theo thứ tự từ trên xuống dưới
+    • "layerNumber" = CŨNG là số thứ tự dòng từ 1 trở đi (trùng với designLayerCode cho Loại B)
+    
+    VÍ DỤ từ biên bản mẫu:
+      Dòng 1: "Đất san lấp"                         → designLayerCode = "1", layerNumber = 1
+      Dòng 2: "Sét lẫn hữu cơ, xám nâu..."          → designLayerCode = "2", layerNumber = 2
+      Dòng 3: "Cát pha xám ghi, xám nâu TT dẻo"     → designLayerCode = "3", layerNumber = 3
+      Dòng 4: "Sét xám trắng, xám xanh dẻo chảy"    → designLayerCode = "4", layerNumber = 4
+      Dòng 5: "Sét xám vàng, nâu vàng TT nửa cứng"  → designLayerCode = "5", layerNumber = 5
+      ... tiếp tục tăng dần
 
   CÁCH LẤY THỜI GIAN LOẠI B:
     Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (hoặc "HHhMM + HHhMM") và ngày bên dưới.
@@ -716,7 +732,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
   const firstLayerGeo = (rawData.layers?.[0]?.actualGeology || '').toString().trim();
   const isTypeB = !hasVlookupMap && firstLayerGeo.length > 2 && !/^\d+$/.test(firstLayerGeo);
 
-  const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any) => {
+  const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any, idx: number) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
     
     if (isTypeB) {
@@ -724,10 +740,9 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       if (!layer.layerDesign || layer.layerDesign.trim().length < 3) {
         layer.layerDesign = geoCode;
       }
-      // designLayerCode = số thứ tự lớp nếu chưa có
-      if (!layer.designLayerCode) {
-        layer.designLayerCode = String(layer.layerNumber || '');
-      }
+      // ⭐ AUTO-ĐÁNH STT: designLayerCode = số thứ tự từ 1 trở đi (idx + 1), LUÔN ghi đè
+      layer.designLayerCode = String(idx + 1);
+      layer.layerNumber = idx + 1;
     } else {
       // Loại A: VLOOKUP từ designLayerMap
       if (geoCode && vlookupMap[geoCode]) {
