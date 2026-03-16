@@ -57,6 +57,7 @@ import {
   Tooltip, 
   ResponsiveContainer,
   Cell,
+  LabelList,
   LineChart,
   Line,
   PieChart,
@@ -6156,6 +6157,12 @@ function SummaryView({
                                               fill={entry._key === selectedWeekKey ? color : (entry['Số cọc'] > 0 ? `${color}bb` : '#e2e8f0')}
                                             />
                                           ))}
+                                          <LabelList
+                                            dataKey="Số cọc"
+                                            position="top"
+                                            style={{fontSize: 9, fontWeight: 700, fill: '#475569'}}
+                                            formatter={(v: number) => v > 0 ? v : ''}
+                                          />
                                         </Bar>
                                       </BarChart>
                                     </ResponsiveContainer>
