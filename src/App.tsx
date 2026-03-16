@@ -6205,19 +6205,18 @@ function SummaryView({
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
-                          // Helper nhúng ảnh biểu đồ với chiều cao cố định theo pixel (EMU)
-                          // ExcelJS ext nhận pixels trực tiếp
+                          // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng (col 0→9), cao cố định
                           const embedChart = (sh: any, base64img: string) => {
-                            const CHART_H_PX = 360;   // chiều cao hiển thị trong Excel (px)
-                            const CHART_W_PX = 120;   // chiều rộng hiển thị trong Excel (px)
-                            const ROW_H_PT = 15;       // chiều cao mỗi placeholder row (points)
-                            const ROW_H_PX = ROW_H_PT * 96 / 72; // ~20px
-                            const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX) + 1;
+                            const CHART_H_PX = 360;    // chiều cao hiển thị (px)
+                            const ROW_H_PT = 18;        // chiều cao mỗi placeholder row (points)
+                            const ROW_H_PX = ROW_H_PT * 96 / 72; // ~24px/row
+                            const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX);
                             const anchorRow = sh.rowCount;
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                            // br col:9 = chiều rộng bằng đúng mép phải của bảng 9 cột
                             sh.addImage(iid, {
                               tl: { col: 0, row: anchorRow },
-                              ext: { width: CHART_W_PX, height: CHART_H_PX }
+                              br: { col: 9, row: anchorRow + NUM_ROWS }
                             });
                             for (let i = 0; i < NUM_ROWS; i++) {
                               const r = sh.addRow([]);
