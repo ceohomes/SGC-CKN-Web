@@ -6189,15 +6189,19 @@ function SummaryView({
                             dur:   history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
                           };
 
-                          drawSummaryBlock(sh1, 1, sh1.rowCount + 1, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
-                          drawSummaryBlock(sh1, 4, sh1.rowCount + 1, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
-                          drawSummaryBlock(sh1, 7, sh1.rowCount + 1, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
-
                           {
-                            const r0 = sh1.rowCount + 1;
-                            sh1.getRow(r0).height = 20; sh1.getRow(r0+1).height = 20; sh1.getRow(r0+2).height = 20; sh1.getRow(r0+3).height = 16; sh1.getRow(r0+4).height = 22;
+                            const totalStartRow = sh1.rowCount + 1;
+                            drawSummaryBlock(sh1, 1, totalStartRow, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
+                            drawSummaryBlock(sh1, 4, totalStartRow, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
+                            drawSummaryBlock(sh1, 7, totalStartRow, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
+                            sh1.getRow(totalStartRow).height = 20;
+                            sh1.getRow(totalStartRow+1).height = 30;
+                            sh1.getRow(totalStartRow+2).height = 30;
+                            sh1.getRow(totalStartRow+3).height = 16;
+                            sh1.getRow(totalStartRow+4).height = 22;
+                            // Advance rowCount to after the 5-row block
+                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                           }
-                          for (let i = 0; i < 5; i++) sh1.addRow([]);
                           sh1.addRow([]); sh1.addRow([]);
 
 
@@ -6205,14 +6209,15 @@ function SummaryView({
 
                           // Nhúng ảnh biểu đồ tổng hợp
                           {
+                            const CHART_ROWS = 14; // số dòng placeholder khớp chiều cao ảnh
                             sh1.addRow([]);
                             const anchorRow = sh1.rowCount; 
                             const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
                               tl: { col: 0, row: anchorRow }, 
-                              br: { col: 9, row: anchorRow + 20 } 
+                              br: { col: 9, row: anchorRow + CHART_ROWS } 
                             });
-                            for (let i = 0; i < 21; i++) sh1.addRow([]);
+                            for (let i = 0; i < CHART_ROWS; i++) sh1.addRow([]);
                           }
 
                           // ══════════════════════════════════════════════
@@ -6250,18 +6255,21 @@ function SummaryView({
                             drawSummaryBlock(sh1, 4, startRow, 'THỰC HIỆN TUẦN NÀY', projWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
-                            sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 20; sh1.getRow(startRow+2).height = 20; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
+                            sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
+                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                             
                             // Thêm biểu đồ cho từng dự án
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            sh1.addRow([]);
-                            const anchorRow = sh1.rowCount;
-                            const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                            sh1.addImage(iid, { 
-                              tl: { col: 0, row: anchorRow }, 
-                              br: { col: 9, row: anchorRow + 20 } 
-                            });
-                            for (let i = 0; i < 21; i++) sh1.addRow([]);
+                            {
+                              const CHART_ROWS = 14;
+                              const anchorRow = sh1.rowCount;
+                              const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                              sh1.addImage(iid, { 
+                                tl: { col: 0, row: anchorRow }, 
+                                br: { col: 9, row: anchorRow + CHART_ROWS } 
+                              });
+                              for (let i = 0; i < CHART_ROWS; i++) sh1.addRow([]);
+                            }
                           });
 
                           // Define print area to only show data area dynamically
