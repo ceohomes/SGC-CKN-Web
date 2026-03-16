@@ -6206,10 +6206,11 @@ function SummaryView({
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
                           // Helper nhúng ảnh biểu đồ với chiều cao cố định theo pixel (EMU)
-                          // 1 pixel = 9525 EMU; chiều rộng 9 cột × 18 chars ≈ 1190px; chiều cao ảnh canvas = 260px
+                          // 1 pixel = 9525 EMU
                           const embedChart = (sh: any, base64img: string) => {
-                            const CHART_H_PX = 160;   // chiều cao hiển thị trong Excel (px)
-                            const CHART_W_EMU = 7000000; // chiều rộng ~735px
+                            const CHART_H_PX = 210;   // chiều cao hiển thị trong Excel (px)
+                            const CHART_W_PX = 600;   // chiều rộng hiển thị trong Excel (px)
+                            const CHART_W_EMU = CHART_W_PX * 9525;
                             const CHART_H_EMU = CHART_H_PX * 9525;
                             const ROW_H_PT = 15;       // chiều cao mỗi placeholder row (points)
                             const ROW_H_PX = ROW_H_PT * 96 / 72; // ~20px
