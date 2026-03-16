@@ -6199,22 +6199,35 @@ function SummaryView({
                             sh1.getRow(totalStartRow+2).height = 30;
                             sh1.getRow(totalStartRow+3).height = 16;
                             sh1.getRow(totalStartRow+4).height = 22;
+                            // Advance rowCount qua đúng 5 dòng của block
+                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                           }
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
-                          // Nhúng ảnh biểu đồ tổng hợp — neo ngay sau block 5 dòng
-                          {
-                            const CHART_ROWS = 15;
-                            const anchorRow = sh1.rowCount + 5; // block summary chiếm 5 dòng kể từ rowCount hiện tại
-                            const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                            sh1.addImage(iid, { 
-                              tl: { col: 0, row: anchorRow }, 
-                              br: { col: 9, row: anchorRow + CHART_ROWS } 
+                          // Helper nhúng ảnh biểu đồ với chiều cao cố định theo pixel (EMU)
+                          // 1 pixel = 9525 EMU; chiều rộng 9 cột × 18 chars ≈ 1190px; chiều cao ảnh canvas = 260px
+                          const embedChart = (sh: any, base64img: string) => {
+                            const CHART_H_PX = 160;   // chiều cao hiển thị trong Excel (px)
+                            const CHART_W_EMU = 7000000; // chiều rộng ~735px
+                            const CHART_H_EMU = CHART_H_PX * 9525;
+                            const ROW_H_PT = 15;       // chiều cao mỗi placeholder row (points)
+                            const ROW_H_PX = ROW_H_PT * 96 / 72; // ~20px
+                            const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX) + 1;
+                            const anchorRow = sh.rowCount;
+                            const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                            sh.addImage(iid, {
+                              tl: { col: 0, row: anchorRow },
+                              ext: { width: CHART_W_EMU, height: CHART_H_EMU }
                             });
-                            // Advance rowCount: 5 dòng block + CHART_ROWS
-                            for (let i = 0; i < 5 + CHART_ROWS; i++) sh1.addRow([]);
-                          }
+                            for (let i = 0; i < NUM_ROWS; i++) {
+                              const r = sh.addRow([]);
+                              r.height = ROW_H_PT;
+                            }
+                          };
+
+                          // Nhúng ảnh biểu đồ tổng hợp
+                          embedChart(sh1, imgAll);
 
                           // ══════════════════════════════════════════════
                           // CHI TIẾT TỪNG DỰ ÁN
@@ -6252,19 +6265,11 @@ function SummaryView({
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
                             sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
-                            
-                            // Thêm biểu đồ cho từng dự án — neo ngay sau block 5 dòng
+                            for (let i = 0; i < 5; i++) sh1.addRow([]);
+
+                            // Thêm biểu đồ cho từng dự án
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            {
-                              const CHART_ROWS = 15;
-                              const anchorRow = sh1.rowCount + 5;
-                              const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                              sh1.addImage(iid, { 
-                                tl: { col: 0, row: anchorRow }, 
-                                br: { col: 9, row: anchorRow + CHART_ROWS } 
-                              });
-                              for (let i = 0; i < 5 + CHART_ROWS; i++) sh1.addRow([]);
-                            }
+                            embedChart(sh1, projImg);
                           });
 
                           // Define print area to only show data area dynamically
