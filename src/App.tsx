@@ -6138,7 +6138,7 @@ function SummaryView({
                             tCell.fill = solidFill(bg) as any;
                             tCell.font = { bold: true, color: { argb: fg }, size: 10 };
                             tCell.alignment = center;
-                            tCell.border = { top: thinBorder, left: thinBorder, right: thinBorder };
+                            tCell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
 
                             sh.mergeCells(`${colLetter(startCol)}${startRow+1}:${colLetter(startCol + 2)}${startRow+2}`);
                             const pCell = sh.getCell(`${colLetter(startCol)}${startRow+1}`);
@@ -6146,7 +6146,7 @@ function SummaryView({
                             pCell.fill = solidFill(bg) as any;
                             pCell.font = { bold: true, color: { argb: accent }, size: 22 };
                             pCell.alignment = center;
-                            pCell.border = { left: thinBorder, right: thinBorder };
+                            pCell.border = { left: thinBorder, right: thinBorder, top: thinBorder, bottom: thinBorder };
 
                             const labels = ['Chiều sâu', 'Thời gian', 'Vận tốc TB'];
                             const values = [`${fmtN(stats.depth)} m`, `${fmtN(stats.dur, 1)} h`, stats.dur > 0 ? `${fmtN(stats.depth / stats.dur, 2)} m/h` : '—'];
@@ -6156,7 +6156,7 @@ function SummaryView({
                               c.fill = solidFill('FFFFFFFF') as any;
                               c.font = { size: 8, color: { argb: 'FF64748B' } };
                               c.alignment = center;
-                              c.border = { left: i === 0 ? thinBorder : undefined, right: i === 2 ? thinBorder : undefined };
+                              c.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
                             });
                             values.forEach((val, i) => {
                               const c = sh.getCell(`${colLetter(startCol + i)}${startRow+4}`);
@@ -6164,7 +6164,7 @@ function SummaryView({
                               c.fill = solidFill('FFFFFFFF') as any;
                               c.font = { bold: true, size: 10, color: { argb: accent } };
                               c.alignment = center;
-                              c.border = { bottom: thinBorder, left: i === 0 ? thinBorder : undefined, right: i === 2 ? thinBorder : undefined };
+                              c.border = { bottom: thinBorder, left: thinBorder, right: thinBorder, top: thinBorder };
                             });
                           };
 
@@ -6194,15 +6194,9 @@ function SummaryView({
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
-                          // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tou0309ng hou0323p vau0300o sheet 1
                           // Nhúng ảnh biểu đồ tổng hợp
                           {
                             sh1.addRow([]);
-                            const r = sh1.addRow(["BIỂU ĐỒ: SỐ CỌC THEO TỪNG TUẦN - TẤT CẢ DỰ ÁN"]);
-                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
-                            r.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
-                            r.getCell(1).alignment = { horizontal: 'center' };
-                            r.height = 20;
                             const anchorRow = sh1.rowCount; 
                             const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
@@ -6251,12 +6245,7 @@ function SummaryView({
                             
                             // Thêm biểu đồ cho từng dự án
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            const rChartTitle = sh1.addRow([`BIỂU ĐỒ: SỐ CỌC THEO TỪNG TUẦN - DỰ ÁN: ${projName.toUpperCase()}`]);
-                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
-                            rChartTitle.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
-                            rChartTitle.getCell(1).alignment = { horizontal: 'center' };
-                            rChartTitle.height = 20;
-
+                            sh1.addRow([]);
                             const anchorRow = sh1.rowCount;
                             const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
