@@ -6199,31 +6199,29 @@ function SummaryView({
                             sh1.getRow(totalStartRow+2).height = 30;
                             sh1.getRow(totalStartRow+3).height = 16;
                             sh1.getRow(totalStartRow+4).height = 22;
-                            // Advance rowCount qua đúng 5 dòng block
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                           }
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
                           // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng col 0→9
-                          // Gọi sau khi rowCount đã advance đúng vị trí muốn neo ảnh
-                          const embedChart = (sh: any, base64img: string) => {
-                            const NUM_ROWS = 12; // số dòng placeholder = số dòng ảnh span
+                          // anchorRow: row index (0-based) nơi ảnh bắt đầu
+                          const embedChart = (sh: any, base64img: string, anchorRow: number) => {
+                            const NUM_ROWS = 10;
                             const ROW_H_PT = 20;
-                            const anchorRow = sh.rowCount;
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh.addImage(iid, {
                               tl: { col: 0, row: anchorRow },
                               br: { col: 9, row: anchorRow + NUM_ROWS }
                             });
-                            for (let i = 0; i < NUM_ROWS; i++) {
+                            // Advance rowCount đến sau ảnh
+                            while (sh.rowCount < anchorRow + NUM_ROWS) {
                               const r = sh.addRow([]);
                               r.height = ROW_H_PT;
                             }
                           };
 
-                          // Nhúng ảnh biểu đồ tổng hợp — advance rowCount qua 5 dòng block trước
-                          embedChart(sh1, imgAll);
+                          // Nhúng ảnh biểu đồ tổng hợp — bắt đầu ngay sau block 5 dòng (totalStartRow+5-1 = index 0-based)
+                          embedChart(sh1, imgAll, sh1.rowCount + 5);
 
                           // ══════════════════════════════════════════════
                           // CHI TIẾT TỪNG DỰ ÁN
@@ -6261,12 +6259,10 @@ function SummaryView({
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
                             sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
-                            // Advance rowCount qua đúng 5 dòng block
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
 
                             // Thêm biểu đồ cho từng dự án
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            embedChart(sh1, projImg);
+                            embedChart(sh1, projImg, startRow + 4);
                           });
 
                           // Define print area to only show data area dynamically
