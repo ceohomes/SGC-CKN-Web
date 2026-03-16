@@ -5983,12 +5983,39 @@ function SummaryView({
                         if (isExportingWeekly) return;
                         setIsExportingWeekly(true);
                         try {
-                          const ExcelJS = await loadExcelJS();
+                          // Load ExcelJS và html2canvas song song
+                          const [ExcelJS, html2canvas] = await Promise.all([
+                            loadExcelJS(),
+                            new Promise<any>((res, rej) => {
+                              if ((window as any).html2canvas) { res((window as any).html2canvas); return; }
+                              const s = document.createElement('script');
+                              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                              s.onload = () => res((window as any).html2canvas);
+                              s.onerror = () => rej(new Error('Không tải được html2canvas'));
+                              document.head.appendChild(s);
+                            })
+                          ]);
+
+                          // Hàm chụp ảnh 1 element → base64 PNG
+                          const captureChart = async (id: string): Promise<string | null> => {
+                            const el = document.getElementById(id);
+                            if (!el) return null;
+                            try {
+                              const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2, logging: false, useCORS: true });
+                              return canvas.toDataURL('image/png');
+                            } catch { return null; }
+                          };
+
+                          // Chụp tất cả biểu đồ trước khi tạo workbook
+                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
+                          const [imgAll, ...imgProjs] = await Promise.all([
+                            captureChart('chart-all-projects'),
+                            ...allProjsSorted.map((_: string, i: number) => captureChart(`chart-proj-${i}`))
+                          ]);
+
                           const wb = new ExcelJS.Workbook();
                           wb.creator = 'SGC-CKN';
                           wb.created = new Date();
-
-                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
 
                           // ── Màu & style dùng chung ──
                           const NAVY  = 'FF1A3A6B';
@@ -6091,6 +6118,17 @@ function SummaryView({
                           totRow.height = 26;
                           sh1.columns = [{width:40},{width:9},{width:11},{width:13},{width:9},{width:11},{width:13},{width:9},{width:11}];
 
+                          // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tou0309ng hou0323p vau0300o sheet 1
+                          if (imgAll) {
+                            sh1.addRow([]);
+                            const imgAllRow = sh1.addRow(["Bieu do: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
+                            imgAllRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                            imgAllRow.height = 20;
+                            const imgAllId = wb.addImage({ base64: imgAll.split(",")[1], extension: "png" });
+                            sh1.addImage(imgAllId, { tl: { col: 0, row: sh1.rowCount }, ext: { width: 900, height: 220 } });
+                            for (let i = 0; i < 14; i++) sh1.addRow([]);
+                          }
+
                           // ══════════════════════════════════════════════
                           // SHEET 2+: Từng dự án (giống card màu từng dự án)
                           // ══════════════════════════════════════════════
@@ -6170,6 +6208,18 @@ function SummaryView({
                             }
 
                             sh.columns = [{width:6},{width:14},{width:12},{width:36},{width:12},{width:12},{width:12},{width:10},{width:10},{width:13},{width:26}];
+
+                            // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tuu0300ng duu0323 au0301n
+                            const projImg = imgProjs[pi];
+                            if (projImg) {
+                              sh.addRow([]);
+                              const imgRow = sh.addRow(["Bieu do: SO COC THEO TUNG TUAN"]);
+                              imgRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                              imgRow.height = 20;
+                              const imgId = wb.addImage({ base64: projImg.split(",")[1], extension: "png" });
+                              sh.addImage(imgId, { tl: { col: 0, row: sh.rowCount }, ext: { width: 900, height: 200 } });
+                              for (let i = 0; i < 13; i++) sh.addRow([]);
+                            }
                           });
 
                           // ══════════════════════════════════════════════
@@ -6390,7 +6440,7 @@ function SummaryView({
                                 <BarChart2 size={12} className="text-blue-600"/>
                                 <span className="text-[9px] font-black text-blue-700 uppercase tracking-widest">Số cọc theo từng tuần · Tất cả dự án · Năm {weeklyYear}</span>
                               </div>
-                              <div className="px-2 pb-3">
+                              <div className="px-2 pb-3" id="chart-all-projects">
                                 <ResponsiveContainer width="100%" height={180}>
                                   <BarChart data={cleanData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
                                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
@@ -6579,7 +6629,7 @@ function SummaryView({
                                     <BarChart2 size={12} style={{color}}/>
                                     <span className="text-[9px] font-black uppercase tracking-widest" style={{color}}>Số cọc theo từng tuần · Năm {weeklyYear}</span>
                                   </div>
-                                  <div className="px-2 pb-3">
+                                  <div className="px-2 pb-3" id={`chart-proj-${pidx}`}>
                                     <ResponsiveContainer width="100%" height={180}>
                                       {(() => {
                                         // Lọc bỏ tuần T52/T53 xuất hiện ở đầu năm (thuộc năm trước)
