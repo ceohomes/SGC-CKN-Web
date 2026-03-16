@@ -6125,7 +6125,7 @@ function SummaryView({
                                 const jan1 = new Date(dt.getFullYear(), 0, 1);
                                 const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
                                 return { week: `T${wNum}`, 'Số cọc': recs.length, _key: wk };
-                              }).filter(row => row['Số cọc'] > 0 || row._key === selectedWeekKey);
+                              });
                               if (projChartData.length === 0) return null;
                               return (
                                 <div className="border-t border-slate-100">
@@ -6134,20 +6134,26 @@ function SummaryView({
                                     <span className="text-[9px] font-black uppercase tracking-widest" style={{color}}>Số cọc theo từng tuần · Năm {weeklyYear}</span>
                                   </div>
                                   <div className="px-2 pb-3">
-                                    <ResponsiveContainer width="100%" height={140}>
-                                      <BarChart data={projChartData} margin={{top:4,right:12,bottom:24,left:0}} barCategoryGap="40%">
+                                    <ResponsiveContainer width="100%" height={160}>
+                                      <BarChart data={projChartData} margin={{top:4,right:12,bottom:28,left:0}} barCategoryGap="20%">
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                                        <XAxis dataKey="week" tick={{fontSize:9, fontWeight:700, fill:'#64748b'}} angle={-30} textAnchor="end" interval={0}/>
+                                        <XAxis
+                                          dataKey="week"
+                                          tick={{fontSize:8, fontWeight:700, fill:'#64748b'}}
+                                          angle={-45}
+                                          textAnchor="end"
+                                          interval={1}
+                                        />
                                         <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
                                         <Tooltip
                                           contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
                                           formatter={(value:number) => [`${value} cọc`, proj]}
                                         />
-                                        <Bar dataKey="Số cọc" fill={color} radius={[4,4,0,0]}>
+                                        <Bar dataKey="Số cọc" radius={[3,3,0,0]}>
                                           {projChartData.map((entry, i) => (
                                             <Cell
                                               key={i}
-                                              fill={entry._key === selectedWeekKey ? color : `${color}99`}
+                                              fill={entry._key === selectedWeekKey ? color : (entry['Số cọc'] > 0 ? `${color}bb` : '#e2e8f0')}
                                             />
                                           ))}
                                         </Bar>
