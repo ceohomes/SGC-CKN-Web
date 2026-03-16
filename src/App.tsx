@@ -6208,8 +6208,8 @@ function SummaryView({
                           // Helper nhúng ảnh biểu đồ với chiều cao cố định theo pixel (EMU)
                           // ExcelJS ext nhận pixels trực tiếp
                           const embedChart = (sh: any, base64img: string) => {
-                            const CHART_H_PX = 210;   // chiều cao hiển thị trong Excel (px)
-                            const CHART_W_PX = 600;   // chiều rộng hiển thị trong Excel (px)
+                            const CHART_H_PX = 360;   // chiều cao hiển thị trong Excel (px)
+                            const CHART_W_PX = 120;   // chiều rộng hiển thị trong Excel (px)
                             const ROW_H_PT = 15;       // chiều cao mỗi placeholder row (points)
                             const ROW_H_PX = ROW_H_PT * 96 / 72; // ~20px
                             const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX) + 1;
