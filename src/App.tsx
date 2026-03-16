@@ -5969,11 +5969,218 @@ function SummaryView({
                     </h4>
                     <span className="ml-2 text-[10px] font-bold text-slate-400">(Thứ 6 → Thứ 5)</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
-                    <Calendar size={13} className="text-blue-500 shrink-0"/>
-                    <div className="text-[11px] font-bold text-blue-700">
-                      <span className="text-blue-500">Thứ 6:</span> {fmtDate(weekStart)} &nbsp;→&nbsp; <span className="text-blue-500">Thứ 5:</span> {fmtDate(thu5)}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2">
+                      <Calendar size={13} className="text-blue-500 shrink-0"/>
+                      <div className="text-[11px] font-bold text-blue-700">
+                        <span className="text-blue-500">Thứ 6:</span> {fmtDate(weekStart)} &nbsp;→&nbsp; <span className="text-blue-500">Thứ 5:</span> {fmtDate(thu5)}
+                      </div>
                     </div>
+                    {/* Button xuất Excel */}
+                    {(() => {
+                      const [exporting, setExporting] = React.useState(false);
+                      const handleExport = async () => {
+                        if (exporting) return;
+                        setExporting(true);
+                        try {
+                          const ExcelJS = await loadExcelJS();
+                          const wb = new ExcelJS.Workbook();
+                          wb.creator = 'SGC-CKN';
+                          wb.created = new Date();
+
+                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
+
+                          // ── Sheet 1: Tổng hợp tuần ──
+                          const shTong = wb.addWorksheet('Tổng hợp tuần');
+                          const navyFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } };
+                          const orangeFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
+                          const greenFill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                          const blueFill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+                          const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+                          const boldDark   = { bold: true, color: { argb: 'FF1E293B' }, size: 10 };
+
+                          // Tiêu đề
+                          shTong.mergeCells('A1:H1');
+                          shTong.getCell('A1').value = `BÁO CÁO TUẦN ${weekNo} · ${fmtDate(weekStart)} → ${fmtDate(thu5)}`;
+                          shTong.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+                          shTong.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+                          shTong.getCell('A1').fill = navyFill as any;
+                          shTong.getRow(1).height = 30;
+
+                          shTong.addRow([]);
+
+                          // Header bảng tổng hợp
+                          const hRow = shTong.addRow(['DỰ ÁN', 'SỐ CỌC', 'CHIỀU SÂU (m)', 'THỜI GIAN (h)', 'VẬN TỐC TB (m/h)', 'LŨY KẾ TRƯỚC (cọc)', 'LŨY KẾ ĐẾN NAY (cọc)', 'CHIỀU SÂU LŨY KẾ (m)']);
+                          hRow.eachCell(cell => {
+                            cell.fill = navyFill as any;
+                            cell.font = headerFont as any;
+                            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                            cell.border = { bottom: { style: 'thin', color: { argb: 'FF3B82F6' } } };
+                          });
+                          hRow.height = 28;
+
+                          // Dữ liệu từng dự án
+                          allProjsSorted.forEach((proj, pi) => {
+                            const projPrev = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return r.project === proj && d && d.getTime() < weekStart.getTime(); });
+                            const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
+                            const projCum  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return r.project === proj && d && d.getTime() <= weekEnd.getTime(); });
+                            const wDepth = projWeek.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
+                            const wDur   = projWeek.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.durationHours||0), 0), 0);
+                            const wSpeed = wDur > 0 ? wDepth / wDur : 0;
+                            const cumDepth = projCum.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
+                            const fills = ['FFEFF6FF','FFFFF7ED','FFF0FDF4','FFF5F3FF','FFFEFCE8','FFF0FDFA'];
+                            const row = shTong.addRow([proj, projWeek.length, Math.round(wDepth*10)/10, Math.round(wDur*10)/10, wSpeed > 0 ? Math.round(wSpeed*100)/100 : '—', projPrev.length, projCum.length, Math.round(cumDepth*10)/10]);
+                            row.eachCell((cell, col) => {
+                              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fills[pi % fills.length] } } as any;
+                              cell.font = boldDark as any;
+                              cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+                              cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+                            });
+                          });
+
+                          // Row tổng
+                          const totalWeekDepthSum = selectedWeekRecords.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
+                          const totalWeekDurSum   = selectedWeekRecords.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.durationHours||0), 0), 0);
+                          const totalSpeedSum = totalWeekDurSum > 0 ? totalWeekDepthSum / totalWeekDurSum : 0;
+                          const totalPrevCount = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return d && d.getTime() < weekStart.getTime(); }).length;
+                          const totalCumCount  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return d && d.getTime() <= weekEnd.getTime(); }).length;
+                          const totalCumDepth  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return d && d.getTime() <= weekEnd.getTime(); }).reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
+                          const totalRow = shTong.addRow(['TỔNG TUẦN', selectedWeekRecords.length, Math.round(totalWeekDepthSum*10)/10, Math.round(totalWeekDurSum*10)/10, totalSpeedSum > 0 ? Math.round(totalSpeedSum*100)/100 : '—', totalPrevCount, totalCumCount, Math.round(totalCumDepth*10)/10]);
+                          totalRow.eachCell((cell, col) => {
+                            cell.fill = navyFill as any;
+                            cell.font = { bold: true, color: { argb: 'FFFFD580' }, size: 11 };
+                            cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
+                          });
+                          totalRow.height = 24;
+                          shTong.columns = [{ width: 45 },{ width: 10 },{ width: 16 },{ width: 16 },{ width: 18 },{ width: 20 },{ width: 20 },{ width: 22 }];
+
+                          // ── Sheet 2: Chi tiết cọc từng dự án ──
+                          allProjsSorted.forEach(proj => {
+                            const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
+                            if (projWeek.length === 0) return;
+                            const shName = proj.length > 28 ? proj.substring(0, 28) : proj;
+                            const sh = wb.addWorksheet(shName);
+
+                            // Tiêu đề sheet
+                            sh.mergeCells('A1:K1');
+                            sh.getCell('A1').value = proj;
+                            sh.getCell('A1').font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+                            sh.getCell('A1').fill = navyFill as any;
+                            sh.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+                            sh.getRow(1).height = 26;
+
+                            sh.mergeCells('A2:K2');
+                            sh.getCell('A2').value = `Tuần ${weekNo} · ${fmtDate(weekStart)} → ${fmtDate(thu5)}`;
+                            sh.getCell('A2').font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                            sh.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E4480' } } as any;
+                            sh.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+                            sh.getRow(2).height = 20;
+
+                            sh.addRow([]);
+
+                            // Header cọc
+                            const ch = sh.addRow(['STT', 'SỐ HIỆU CỌC', 'BB SỐ', 'TÊN BỘ PHẬN', 'ĐƯỜNG KÍNH', 'NGÀY BĐ', 'NGÀY KT', 'CHIỀU SÂU (m)', 'THỜI GIAN (h)', 'V.TỐC TB (m/h)', 'GHI CHÚ']);
+                            ch.eachCell(cell => {
+                              cell.fill = navyFill as any;
+                              cell.font = headerFont as any;
+                              cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                            });
+                            ch.height = 26;
+
+                            projWeek.forEach((r: any, ri: number) => {
+                              const depth = (r.layers||[]).reduce((s: number, l: any) => s + (l.lengthMeters||0), 0);
+                              const dur   = (r.layers||[]).reduce((s: number, l: any) => s + (l.durationHours||0), 0);
+                              const spd   = dur > 0 ? depth / dur : 0;
+                              const hasSlowLayer = (r.layers||[]).some((l: any) => l.speedMph > 0 && l.speedMph < 1);
+                              const row = sh.addRow([ri+1, r.pileId||'—', r.reportNumber||'—', r.componentName||r.item||'—', r.diameter||'—', r.constructionStart||'—', r.constructionEnd||'—', Math.round(depth*10)/10, Math.round(dur*10)/10, spd > 0 ? Math.round(spd*100)/100 : '—', r.notes||'']);
+                              row.eachCell((cell, col) => {
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hasSlowLayer ? 'FFFEE2E2' : (ri%2===0 ? 'FFFFFFFF' : 'FFF8FAFC') } } as any;
+                                cell.font = { size: 10, color: { argb: 'FF1E293B' }, bold: col <= 2 };
+                                cell.alignment = { horizontal: col <= 2 || col === 5 ? 'center' : 'left', vertical: 'middle' };
+                                cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+                              });
+                              if (hasSlowLayer) {
+                                sh.getCell(`K${row.number}`).value = '⚠ Có đoạn chậm < 1m/h';
+                                sh.getCell(`K${row.number}`).font = { size: 10, color: { argb: 'FFDC2626' }, bold: true };
+                              }
+
+                              // Chi tiết lớp địa chất
+                              (r.layers||[]).forEach((l: any, li: number) => {
+                                const layerRow = sh.addRow(['', `  └ Lớp ${l.layerNumber||li+1}`, '', l.layerDesign||l.actualGeology||'—', '', l.dateFrom||'', l.dateTo||'', Math.round((l.lengthMeters||0)*10)/10, Math.round((l.durationHours||0)*10)/10, l.speedMph > 0 ? Math.round(l.speedMph*100)/100 : '—', l.notes||'']);
+                                layerRow.eachCell((cell, col) => {
+                                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFFFF1F2' : 'FFFAFAFA' } } as any;
+                                  cell.font = { size: 9, color: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFDC2626' : 'FF64748B' }, italic: true };
+                                  cell.alignment = { horizontal: col >= 8 ? 'center' : 'left', vertical: 'middle' };
+                                });
+                              });
+                            });
+
+                            sh.columns = [{ width: 6 },{ width: 14 },{ width: 12 },{ width: 35 },{ width: 12 },{ width: 12 },{ width: 12 },{ width: 14 },{ width: 13 },{ width: 14 },{ width: 28 }];
+                          });
+
+                          // ── Sheet 3: Biểu đồ cọc theo tuần ──
+                          const shChart = wb.addWorksheet('Cọc theo tuần');
+                          shChart.mergeCells('A1:Z1');
+                          shChart.getCell('A1').value = `SỐ CỌC THEO TỪNG TUẦN · NĂM ${weeklyYear}`;
+                          shChart.getCell('A1').font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
+                          shChart.getCell('A1').fill = navyFill as any;
+                          shChart.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+                          shChart.getRow(1).height = 28;
+                          shChart.addRow([]);
+
+                          const chartHeader = ['TUẦN', ...allProjsSorted, 'TỔNG'];
+                          const chRow = shChart.addRow(chartHeader);
+                          chRow.eachCell(cell => { cell.fill = navyFill as any; cell.font = headerFont as any; cell.alignment = { horizontal: 'center' }; });
+
+                          weekKeys.forEach(wk => {
+                            const [cy,cm,cd] = wk.split('-').map(Number);
+                            const dt = new Date(cy, cm-1, cd);
+                            const jan1 = new Date(dt.getFullYear(), 0, 1);
+                            const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
+                            if (wNum > 52) return;
+                            const recs = weeklyData[wk] || [];
+                            const projCounts = allProjsSorted.map(p => recs.filter((r: any) => r.project === p).length);
+                            const total = projCounts.reduce((s, v) => s + v, 0);
+                            const row = shChart.addRow([`T${wNum}`, ...projCounts, total]);
+                            const isSelectedWk = wk === selectedWeekKey;
+                            row.eachCell((cell, col) => {
+                              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isSelectedWk ? 'FFFFF7ED' : (total > 0 ? 'FFF8FAFC' : 'FFFFFFFF') } } as any;
+                              cell.font = { size: 10, bold: isSelectedWk || col === chartHeader.length, color: { argb: isSelectedWk ? 'FFEA580C' : (total > 0 ? 'FF1E293B' : 'FFCBD5E1') } };
+                              cell.alignment = { horizontal: 'center' };
+                            });
+                          });
+                          shChart.columns = [{ width: 8 }, ...allProjsSorted.map(() => ({ width: 20 })), { width: 10 }];
+
+                          // Xuất file
+                          const buffer = await wb.xlsx.writeBuffer();
+                          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `SGC-CKN_BaoCaoTuan${weekNo}_${weeklyYear}.xlsx`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (err) {
+                          console.error(err);
+                          alert('Xuất Excel thất bại!');
+                        } finally {
+                          setExporting(false);
+                        }
+                      };
+                      return (
+                        <button
+                          onClick={handleExport}
+                          disabled={exporting}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 disabled:opacity-60"
+                          style={{background:'linear-gradient(135deg,#16a34a,#15803d)', color:'#fff'}}
+                        >
+                          {exporting
+                            ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"/><span>Đang xuất...</span></>
+                            : <><FileDown size={14}/><span>Xuất báo cáo Excel</span></>
+                          }
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -6111,6 +6318,59 @@ function SummaryView({
                             <span className="text-[9px] font-black text-blue-700 shrink-0">{totalPct.toFixed(1)}% tuần này</span>
                           </div>
                         )}
+
+                        {/* Biểu đồ tổng hợp tất cả dự án theo tuần */}
+                        {(() => {
+                          const COLORS = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
+                          const allProjsSorted = [...new Set(history.map(r => r.project).filter(Boolean))].sort((a,b) => a.localeCompare(b,'vi'));
+                          const totalChartData = weekKeys.map(wk => {
+                            const [cy,cm,cd] = wk.split('-').map(Number);
+                            const dt = new Date(cy, cm-1, cd);
+                            const jan1 = new Date(dt.getFullYear(), 0, 1);
+                            const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
+                            const entry: Record<string,string|number> = { week: `T${wNum}`, _key: wk };
+                            const recs = weeklyData[wk] || [];
+                            allProjsSorted.forEach(p => { entry[p] = recs.filter(r => r.project === p).length; });
+                            entry['_total'] = recs.length;
+                            return entry;
+                          });
+                          const firstRealIdx = totalChartData.findIndex(r => parseInt((r.week as string).replace('T','')) <= 10);
+                          const cleanData = firstRealIdx > 0 ? totalChartData.slice(firstRealIdx) : totalChartData;
+                          return (
+                            <div className="border-t border-slate-100">
+                              <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                                <BarChart2 size={12} className="text-blue-600"/>
+                                <span className="text-[9px] font-black text-blue-700 uppercase tracking-widest">Số cọc theo từng tuần · Tất cả dự án · Năm {weeklyYear}</span>
+                              </div>
+                              <div className="px-2 pb-3">
+                                <ResponsiveContainer width="100%" height={180}>
+                                  <BarChart data={cleanData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                    <XAxis dataKey="week" tick={{fontSize:9, fontWeight:700, fill:'#64748b'}} interval={0} tickLine={false}/>
+                                    <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
+                                    <Tooltip
+                                      contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
+                                      formatter={(value:number, name:string) => [`${value} cọc`, name]}
+                                    />
+                                    <Legend wrapperStyle={{fontSize:9, paddingTop:4}}/>
+                                    {allProjsSorted.map((proj, idx) => (
+                                      <Bar key={proj} dataKey={proj} stackId="total" fill={COLORS[idx % COLORS.length]} radius={idx === allProjsSorted.length-1 ? [3,3,0,0] : [0,0,0,0]}>
+                                        {idx === allProjsSorted.length-1 && (
+                                          <LabelList
+                                            dataKey="_total"
+                                            position="top"
+                                            style={{fontSize:9, fontWeight:700, fill:'#475569'}}
+                                            formatter={(v:number) => v > 0 ? v : ''}
+                                          />
+                                        )}
+                                      </Bar>
+                                    ))}
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {allProjs.map((proj, pidx) => {
@@ -6324,89 +6584,6 @@ function SummaryView({
                 })()}
 
                 {/* ── Biểu đồ cột: số cọc theo từng tuần — đã chuyển vào trong từng card dự án ── */}
-
-                {/* Per-project comparison table */}
-                <div className="bg-white border-2 border-slate-300 rounded-2xl overflow-hidden shadow-md">
-                  <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-2" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
-                    <TableIcon size={15} className="text-blue-300"/>
-                    <h5 className="text-[11px] font-black text-white uppercase tracking-widest">Bảng so sánh chi tiết các dự án trong tuần</h5>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">#</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Dự án</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Số cọc</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tổng chiều sâu (m)</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tổng thời gian (h)</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-right">Tốc độ TB (m/h)</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Đường kính</th>
-                          <th className="px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {weeklyProjectStats.map((ps, idx) => {
-                          const maxPiles = weeklyProjectStats[0]?.totalPiles || 1;
-                          const barW = Math.round((ps.totalPiles / maxPiles) * 100);
-                          const rowColors = ['bg-blue-50','bg-orange-50','bg-emerald-50','bg-violet-50','bg-amber-50','bg-cyan-50'];
-                          const accentColors = ['bg-blue-500','bg-orange-500','bg-emerald-500','bg-violet-500','bg-amber-500','bg-cyan-500'];
-                          return (
-                            <tr key={ps.proj} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${rowColors[idx % rowColors.length]}`}>
-                              <td className="px-4 py-3">
-                                <span className={`w-6 h-6 rounded-lg ${accentColors[idx % accentColors.length]} text-white text-[10px] font-black flex items-center justify-center`}>{idx+1}</span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="text-[12px] font-black text-slate-800">{ps.proj}</p>
-                                <p className="text-[9px] text-slate-400 font-medium mt-0.5">{ps.items.slice(0,2).join(', ')}{ps.items.length>2?` +${ps.items.length-2}`:''}</p>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className="text-[16px] font-black text-slate-900">{ps.totalPiles}</span>
-                                  <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                    <div className={`h-full ${accentColors[idx % accentColors.length]} rounded-full`} style={{width:`${barW}%`}}/>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="text-[13px] font-black text-slate-800">{formatNumber(ps.totalDepth, 1)}</span>
-                                <span className="text-[9px] text-slate-400 font-bold ml-1">m</span>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="text-[13px] font-black text-slate-800">{formatNumber(ps.totalDuration, 1)}</span>
-                                <span className="text-[9px] text-slate-400 font-bold ml-1">h</span>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <span className={`text-[13px] font-black ${ps.avgSpeed >= 1 ? 'text-emerald-600' : ps.avgSpeed > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{ps.avgSpeed > 0 ? formatNumber(ps.avgSpeed, 2) : '—'}</span>
-                                {ps.avgSpeed > 0 && <span className="text-[9px] text-slate-400 font-bold ml-1">m/h</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">{ps.diameters || '—'}</span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex flex-wrap gap-1">
-                                  {ps.items.slice(0,3).map((item,ii)=>(
-                                    <span key={ii} className="text-[9px] font-bold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded truncate max-w-[100px]">{item}</span>
-                                  ))}
-                                  {ps.items.length > 3 && <span className="text-[9px] text-slate-400 font-bold">+{ps.items.length-3}</span>}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {/* Totals row */}
-                        <tr className="bg-slate-900 border-t-2 border-slate-400">
-                          <td colSpan={2} className="px-4 py-3 text-[10px] font-black text-white uppercase tracking-widest">Tổng tuần</td>
-                          <td className="px-4 py-3 text-center text-[15px] font-black text-orange-300">{selectedWeekRecords.length}</td>
-                          <td className="px-4 py-3 text-right text-[13px] font-black text-orange-300">{formatNumber(totalWeekDepth, 1)}</td>
-                          <td className="px-4 py-3 text-right text-[13px] font-black text-orange-300">{formatNumber(totalWeekDur, 1)}</td>
-                          <td className="px-4 py-3 text-right text-[13px] font-black text-emerald-300">{formatNumber(avgWeekSpeed, 2)}</td>
-                          <td colSpan={2} className="px-4 py-3 text-[9px] font-bold text-slate-400">{projectCount} dự án tham gia</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
 
                 {/* Per-project pile list */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
