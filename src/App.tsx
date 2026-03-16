@@ -5984,7 +5984,12 @@ function SummaryView({
                         setIsExportingWeekly(true);
                         try {
                           const ExcelJS = await loadExcelJS();
-                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
+                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))]
+                            .sort((a: any, b: any) => {
+                              const pilesA = selectedWeekRecords.filter((r: any) => r.project === a).length;
+                              const pilesB = selectedWeekRecords.filter((r: any) => r.project === b).length;
+                              return pilesB - pilesA || a.localeCompare(b, 'vi');
+                            }) as string[];
 
                           // ── Vẽ biểu đồ cột bằng canvas thuần → base64 PNG ──
                           const CHART_COLORS_EX = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
@@ -6101,7 +6106,7 @@ function SummaryView({
                               sh.mergeCells(`A2:${String.fromCharCode(64+cols)}2`);
                               sh.getCell('A2').value = subTxt;
                               sh.getCell('A2').font = boldWhite(10);
-                              sh.getCell('A2').fill = solidFill('FF334155') as any; // Slate 700
+                              sh.getCell('A2').fill = solidFill('FF1E4480') as any; // Navy mid — khác với tiêu đề dự án
                               sh.getCell('A2').alignment = center;
                               sh.getRow(2).height = 20;
                             }
@@ -6451,7 +6456,12 @@ function SummaryView({
 
                 {/* ── Bảng lũy kế tiến độ — từng dự án A-Z ── */}
                 {(() => {
-                  const allProjs = [...new Set(history.map(r => r.project).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'vi'));
+                  const allProjs = [...new Set(history.map(r => r.project).filter(Boolean))]
+                    .sort((a, b) => {
+                      const pilesA = selectedWeekRecords.filter(r => r.project === a).length;
+                      const pilesB = selectedWeekRecords.filter(r => r.project === b).length;
+                      return pilesB - pilesA || a.localeCompare(b, 'vi');
+                    });
 
                   // Tổng hợp tất cả dự án
                   const totalPrev = calcStats(history.filter(r => { const d = parseViDate(r.constructionEnd); return d && d.getTime() < weekStart.getTime(); }));
@@ -6587,7 +6597,12 @@ function SummaryView({
                         {/* Biểu đồ tổng hợp tất cả dự án theo tuần */}
                         {(() => {
                           const COLORS = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
-                          const allProjsSorted = [...new Set(history.map(r => r.project).filter(Boolean))].sort((a,b) => a.localeCompare(b,'vi'));
+                          const allProjsSorted = [...new Set(history.map(r => r.project).filter(Boolean))]
+                            .sort((a, b) => {
+                              const pilesA = selectedWeekRecords.filter(r => r.project === a).length;
+                              const pilesB = selectedWeekRecords.filter(r => r.project === b).length;
+                              return pilesB - pilesA || a.localeCompare(b, 'vi');
+                            });
                           const totalChartData = weekKeys.map(wk => {
                             const [cy,cm,cd] = wk.split('-').map(Number);
                             const dt = new Date(cy, cm-1, cd);
