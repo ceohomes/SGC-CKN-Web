@@ -6129,7 +6129,7 @@ function SummaryView({
                             const rTotalHeader = sh1.addRow(['TỔNG HỢP TẤT CẢ DỰ ÁN']);
                             sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
                             rTotalHeader.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
-                            rTotalHeader.getCell(1).fill = solidFill('FF1A3A6B') as any;
+                            rTotalHeader.getCell(1).fill = solidFill('FF334155') as any;
                             rTotalHeader.getCell(1).alignment = center;
                             rTotalHeader.height = 24;
                           }
