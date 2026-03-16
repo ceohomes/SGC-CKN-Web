@@ -6364,14 +6364,67 @@ function SummaryView({
                               return (db?.getTime() || 0) - (da?.getTime() || 0);
                             });
 
-                            // Fetch ảnh song song dùng ensureImageData (giống file xuất tổng)
+                            // Fetch ảnh song song — dùng proxy với fileUrl (giống cách file xuất tổng)
+                            const fetchImgWeekly = async (res: any): Promise<{ base64: string; ext: string } | null> => {
+                              try {
+                                // Ưu tiên _base64 nếu có trong bộ nhớ tạm
+                                if (res._base64) {
+                                  const parts = res._base64.split(',');
+                                  if (parts.length > 1) {
+                                    const mime = res._mimeType || '';
+                                    const ext = mime.includes('png') ? 'png' : 'jpeg';
+                                    return { base64: parts[1], ext };
+                                  }
+                                }
+                                // Lấy từ fileUrl qua proxy
+                                let url = res.fileUrl;
+                                if (!url) return null;
+                                if (url.includes('github.com') && url.includes('/blob/')) {
+                                  url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+                                }
+                                const proxyResp = await fetch(`/api/proxy-image?url=${encodeURIComponent(url)}`);
+                                if (proxyResp.ok) {
+                                  const buf = await proxyResp.arrayBuffer();
+                                  if (buf.byteLength > 100) {
+                                    const blob2 = new Blob([buf]);
+                                    const base64 = await new Promise<string>((resolve) => {
+                                      const reader = new FileReader();
+                                      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                                      reader.readAsDataURL(blob2);
+                                    });
+                                    const ext = blob2.type.includes('png') ? 'png' : 'jpeg';
+                                    return { base64, ext };
+                                  }
+                                }
+                                // Fallback: fetch trực tiếp với GitHub token
+                                if (githubCreds?.token) {
+                                  const resp = await fetch(url, {
+                                    headers: { 'Authorization': `token ${githubCreds.token}` },
+                                    cache: 'no-store'
+                                  });
+                                  if (resp.ok) {
+                                    const buf = await resp.arrayBuffer();
+                                    if (buf.byteLength > 100) {
+                                      const blob2 = new Blob([buf]);
+                                      const base64 = await new Promise<string>((resolve) => {
+                                        const reader = new FileReader();
+                                        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                                        reader.readAsDataURL(blob2);
+                                      });
+                                      const ext = blob2.type.includes('png') ? 'png' : 'jpeg';
+                                      return { base64, ext };
+                                    }
+                                  }
+                                }
+                                return null;
+                              } catch { return null; }
+                            };
+
                             const CHUNK_W = 5;
                             const imgResults: ({ base64: string; ext: string } | null)[] = new Array(sortedRecs.length).fill(null);
                             for (let ci = 0; ci < sortedRecs.length; ci += CHUNK_W) {
                               const chunk = sortedRecs.slice(ci, ci + CHUNK_W);
-                              const fetched = await Promise.all(
-                                chunk.map((res: any) => ensureImageData(res, githubCreds).catch(() => null))
-                              );
+                              const fetched = await Promise.all(chunk.map((res: any) => fetchImgWeekly(res)));
                               fetched.forEach((img, j) => { imgResults[ci + j] = img; });
                             }
 
