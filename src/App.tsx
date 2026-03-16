@@ -6199,33 +6199,30 @@ function SummaryView({
                             sh1.getRow(totalStartRow+2).height = 30;
                             sh1.getRow(totalStartRow+3).height = 16;
                             sh1.getRow(totalStartRow+4).height = 22;
-                            // Advance rowCount qua đúng 5 dòng của block
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                           }
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
-                          // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng (col 0→9), cao cố định
-                          const embedChart = (sh: any, base64img: string) => {
-                            const CHART_H_PX = 360;    // chiều cao hiển thị (px)
-                            const ROW_H_PT = 18;        // chiều cao mỗi placeholder row (points)
-                            const ROW_H_PX = ROW_H_PT * 96 / 72; // ~24px/row
-                            const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX);
-                            const anchorRow = sh.rowCount;
+                          // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng (col 0→9)
+                          // anchorOffset: số dòng cộng thêm vào rowCount hiện tại (để bù block merge chưa advance rowCount)
+                          const embedChart = (sh: any, base64img: string, anchorOffset = 0) => {
+                            const ROW_H_PT = 20;
+                            const NUM_ROWS = 15; // 15 × 20pt ≈ chiều cao vừa đủ
+                            const anchorRow = sh.rowCount + anchorOffset;
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                            // br col:9 = chiều rộng bằng đúng mép phải của bảng 9 cột
                             sh.addImage(iid, {
                               tl: { col: 0, row: anchorRow },
                               br: { col: 9, row: anchorRow + NUM_ROWS }
                             });
-                            for (let i = 0; i < NUM_ROWS; i++) {
+                            // Advance rowCount: bù anchorOffset + NUM_ROWS
+                            for (let i = 0; i < anchorOffset + NUM_ROWS; i++) {
                               const r = sh.addRow([]);
                               r.height = ROW_H_PT;
                             }
                           };
 
-                          // Nhúng ảnh biểu đồ tổng hợp
-                          embedChart(sh1, imgAll);
+                          // Nhúng ảnh biểu đồ tổng hợp — offset 5 dòng của summary block
+                          embedChart(sh1, imgAll, 5);
 
                           // ══════════════════════════════════════════════
                           // CHI TIẾT TỪNG DỰ ÁN
@@ -6263,11 +6260,10 @@ function SummaryView({
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
                             sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
 
-                            // Thêm biểu đồ cho từng dự án
+                            // Thêm biểu đồ cho từng dự án — offset 5 dòng của summary block
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            embedChart(sh1, projImg);
+                            embedChart(sh1, projImg, 5);
                           });
 
                           // Define print area to only show data area dynamically
