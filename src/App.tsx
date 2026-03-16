@@ -6028,25 +6028,29 @@ function SummaryView({
                             {/* 3 cột */}
                             <div className="grid grid-cols-3 divide-x divide-slate-200">
                               {/* Lũy kế đến tuần trước */}
-                              <div className="p-4 bg-slate-50">
+                              <div className="p-4 bg-emerald-50">
                                 <div className="flex items-center gap-1.5 mb-2">
-                                  <div className="w-2 h-2 rounded-full bg-slate-400"/>
-                                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Lũy kế đến tuần trước</p>
+                                  <div className="w-2 h-2 rounded-full bg-emerald-500"/>
+                                  <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Lũy kế đến tuần trước</p>
                                 </div>
                                 <div className="flex items-baseline gap-1 mb-2">
-                                  <span className="text-[22px] font-black text-slate-700">{pPrev.piles}</span>
-                                  <span className="text-[10px] font-bold text-slate-400">cọc</span>
+                                  <span className="text-[22px] font-black text-emerald-700">{pPrev.piles}</span>
+                                  <span className="text-[10px] font-bold text-emerald-400">cọc</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  <div className="bg-white border border-slate-200 rounded-xl p-2">
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-0.5">Chiều sâu</p>
-                                    <span className="text-[12px] font-black text-slate-700">{formatNumber(pPrev.depth,1)}</span>
-                                    <span className="text-[8px] font-bold text-slate-400 ml-1">m</span>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                    <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Chiều sâu</p>
+                                    <span className="text-[12px] font-black text-emerald-700">{formatNumber(pPrev.depth,1)}</span>
+                                    <span className="text-[8px] font-bold text-emerald-400 ml-1">m</span>
                                   </div>
-                                  <div className="bg-white border border-slate-200 rounded-xl p-2">
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase mb-0.5">Thời gian</p>
-                                    <span className="text-[12px] font-black text-slate-700">{formatNumber(pPrev.dur,1)}</span>
-                                    <span className="text-[8px] font-bold text-slate-400 ml-1">h</span>
+                                  <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                    <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Thời gian</p>
+                                    <span className="text-[12px] font-black text-emerald-700">{formatNumber(pPrev.dur,1)}</span>
+                                    <span className="text-[8px] font-bold text-emerald-400 ml-1">h</span>
+                                  </div>
+                                  <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                    <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Vận tốc TB</p>
+                                    {(() => { const s = pPrev.dur > 0 ? pPrev.depth/pPrev.dur : 0; return <><span className={`text-[12px] font-black ${s>=1?'text-emerald-700':s>0?'text-amber-600':'text-slate-400'}`}>{s>0?formatNumber(s,2):'—'}</span>{s>0&&<span className="text-[8px] font-bold text-emerald-400 ml-1">m/h</span>}</>; })()}
                                   </div>
                                 </div>
                               </div>
@@ -6064,16 +6068,21 @@ function SummaryView({
                                   <span className={`text-[22px] font-black ${pWeek.piles > 0 ? 'text-orange-600' : 'text-slate-400'}`}>{pWeek.piles}</span>
                                   <span className="text-[10px] font-bold text-orange-400">cọc</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-1.5">
+                                <div className="grid grid-cols-3 gap-1.5">
                                   <div className="bg-white border border-orange-200 rounded-xl p-2">
                                     <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Chiều sâu</p>
                                     <span className="text-[12px] font-black text-orange-600">{formatNumber(pWeek.depth,1)}</span>
                                     <span className="text-[8px] font-bold text-orange-400 ml-1">m</span>
                                   </div>
                                   <div className="bg-white border border-orange-200 rounded-xl p-2">
-                                    <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Tốc độ TB</p>
-                                    <span className={`text-[12px] font-black ${pSpeed >= 1 ? 'text-emerald-600' : pSpeed > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{pSpeed > 0 ? formatNumber(pSpeed,2) : '—'}</span>
-                                    {pSpeed > 0 && <span className="text-[8px] font-bold text-orange-400 ml-1">m/h</span>}
+                                    <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Thời gian</p>
+                                    <span className="text-[12px] font-black text-orange-600">{formatNumber(pWeek.dur,1)}</span>
+                                    <span className="text-[8px] font-bold text-orange-400 ml-1">h</span>
+                                  </div>
+                                  <div className="bg-white border border-orange-200 rounded-xl p-2">
+                                    <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Vận tốc TB</p>
+                                    <span className={`text-[12px] font-black ${pSpeed>=1?'text-emerald-600':pSpeed>0?'text-amber-600':'text-slate-400'}`}>{pSpeed>0?formatNumber(pSpeed,2):'—'}</span>
+                                    {pSpeed>0&&<span className="text-[8px] font-bold text-orange-400 ml-1">m/h</span>}
                                   </div>
                                 </div>
                               </div>
@@ -6088,7 +6097,7 @@ function SummaryView({
                                   <span className="text-[22px] font-black text-blue-700">{pCum.piles}</span>
                                   <span className="text-[10px] font-bold text-blue-400">cọc</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-1.5">
+                                <div className="grid grid-cols-3 gap-1.5">
                                   <div className="bg-white border border-blue-200 rounded-xl p-2">
                                     <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Chiều sâu</p>
                                     <span className="text-[12px] font-black text-blue-700">{formatNumber(pCum.depth,1)}</span>
@@ -6098,6 +6107,10 @@ function SummaryView({
                                     <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Thời gian</p>
                                     <span className="text-[12px] font-black text-blue-700">{formatNumber(pCum.dur,1)}</span>
                                     <span className="text-[8px] font-bold text-blue-400 ml-1">h</span>
+                                  </div>
+                                  <div className="bg-white border border-blue-200 rounded-xl p-2">
+                                    <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Vận tốc TB</p>
+                                    {(() => { const s = pCum.dur > 0 ? pCum.depth/pCum.dur : 0; return <><span className={`text-[12px] font-black ${s>=1?'text-emerald-600':s>0?'text-amber-600':'text-slate-400'}`}>{s>0?formatNumber(s,2):'—'}</span>{s>0&&<span className="text-[8px] font-bold text-blue-400 ml-1">m/h</span>}</>; })()}
                                   </div>
                                 </div>
                               </div>
