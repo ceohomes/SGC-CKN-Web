@@ -6115,6 +6115,48 @@ function SummaryView({
                                 <span className="text-[9px] font-black shrink-0" style={{color}}>{pct.toFixed(1)}% tuần này</span>
                               </div>
                             )}
+
+                            {/* Biểu đồ cột: số cọc theo từng tuần của dự án này */}
+                            {(() => {
+                              const projChartData = weekKeys.map(wk => {
+                                const recs = (weeklyData[wk] || []).filter(r => r.project === proj);
+                                const [cy,cm,cd] = wk.split('-').map(Number);
+                                const dt = new Date(cy, cm-1, cd);
+                                const jan1 = new Date(dt.getFullYear(), 0, 1);
+                                const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
+                                return { week: `T${wNum}`, 'Số cọc': recs.length, _key: wk };
+                              }).filter(row => row['Số cọc'] > 0 || row._key === selectedWeekKey);
+                              if (projChartData.length === 0) return null;
+                              return (
+                                <div className="border-t border-slate-100">
+                                  <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                                    <BarChart2 size={12} style={{color}}/>
+                                    <span className="text-[9px] font-black uppercase tracking-widest" style={{color}}>Số cọc theo từng tuần · Năm {weeklyYear}</span>
+                                  </div>
+                                  <div className="px-2 pb-3">
+                                    <ResponsiveContainer width="100%" height={140}>
+                                      <BarChart data={projChartData} margin={{top:4,right:12,bottom:24,left:0}} barCategoryGap="40%">
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                        <XAxis dataKey="week" tick={{fontSize:9, fontWeight:700, fill:'#64748b'}} angle={-30} textAnchor="end" interval={0}/>
+                                        <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
+                                        <Tooltip
+                                          contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
+                                          formatter={(value:number) => [`${value} cọc`, proj]}
+                                        />
+                                        <Bar dataKey="Số cọc" fill={color} radius={[4,4,0,0]}>
+                                          {projChartData.map((entry, i) => (
+                                            <Cell
+                                              key={i}
+                                              fill={entry._key === selectedWeekKey ? color : `${color}99`}
+                                            />
+                                          ))}
+                                        </Bar>
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -6122,67 +6164,7 @@ function SummaryView({
                   );
                 })()}
 
-                {/* ── Biểu đồ cột: số cọc theo từng tuần, phân tách theo dự án ── */}
-                {(() => {
-                  const allWeekKeysForYear = weekKeys.filter(wk => (weeklyData[wk]||[]).length > 0);
-                  if (allWeekKeysForYear.length === 0) return null;
-                  const allProjs = [...new Set(history.map(r => r.project).filter(Boolean))];
-                  const COLORS = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
-                  const chartData = weekKeys.map(wk => {
-                    const recs = weeklyData[wk] || [];
-                    const [y,m,d] = wk.split('-').map(Number);
-                    const dt = new Date(y, m-1, d);
-                    const jan1 = new Date(dt.getFullYear(), 0, 1);
-                    const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
-                    const entry: Record<string,string|number> = { week: `T${wNum}` };
-                    allProjs.forEach(proj => { entry[proj] = recs.filter(r => r.project === proj).length; });
-                    return entry;
-                  });
-                  // Chỉ giữ các tuần có ít nhất 1 cọc (hoặc là tuần được chọn)
-                  const visibleData = chartData.filter((row, i) => {
-                    const total = allProjs.reduce((s,p) => s + ((row[p] as number)||0), 0);
-                    return total > 0 || weekKeys[i] === selectedWeekKey;
-                  });
-                  if (visibleData.length === 0) return null;
-                  return (
-                    <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden shadow-md">
-                      <div className="px-5 py-3 flex items-center gap-2" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
-                        <BarChart2 size={15} className="text-orange-300"/>
-                        <h5 className="text-[11px] font-black text-white uppercase tracking-widest">Số cọc theo từng tuần</h5>
-                        <span className="ml-auto text-[9px] font-bold text-blue-200 uppercase tracking-widest">Phân tách theo dự án · Năm {weeklyYear}</span>
-                      </div>
-                      <div className="p-4">
-                        <ResponsiveContainer width="100%" height={220}>
-                          <BarChart data={visibleData} margin={{top:8,right:16,bottom:32,left:0}} barCategoryGap="35%">
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                            <XAxis
-                              dataKey="week"
-                              tick={{fontSize:9, fontWeight:700, fill:'#64748b'}}
-                              angle={-30}
-                              textAnchor="end"
-                              interval={0}
-                            />
-                            <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false}/>
-                            <Tooltip
-                              contentStyle={{fontSize:11, borderRadius:10, border:'1px solid #e2e8f0'}}
-                              formatter={(value:number, name:string) => [`${value} cọc`, name]}
-                            />
-                            <Legend wrapperStyle={{fontSize:10, paddingTop:6}}/>
-                            {allProjs.map((proj, idx) => (
-                              <Bar
-                                key={proj}
-                                dataKey={proj}
-                                stackId="s"
-                                fill={COLORS[idx % COLORS.length]}
-                                radius={idx === allProjs.length - 1 ? [4,4,0,0] : [0,0,0,0]}
-                              />
-                            ))}
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* ── Biểu đồ cột: số cọc theo từng tuần — đã chuyển vào trong từng card dự án ── */}
 
                 {/* KPI cards nhỏ bên dưới */}
                 <div className="grid grid-cols-4 gap-3">
