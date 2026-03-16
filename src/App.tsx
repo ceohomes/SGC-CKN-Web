@@ -5993,51 +5993,67 @@ function SummaryView({
                             projNames: string[],
                             title: string
                           ): string => {
-                            const W = 1200, H = 340;
-                            const PAD = { top: 44, right: 20, bottom: 70, left: 44 };
+                            const scale = 2; // Tăng độ phân giải để ảnh nét hơn
+                            const W = 1200 * scale, H = 280 * scale;
+                            const PAD = { top: 40 * scale, right: 20 * scale, bottom: 30 * scale, left: 44 * scale };
                             const cW = W - PAD.left - PAD.right;
                             const cH = H - PAD.top - PAD.bottom;
                             const cv = document.createElement('canvas');
                             cv.width = W; cv.height = H;
                             const ctx = cv.getContext('2d')!;
                             ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-                            ctx.fillStyle = '#1a3a6b'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-                            ctx.fillText(title, W/2, 26);
-                            const maxVal = Math.max(...chartData.map(d => d.values.reduce((s,v)=>s+v,0)), 1);
-                            const barW = Math.max(5, (cW / chartData.length) * 0.55);
+                            
+                            // Tiêu đề biểu đồ
+                            ctx.fillStyle = '#1a3a6b'; ctx.font = `bold ${15 * scale}px Arial`; ctx.textAlign = 'center';
+                            ctx.fillText(title.toUpperCase(), W/2, 25 * scale);
+
+                            const maxVal = Math.max(...chartData.map(d => d.values.reduce((s,v)=>s+v,0)), 5);
                             const gap = cW / chartData.length;
+                            const barW = Math.min(40 * scale, gap * 0.6);
+
+                            // Lưới ngang
                             for (let i = 0; i <= 5; i++) {
                               const y = PAD.top + cH - (i/5)*cH;
-                              ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1;
+                              ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1 * scale;
                               ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+cW,y); ctx.stroke();
-                              ctx.fillStyle='#94a3b8'; ctx.font='10px Arial'; ctx.textAlign='right';
-                              ctx.fillText(String(Math.round((i/5)*maxVal)), PAD.left-4, y+3);
+                              ctx.fillStyle='#94a3b8'; ctx.font=`${10 * scale}px Arial`; ctx.textAlign='right';
+                              ctx.fillText(String(Math.round((i/5)*maxVal)), PAD.left-6*scale, y+3*scale);
                             }
+
                             chartData.forEach((d, i) => {
                               const x = PAD.left + i*gap + gap/2 - barW/2;
-                              let yB = PAD.top+cH; let tot = 0;
-                              d.values.forEach((v, pi) => {
-                                if (v===0) return;
-                                const bH = (v/maxVal)*cH;
-                                ctx.fillStyle = CHART_COLORS_EX[pi % CHART_COLORS_EX.length] + (d.isSelected?'':'bb');
-                                ctx.beginPath();
-                                if (ctx.roundRect) ctx.roundRect(x, yB-bH, barW, bH, 2); else ctx.rect(x, yB-bH, barW, bH);
-                                ctx.fill();
-                                yB -= bH; tot += v;
-                              });
-                              if (tot>0) { ctx.fillStyle=d.isSelected?'#ea580c':'#475569'; ctx.font=`bold ${d.isSelected?11:9}px Arial`; ctx.textAlign='center'; ctx.fillText(String(tot),x+barW/2,yB-4); }
-                              ctx.fillStyle=d.isSelected?'#ea580c':'#64748b'; ctx.font=`${d.isSelected?'bold ':''}8px Arial`; ctx.textAlign='center';
-                              ctx.fillText(d.week, x+barW/2, PAD.top+cH+14);
+                              const tot = d.values.reduce((s,v)=>s+v, 0);
+                              
+                              if (tot > 0) {
+                                const bH = (tot/maxVal)*cH;
+                                const y = PAD.top + cH - bH;
+                                
+                                // Màu sắc: Cam cho tuần hiện tại, Xanh lá cho các tuần khác
+                                ctx.fillStyle = d.isSelected ? '#f97316' : '#10b981';
+                                
+                                // Vẽ cột với bo góc nhẹ
+                                if (ctx.roundRect) {
+                                  ctx.beginPath();
+                                  ctx.roundRect(x, y, barW, bH, 4 * scale);
+                                  ctx.fill();
+                                } else {
+                                  ctx.fillRect(x, y, barW, bH);
+                                }
+                                
+                                // Hiển thị số lượng cọc trên đầu cột
+                                ctx.fillStyle = '#1e293b'; 
+                                ctx.font = `bold ${12 * scale}px Arial`; 
+                                ctx.textAlign = 'center'; 
+                                ctx.fillText(String(tot), x + barW/2, y - 6 * scale);
+                              }
+                              
+                              // Tên tuần bên dưới
+                              ctx.fillStyle = d.isSelected ? '#f97316' : '#64748b'; 
+                              ctx.font = d.isSelected ? `bold ${10 * scale}px Arial` : `${9 * scale}px Arial`; 
+                              ctx.textAlign = 'center';
+                              ctx.fillText(d.week, x + barW/2, PAD.top + cH + 18 * scale);
                             });
-                            if (projNames.length>1) {
-                              let lx=PAD.left; const ly=H-12;
-                              projNames.forEach((name,pi) => {
-                                ctx.fillStyle=CHART_COLORS_EX[pi%CHART_COLORS_EX.length]; ctx.fillRect(lx,ly-10,12,10);
-                                ctx.fillStyle='#475569'; ctx.font='9px Arial'; ctx.textAlign='left';
-                                const lbl=name.length>25?name.substring(0,25)+'…':name;
-                                ctx.fillText(lbl, lx+15, ly); lx+=ctx.measureText(lbl).width+32;
-                              });
-                            }
+
                             return cv.toDataURL('image/png');
                           };
 
@@ -6055,9 +6071,6 @@ function SummaryView({
                             }).filter(Boolean) as {week:string;values:number[];isSelected:boolean}[];
 
                           const imgAll = drawBarChartEx(buildChartRowsEx(), allProjsSorted, `So coc theo tung tuan - Tat ca du an - Nam ${weeklyYear}`);
-                          const imgProjs = allProjsSorted.map((proj:string) =>
-                            drawBarChartEx(buildChartRowsEx(proj), [proj], `So coc theo tung tuan - ${proj.length>35?proj.substring(0,35)+'...':proj} - Nam ${weeklyYear}`)
-                          );
 
                           const wb = new ExcelJS.Workbook();
                           wb.creator = 'SGC-CKN';
@@ -6092,7 +6105,7 @@ function SummaryView({
                               sh.mergeCells(`A2:${String.fromCharCode(64+cols)}2`);
                               sh.getCell('A2').value = subTxt;
                               sh.getCell('A2').font = boldWhite(10);
-                              sh.getCell('A2').fill = navyFill(NAVY2) as any;
+                              sh.getCell('A2').fill = solidFill('FF334155') as any; // Slate 700
                               sh.getCell('A2').alignment = center;
                               sh.getRow(2).height = 20;
                             }
@@ -6111,198 +6124,150 @@ function SummaryView({
                           // SHEET 1: Tổng hợp tuần (giống card Tổng hợp tất cả dự án)
                           // ══════════════════════════════════════════════
                           const sh1 = wb.addWorksheet('Tổng hợp tuần');
+                          sh1.views = [{ showGridLines: false, view: 'pageBreakPreview' }];
+                          
                           setTitle(sh1, `BÁO CÁO TUẦN ${weekNo}  ·  ${fmtDate(weekStart)} → ${fmtDate(thu5)}`, 9, `Thứ 6: ${fmtDate(weekStart)}  →  Thứ 5: ${fmtDate(thu5)}  ·  ${allProjsSorted.length} dự án`);
                           sh1.addRow([]);
 
-                          // Section header: Tổng hợp tất cả dự án
-                          sh1.mergeCells('A4:I4');
-                          sh1.getCell('A4').value = '🏢  TỔNG HỢP TẤT CẢ DỰ ÁN';
-                          sh1.getCell('A4').font = boldWhite(11);
-                          sh1.getCell('A4').fill = navyFill() as any;
-                          sh1.getCell('A4').alignment = left;
-                          sh1.getRow(4).height = 24;
+                          // Helper vẽ block Dashboard
+                          const drawSummaryBlock = (sh: any, startCol: number, startRow: number, title: string, stats: any, bg: string, fg: string, accent: string) => {
+                            const colLetter = (c: number) => String.fromCharCode(64 + c);
+                            sh.mergeCells(`${colLetter(startCol)}${startRow}:${colLetter(startCol + 2)}${startRow}`);
+                            const tCell = sh.getCell(`${colLetter(startCol)}${startRow}`);
+                            tCell.value = title;
+                            tCell.fill = solidFill(bg) as any;
+                            tCell.font = { bold: true, color: { argb: fg }, size: 10 };
+                            tCell.alignment = center;
+                            tCell.border = { top: thinBorder, left: thinBorder, right: thinBorder };
 
-                          // Sub-header 3 cột lũy kế
-                          const lkHeader = sh1.addRow(['', 'LŨY KẾ ĐẾN TUẦN TRƯỚC', '', '', 'THỰC HIỆN TUẦN NÀY', '', '', 'LŨY KẾ ĐẾN TUẦN NÀY', '']);
-                          lkHeader.getCell(2).fill = solidFill('FF' + 'DCFCE7') as any; lkHeader.getCell(2).font = { bold: true, color: { argb: 'FF166534' }, size: 10 };
-                          lkHeader.getCell(5).fill = solidFill(ORANGE_BG) as any; lkHeader.getCell(5).font = { bold: true, color: { argb: 'FF9A3412' }, size: 10 };
-                          lkHeader.getCell(8).fill = solidFill(BLUE_BG) as any;   lkHeader.getCell(8).font = { bold: true, color: { argb: 'FF1E40AF' }, size: 10 };
-                          [2,3,4,5,6,7,8,9].forEach(c => { lkHeader.getCell(c).alignment = center; lkHeader.getCell(c).border = { bottom: thinBorder }; });
-                          lkHeader.height = 22;
+                            sh.mergeCells(`${colLetter(startCol)}${startRow+1}:${colLetter(startCol + 2)}${startRow+2}`);
+                            const pCell = sh.getCell(`${colLetter(startCol)}${startRow+1}`);
+                            pCell.value = `${stats.piles} cọc`;
+                            pCell.fill = solidFill(bg) as any;
+                            pCell.font = { bold: true, color: { argb: accent }, size: 22 };
+                            pCell.alignment = center;
+                            pCell.border = { left: thinBorder, right: thinBorder };
 
-                          addHeaderRow(sh1, ['DỰ ÁN', 'SỐ CỌC', 'SÂU (m)', 'V.TỐC (m/h)', 'SỐ CỌC', 'SÂU (m)', 'V.TỐC (m/h)', 'SỐ CỌC', 'SÂU (m)'], NAVY);
-
-                          allProjsSorted.forEach((proj, pi) => {
-                            const projPrev = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return r.project === proj && d && d.getTime() < weekStart.getTime(); });
-                            const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
-                            const projCum  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return r.project === proj && d && d.getTime() <= weekEnd.getTime(); });
-                            const wD = projWeek.reduce((s: number, r: any) => s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const wH = projWeek.reduce((s: number, r: any) => s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                            const pD = projPrev.reduce((s: number, r: any) => s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const pH = projPrev.reduce((s: number, r: any) => s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                            const cD = projCum.reduce((s: number, r: any)  => s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const row = sh1.addRow([proj, projPrev.length, fmtN(pD), pH>0?fmtN(pD/pH,2):'—', projWeek.length, fmtN(wD), wH>0?fmtN(wD/wH,2):'—', projCum.length, fmtN(cD)]);
-                            const bg = PROJ_COLORS[pi % PROJ_COLORS.length];
-                            row.eachCell((c: any, ci: number) => {
-                              c.fill = solidFill(bg) as any;
-                              c.font = boldDark();
-                              c.alignment = ci === 1 ? left : center;
-                              c.border = { bottom: hairBorder };
+                            const labels = ['Chiều sâu', 'Thời gian', 'Vận tốc TB'];
+                            const values = [`${fmtN(stats.depth)} m`, `${fmtN(stats.dur, 1)} h`, stats.dur > 0 ? `${fmtN(stats.depth / stats.dur, 2)} m/h` : '—'];
+                            labels.forEach((label, i) => {
+                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+3}`);
+                              c.value = label;
+                              c.fill = solidFill('FFFFFFFF') as any;
+                              c.font = { size: 8, color: { argb: 'FF64748B' } };
+                              c.alignment = center;
+                              c.border = { left: i === 0 ? thinBorder : undefined, right: i === 2 ? thinBorder : undefined };
                             });
-                          });
+                            values.forEach((val, i) => {
+                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+4}`);
+                              c.value = val;
+                              c.fill = solidFill('FFFFFFFF') as any;
+                              c.font = { bold: true, size: 10, color: { argb: accent } };
+                              c.alignment = center;
+                              c.border = { bottom: thinBorder, left: i === 0 ? thinBorder : undefined, right: i === 2 ? thinBorder : undefined };
+                            });
+                          };
 
-                          // Tổng row
-                          const tD = selectedWeekRecords.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                          const tH = selectedWeekRecords.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                          const pTotD = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                          const pTotN = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).length;
-                          const pTotH = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                          const cTotN = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).length;
-                          const cTotD = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                          const totRow = sh1.addRow(['TỔNG TUẦN', pTotN, fmtN(pTotD), pTotH>0?fmtN(pTotD/pTotH,2):'—', selectedWeekRecords.length, fmtN(tD), tH>0?fmtN(tD/tH,2):'—', cTotN, fmtN(cTotD)]);
-                          totRow.eachCell((c: any, ci: number) => { c.fill = navyFill() as any; c.font = { bold: true, color: { argb: 'FFFBBF24' }, size: 11 }; c.alignment = ci===1?left:center; });
-                          totRow.height = 26;
-                          sh1.columns = [{width:40},{width:9},{width:11},{width:13},{width:9},{width:11},{width:13},{width:9},{width:11}];
+                          const totalWeekStats = {
+                            piles: selectedWeekRecords.length,
+                            depth: selectedWeekRecords.reduce((s:number,r:any)=>s+(r.layers||[]).reduce((ls:number,l:any)=>ls+(l.lengthMeters||0),0),0),
+                            dur:   selectedWeekRecords.reduce((s:number,r:any)=>s+(r.layers||[]).reduce((ls:number,l:any)=>ls+(l.durationHours||0),0),0),
+                          };
+                          const prevTotalStats = {
+                            piles: history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).length,
+                            depth: history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0),
+                            dur:   history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
+                          };
+                          const cumTotalStats = {
+                            piles: history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).length,
+                            depth: history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0),
+                            dur:   history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
+                          };
+
+                          drawSummaryBlock(sh1, 1, 4, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
+                          drawSummaryBlock(sh1, 4, 4, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
+                          drawSummaryBlock(sh1, 7, 4, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
+
+                          sh1.getRow(4).height = 20; sh1.getRow(5).height = 20; sh1.getRow(6).height = 20; sh1.getRow(7).height = 16; sh1.getRow(8).height = 22;
+                          sh1.addRow([]); sh1.addRow([]);
+
+
+                          sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
                           // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tou0309ng hou0323p vau0300o sheet 1
                           // Nhúng ảnh biểu đồ tổng hợp
                           {
                             sh1.addRow([]);
-                            const r = sh1.addRow(["BIEU DO: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
+                            const r = sh1.addRow(["BIỂU ĐỒ: SỐ CỌC THEO TỪNG TUẦN - TẤT CẢ DỰ ÁN"]);
+                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
                             r.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                            r.getCell(1).alignment = { horizontal: 'center' };
                             r.height = 20;
-                            const anchorRow = sh1.rowCount - 1; // 0-based
+                            const anchorRow = sh1.rowCount; 
                             const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                            sh1.addImage(iid, { tl: { col: 0, row: anchorRow }, ext: { width: 860, height: 200 } });
-                            for (let i = 0; i < 13; i++) sh1.addRow([]);
+                            sh1.addImage(iid, { 
+                              tl: { col: 0, row: anchorRow }, 
+                              br: { col: 9, row: anchorRow + 9 } 
+                            });
+                            for (let i = 0; i < 10; i++) sh1.addRow([]);
                           }
 
                           // ══════════════════════════════════════════════
-                          // SHEET 2+: Từng dự án (giống card màu từng dự án)
+                          // CHI TIẾT TỪNG DỰ ÁN
                           // ══════════════════════════════════════════════
-                          allProjsSorted.forEach((proj, pi) => {
-                            const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
-                            const projPrev = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return r.project===proj&&d&&d.getTime()<weekStart.getTime();});
-                            const projCum  = history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return r.project===proj&&d&&d.getTime()<=weekEnd.getTime();});
-                            const pD2 = projPrev.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const pH2 = projPrev.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                            const wD2 = projWeek.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const wH2 = projWeek.reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
-                            const cD2 = projCum.reduce((s: number,r: any) =>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0);
-                            const cH2 = projCum.reduce((s: number,r: any) =>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0);
+                          allProjsSorted.forEach((projName) => {
+                            const rHeader = sh1.addRow([`DỰ ÁN: ${projName.toUpperCase()}`]);
+                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
+                            rHeader.getCell(1).font = { bold: true, color: { argb: "FFFFFFFF" }, size: 12 };
+                            rHeader.getCell(1).fill = solidFill('FF334155') as any; // Slate 700
+                            rHeader.getCell(1).alignment = center;
+                            rHeader.height = 24;
 
-                            const shName = (proj.length > 28 ? proj.substring(0,28) : proj).replace(/[\\/*?[\]:]/g,'_');
-                            const sh = wb.addWorksheet(`${pi+1}. ${shName}`.substring(0,31));
-                            setTitle(sh, proj, 11, `Tuần ${weekNo}  ·  ${fmtDate(weekStart)} → ${fmtDate(thu5)}`);
-                            sh.addRow([]);
+                            const projWeekRecords = selectedWeekRecords.filter((r: any) => r.project === projName);
+                            const projHistory = history.filter((r: any) => r.project === projName);
 
-                            // 3 cột lũy kế
-                            const lkH2 = sh.addRow(['LŨY KẾ ĐẾN TUẦN TRƯỚC','','','', 'THỰC HIỆN TUẦN NÀY','','','', 'LŨY KẾ ĐẾN TUẦN NÀY','','']);
-                            [[1,'DCFCE7','166534'],[5,ORANGE_BG.substring(2),'9A3412'],[9,BLUE_BG.substring(2),'1E40AF']].forEach(([col,bg,fg])=>{
-                              const c = lkH2.getCell(col as number);
-                              c.fill = solidFill('FF'+(bg as string)) as any;
-                              c.font = { bold:true, color:{argb:'FF'+(fg as string)}, size:10 };
-                              c.alignment = left;
+                            const projWeekStats = {
+                              piles: projWeekRecords.length,
+                              depth: projWeekRecords.reduce((s:number,r:any)=>s+(r.layers||[]).reduce((ls:number,l:any)=>ls+(l.lengthMeters||0),0),0),
+                              dur:   projWeekRecords.reduce((s:number,r:any)=>s+(r.layers||[]).reduce((ls:number,l:any)=>ls+(l.durationHours||0),0),0),
+                            };
+                            const projPrevStats = {
+                              piles: projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).length,
+                              depth: projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0),
+                              dur:   projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<weekStart.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
+                            };
+                            const projCumStats = {
+                              piles: projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).length,
+                              depth: projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.lengthMeters||0),0),0),
+                              dur:   projHistory.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
+                            };
+
+                            const startRow = sh1.rowCount + 1;
+                            drawSummaryBlock(sh1, 1, startRow, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', projPrevStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
+                            drawSummaryBlock(sh1, 4, startRow, 'THỰC HIỆN TUẦN NÀY', projWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
+                            drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
+
+                            sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 20; sh1.getRow(startRow+2).height = 20; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
+                            
+                            // Thêm biểu đồ cho từng dự án
+                            const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
+                            const rChartTitle = sh1.addRow([`BIỂU ĐỒ: SỐ CỌC THEO TỪNG TUẦN - DỰ ÁN: ${projName.toUpperCase()}`]);
+                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
+                            rChartTitle.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                            rChartTitle.getCell(1).alignment = { horizontal: 'center' };
+                            rChartTitle.height = 20;
+
+                            const anchorRow = sh1.rowCount;
+                            const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                            sh1.addImage(iid, { 
+                              tl: { col: 0, row: anchorRow }, 
+                              br: { col: 9, row: anchorRow + 9 } 
                             });
-                            lkH2.height = 20;
-
-                            const lkVals = sh.addRow([
-                              `${projPrev.length} cọc`, `Sâu: ${fmtN(pD2)}m`, `TG: ${fmtN(pH2,1)}h`, `Vận tốc: ${pH2>0?fmtN(pD2/pH2,2):'—'} m/h`,
-                              `${projWeek.length} cọc`, `Sâu: ${fmtN(wD2)}m`, `TG: ${fmtN(wH2,1)}h`, `Vận tốc: ${wH2>0?fmtN(wD2/wH2,2):'—'} m/h`,
-                              `${projCum.length} cọc`, `Sâu: ${fmtN(cD2)}m`, `TG: ${fmtN(cH2,1)}h`
-                            ]);
-                            [[1,'F0FDF4'],[5,ORANGE_BG.substring(2)],[9,BLUE_BG.substring(2)]].forEach(([col,bg])=>{
-                              [0,1,2,3].forEach(off => {
-                                const c = lkVals.getCell((col as number)+off);
-                                c.fill = solidFill('FF'+(bg as string)) as any;
-                                c.font = boldDark(10);
-                                c.alignment = left;
-                                c.border = { bottom: thinBorder };
-                              });
-                            });
-                            lkVals.height = 22;
-                            sh.addRow([]);
-
-                            // Header danh sách cọc
-                            addHeaderRow(sh, ['STT','SỐ HIỆU CỌC','BB SỐ','TÊN BỘ PHẬN','ĐƯỜNG KÍNH','NGÀY BĐ','NGÀY KT','SÂU (m)','TG (h)','V.TỐC (m/h)','GHI CHÚ']);
-
-                            projWeek.forEach((r: any, ri: number) => {
-                              const rd = (r.layers||[]).reduce((s: number,l: any)=>s+(l.lengthMeters||0),0);
-                              const rh = (r.layers||[]).reduce((s: number,l: any)=>s+(l.durationHours||0),0);
-                              const rv = rh>0?fmtN(rd/rh,2):'—';
-                              const slow = (r.layers||[]).some((l: any)=>l.speedMph>0&&l.speedMph<1);
-                              const row = sh.addRow([ri+1, r.pileId||'—', r.reportNumber||'—', r.componentName||r.item||'—', r.diameter||'—', r.constructionStart||'—', r.constructionEnd||'—', fmtN(rd), fmtN(rh,1), rv, slow?'⚠ Đoạn chậm <1m/h':(r.notes||'')]);
-                              row.eachCell((c: any, ci: number) => {
-                                c.fill = solidFill(slow?'FFFEE2E2':(ri%2===0?'FFFFFFFF':SLATE_BG)) as any;
-                                c.font = { size:10, color:{argb:slow&&ci===11?'FFDC2626':'FF1E293B'}, bold:ci<=2 };
-                                c.alignment = ci<=2||ci===5?center:left;
-                                c.border = { bottom: hairBorder };
-                              });
-
-                              (r.layers||[]).forEach((l: any, li: number) => {
-                                const isSlowL = l.speedMph>0&&l.speedMph<1;
-                                const lr = sh.addRow(['', `  └ Lớp ${l.layerNumber||li+1}`, '', l.layerDesign||l.actualGeology||'—', '', l.dateFrom||'', l.dateTo||'', fmtN(l.lengthMeters||0), fmtN(l.durationHours||0,1), l.speedMph>0?fmtN(l.speedMph,2):'—', isSlowL?'⚠ <1m/h':'']);
-                                lr.eachCell((c: any, ci: number) => {
-                                  c.fill = solidFill(isSlowL?'FFFFF1F2':'FFFAFAFA') as any;
-                                  c.font = { size:9, color:{argb:isSlowL?'FFDC2626':'FF64748B'}, italic:true };
-                                  c.alignment = ci>=8?center:left;
-                                });
-                              });
-                            });
-
-                            if (projWeek.length === 0) {
-                              const r = sh.addRow(['', '(Tuần này không có cọc)']);
-                              r.getCell(2).font = { size:10, color:{argb:'FF94A3B8'}, italic:true };
-                            }
-
-                            sh.columns = [{width:6},{width:14},{width:12},{width:36},{width:12},{width:12},{width:12},{width:10},{width:10},{width:13},{width:26}];
-
-                            // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tuu0300ng duu0323 au0301n
-                            // Nhúng ảnh biểu đồ từng dự án
-                            {
-                              const projImg = imgProjs[pi];
-                              sh.addRow([]);
-                              const rp = sh.addRow(["BIEU DO: SO COC THEO TUNG TUAN"]);
-                              rp.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
-                              rp.height = 20;
-                              const anchorRowP = sh.rowCount - 1; // 0-based
-                              const iidp = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                              sh.addImage(iidp, { tl: { col: 0, row: anchorRowP }, ext: { width: 860, height: 200 } });
-                              for (let i = 0; i < 13; i++) sh.addRow([]);
-                            }
+                            for (let i = 0; i < 10; i++) sh1.addRow([]);
                           });
 
-                          // ══════════════════════════════════════════════
-                          // SHEET CUỐI: Biểu đồ cọc theo tuần T1→T52
-                          // ══════════════════════════════════════════════
-                          const shW = wb.addWorksheet('Cọc theo tuần');
-                          setTitle(shW, `SỐ CỌC THEO TỪNG TUẦN  ·  NĂM ${weeklyYear}`, allProjsSorted.length+2, `Tất cả dự án  ·  ${allProjsSorted.length} dự án`);
-                          shW.addRow([]);
-                          addHeaderRow(shW, ['TUẦN', ...allProjsSorted, 'TỔNG']);
-
-                          weekKeys.forEach(wk => {
-                            const [cy,cm,cd] = wk.split('-').map(Number);
-                            const dt = new Date(cy, cm-1, cd);
-                            const jan1 = new Date(dt.getFullYear(),0,1);
-                            const wn = Math.ceil(((dt.getTime()-jan1.getTime())/86400000+jan1.getDay()+1)/7);
-                            if (wn>52) return;
-                            const recs = weeklyData[wk]||[];
-                            const cnts = allProjsSorted.map((p: string)=>recs.filter((r: any)=>r.project===p).length);
-                            const tot = cnts.reduce((s: number,v: number)=>s+v,0);
-                            const isSel = wk===selectedWeekKey;
-                            const row = shW.addRow([`T${wn}`, ...cnts, tot]);
-                            row.eachCell((c: any, ci: number) => {
-                              const hasCnt = (ci>1&&ci<=allProjsSorted.length+1&&cnts[ci-2]>0)||(ci===allProjsSorted.length+2&&tot>0);
-                              c.fill = solidFill(isSel?ORANGE_BG:(tot>0?SLATE_BG:'FFFFFFFF')) as any;
-                              c.font = { size:10, bold:isSel||(ci===allProjsSorted.length+2&&tot>0), color:{argb:isSel?'FFEA580C':(hasCnt?'FF1E293B':'FFCBD5E1')} };
-                              c.alignment = center;
-                              if (isSel) c.border = { top:thinBorder, bottom:thinBorder };
-                            });
-                            if (isSel) {
-                              shW.getCell(`A${row.number}`).font = { size:10, bold:true, color:{argb:'FFEA580C'} };
-                            }
-                          });
-                          shW.columns = [{width:8},...allProjsSorted.map(()=>({width:22})),{width:10}];
+                          // Define print area to only show data area dynamically
+                          sh1.pageSetup.printArea = `A1:I${sh1.rowCount}`;
 
                           // ── Xuất file ──
                           const buffer = await wb.xlsx.writeBuffer();
@@ -6492,27 +6457,28 @@ function SummaryView({
                               </div>
                               <div className="px-2 pb-3" id="chart-all-projects">
                                 <ResponsiveContainer width="100%" height={180}>
-                                  <BarChart data={cleanData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                                    <XAxis dataKey="week" tick={{fontSize:9, fontWeight:700, fill:'#64748b'}} interval={0} tickLine={false}/>
-                                    <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
+                                  <BarChart data={cleanData} margin={{top:18,right:8,bottom:20,left:0}} barCategoryGap="15%">
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+                                    <XAxis dataKey="week" tick={{fontSize:9, fontWeight:700, fill:'#64748b'}} interval={0} tickLine={false} axisLine={{stroke:'#e2e8f0'}}/>
+                                    <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20} axisLine={false} tickLine={false}/>
                                     <Tooltip
-                                      contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
-                                      formatter={(value:number, name:string) => [`${value} cọc`, name]}
+                                      contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0', boxShadow:'0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                                      formatter={(value:number) => [`${value} cọc`, 'Tổng số lượng']}
+                                      cursor={{fill: '#f8fafc'}}
                                     />
-                                    <Legend wrapperStyle={{fontSize:9, paddingTop:4}}/>
-                                    {allProjsSorted.map((proj, idx) => (
-                                      <Bar key={proj} dataKey={proj} stackId="total" fill={COLORS[idx % COLORS.length]} radius={idx === allProjsSorted.length-1 ? [3,3,0,0] : [0,0,0,0]}>
-                                        {idx === allProjsSorted.length-1 && (
-                                          <LabelList
-                                            dataKey="_total"
-                                            position="top"
-                                            style={{fontSize:9, fontWeight:700, fill:'#475569'}}
-                                            formatter={(v:number) => v > 0 ? v : ''}
-                                          />
-                                        )}
-                                      </Bar>
-                                    ))}
+                                    <Bar dataKey="_total" radius={[4,4,0,0]}>
+                                      {cleanData.map((entry, index) => {
+                                        const wNum = parseInt((entry.week as string).replace('T',''));
+                                        const isCurrent = wNum === weekNo;
+                                        return <Cell key={`cell-${index}`} fill={isCurrent ? '#f97316' : '#10b981'} />;
+                                      })}
+                                      <LabelList
+                                        dataKey="_total"
+                                        position="top"
+                                        style={{fontSize:11, fontWeight:800, fill:'#1e293b'}}
+                                        formatter={(v:number) => v > 0 ? v : ''}
+                                      />
+                                    </Bar>
                                   </BarChart>
                                 </ResponsiveContainer>
                               </div>
@@ -6689,31 +6655,37 @@ function SummaryView({
                                         });
                                         const cleanData = firstRealIdx > 0 ? projChartData.slice(firstRealIdx) : projChartData;
                                         return (
-                                          <BarChart data={cleanData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                          <BarChart data={cleanData} margin={{top:18,right:8,bottom:20,left:0}} barCategoryGap="15%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
                                             <XAxis
                                               dataKey="week"
                                               tick={{fontSize:9, fontWeight:700, fill:'#64748b'}}
                                               interval={0}
                                               tickLine={false}
+                                              axisLine={{stroke:'#e2e8f0'}}
                                             />
-                                            <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
+                                            <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20} axisLine={false} tickLine={false}/>
                                             <Tooltip
-                                              contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
-                                              formatter={(value:number) => [`${value} cọc`, proj]}
+                                              contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0', boxShadow:'0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
+                                              formatter={(value:number) => [`${value} cọc`, 'Số lượng']}
+                                              cursor={{fill: '#f8fafc'}}
                                             />
-                                            <Bar dataKey="Số cọc" radius={[3,3,0,0]}>
-                                              {cleanData.map((entry, i) => (
-                                                <Cell
-                                                  key={i}
-                                                  fill={entry._key === selectedWeekKey ? color : (entry['Số cọc'] > 0 ? `${color}bb` : '#e2e8f0')}
-                                                />
-                                              ))}
+                                            <Bar dataKey="Số cọc" radius={[4,4,0,0]}>
+                                              {cleanData.map((entry, i) => {
+                                                const wNum = parseInt((entry.week as string).replace('T',''));
+                                                const isCurrent = wNum === weekNo;
+                                                return (
+                                                  <Cell
+                                                    key={i}
+                                                    fill={isCurrent ? '#f97316' : '#10b981'}
+                                                  />
+                                                );
+                                              })}
                                               <LabelList
                                                 dataKey="Số cọc"
                                                 position="top"
-                                                style={{fontSize: 9, fontWeight: 700, fill: '#475569'}}
-                                                formatter={(v: number) => v > 0 ? v : ''}
+                                                style={{fontSize:11, fontWeight:800, fill:'#1e293b'}}
+                                                formatter={(v:number) => v > 0 ? v : ''}
                                               />
                                             </Bar>
                                           </BarChart>
