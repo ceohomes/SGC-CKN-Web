@@ -5742,6 +5742,39 @@ function SummaryView({
 
   const selectedWeekRecords = selectedWeekKey ? (weeklyData[selectedWeekKey] || []) : [];
 
+  // ── Biểu đồ cột: số cọc theo từng tuần, phân tách theo dự án ──
+  const projectPilesByWeek = React.useMemo(() => {
+    // Lấy tất cả tuần có dữ liệu (không lọc theo năm)
+    const allWeekKeys = Object.keys(weeklyData).sort();
+    if (allWeekKeys.length === 0) return { chartData: [], projectNames: [] };
+
+    const allProjects = [...new Set(history.map(r => r.project).filter(Boolean))];
+
+    const chartData = allWeekKeys.map(wk => {
+      const recs = weeklyData[wk] || [];
+      const entry: Record<string, string | number> = { week: `T${getWeekNumberFromKey(wk)}` };
+      allProjects.forEach(proj => {
+        entry[proj] = recs.filter(r => r.project === proj).length;
+      });
+      entry['_total'] = recs.length;
+      entry['_weekKey'] = wk;
+      return entry;
+    });
+
+    return { chartData, projectNames: allProjects };
+  }, [weeklyData, history]);
+
+  // Helper lấy số tuần từ weekKey
+  function getWeekNumberFromKey(key: string): number {
+    try {
+      const [y, m, d] = key.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      const jan1 = new Date(date.getFullYear(), 0, 1);
+      const dayOfYear = Math.floor((date.getTime() - jan1.getTime()) / 86400000);
+      return Math.ceil((dayOfYear + jan1.getDay() + 1) / 7);
+    } catch { return 0; }
+  }
+
   // Per-project stats for selected week
   const weeklyProjectStats = React.useMemo(() => {
     const projs = [...new Set(selectedWeekRecords.map(r => r.project).filter(Boolean))];
@@ -6077,7 +6110,7 @@ function SummaryView({
                 </div>
 
                 {/* Bar chart: piles per project */}
-                {weeklyProjectStats.length > 1 && (
+                {weeklyProjectStats.length >= 1 && (
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
                       <BarChart2 size={15} className="text-blue-500"/>
@@ -6183,15 +6216,14 @@ function SummaryView({
                 {/* Per-project pile list */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {weeklyProjectStats.map((ps, idx) => {
-                    const accentColors = ['border-blue-400','border-orange-400','border-emerald-400','border-violet-400','border-amber-400','border-cyan-400'];
-                    const bgColors = ['bg-blue-50','bg-orange-50','bg-emerald-50','bg-violet-50','bg-amber-50','bg-cyan-50'];
+                    const accentColors = ['border-blue-700','border-blue-700','border-blue-700','border-blue-700','border-blue-700','border-blue-700'];
                     const pillColors = ['bg-blue-500','bg-orange-500','bg-emerald-500','bg-violet-500','bg-amber-500','bg-cyan-500'];
                     return (
                       <div key={ps.proj} className={`bg-white border-2 ${accentColors[idx % accentColors.length]} rounded-2xl overflow-hidden shadow-sm`}>
-                        <div className={`px-4 py-3 ${bgColors[idx % bgColors.length]} border-b border-slate-200 flex items-center justify-between`}>
+                        <div className="px-4 py-3 border-b border-blue-900 flex items-center justify-between" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
                           <div>
-                            <p className="text-[11px] font-black text-slate-800">{ps.proj}</p>
-                            <p className="text-[9px] text-slate-500 font-medium mt-0.5">{ps.totalPiles} cọc · {formatNumber(ps.totalDepth, 1)}m · {formatNumber(ps.avgSpeed, 2)} m/h</p>
+                            <p className="text-[11px] font-black text-white">{ps.proj}</p>
+                            <p className="text-[9px] text-blue-200 font-medium mt-0.5">{ps.totalPiles} cọc · {formatNumber(ps.totalDepth, 1)}m · {formatNumber(ps.avgSpeed, 2)} m/h</p>
                           </div>
                           <span className={`text-[11px] font-black text-white ${pillColors[idx % pillColors.length]} px-3 py-1 rounded-full`}>{ps.totalPiles} cọc</span>
                         </div>
@@ -6432,6 +6464,38 @@ function SummaryView({
           </div>
         ))}
       </div>
+
+      {/* ── Biểu đồ cột: Số cọc theo từng tuần (phân tách theo dự án) ── */}
+      {projectPilesByWeek.chartData.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 rounded-xl bg-blue-600"><BarChart2 className="w-4 h-4 text-white"/></div>
+            <div>
+              <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-tight">Số lượng cọc theo từng tuần</h4>
+              <p className="text-[10px] text-slate-400 font-medium">Phân tách theo từng dự án · tất cả thời gian</p>
+            </div>
+            <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">{projectPilesByWeek.chartData.length} tuần</span>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={projectPilesByWeek.chartData} margin={{ top: 4, right: 16, bottom: 28, left: 0 }} barCategoryGap="30%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="week" tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }} angle={-30} textAnchor="end" interval={0}/>
+              <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} allowDecimals={false}/>
+              <Tooltip
+                contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #e2e8f0' }}
+                formatter={(value: number, name: string) => [value + ' cọc', name]}
+              />
+              <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }}/>
+              {projectPilesByWeek.projectNames.map((proj, idx) => {
+                const COLORS = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
+                return (
+                  <Bar key={proj} dataKey={proj} stackId="a" fill={COLORS[idx % COLORS.length]} radius={idx === projectPilesByWeek.projectNames.length - 1 ? [4,4,0,0] : [0,0,0,0]}/>
+                );
+              })}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* ── Cảnh báo trùng Hạng mục + Số hiệu cọc ── */}
       {/* ── Cảnh báo không nhất quán địa chất ── */}
