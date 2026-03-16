@@ -6136,34 +6136,44 @@ function SummaryView({
                                   </div>
                                   <div className="px-2 pb-3">
                                     <ResponsiveContainer width="100%" height={180}>
-                                      <BarChart data={projChartData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                                        <XAxis
-                                          dataKey="week"
-                                          tick={{fontSize:7, fontWeight:700, fill:'#64748b'}}
-                                          interval={0}
-                                          tickLine={false}
-                                        />
-                                        <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
-                                        <Tooltip
-                                          contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
-                                          formatter={(value:number) => [`${value} cọc`, proj]}
-                                        />
-                                        <Bar dataKey="Số cọc" radius={[3,3,0,0]}>
-                                          {projChartData.map((entry, i) => (
-                                            <Cell
-                                              key={i}
-                                              fill={entry._key === selectedWeekKey ? color : (entry['Số cọc'] > 0 ? `${color}bb` : '#e2e8f0')}
+                                      {(() => {
+                                        // Lọc bỏ tuần T52/T53 xuất hiện ở đầu năm (thuộc năm trước)
+                                        const firstRealIdx = projChartData.findIndex(r => {
+                                          const n = parseInt((r.week as string).replace('T',''));
+                                          return n <= 10;
+                                        });
+                                        const cleanData = firstRealIdx > 0 ? projChartData.slice(firstRealIdx) : projChartData;
+                                        return (
+                                          <BarChart data={cleanData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                                            <XAxis
+                                              dataKey="week"
+                                              tick={{fontSize:9, fontWeight:700, fill:'#64748b'}}
+                                              interval={0}
+                                              tickLine={false}
                                             />
-                                          ))}
-                                          <LabelList
-                                            dataKey="Số cọc"
-                                            position="top"
-                                            style={{fontSize: 9, fontWeight: 700, fill: '#475569'}}
-                                            formatter={(v: number) => v > 0 ? v : ''}
-                                          />
-                                        </Bar>
-                                      </BarChart>
+                                            <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
+                                            <Tooltip
+                                              contentStyle={{fontSize:11, borderRadius:8, border:'1px solid #e2e8f0'}}
+                                              formatter={(value:number) => [`${value} cọc`, proj]}
+                                            />
+                                            <Bar dataKey="Số cọc" radius={[3,3,0,0]}>
+                                              {cleanData.map((entry, i) => (
+                                                <Cell
+                                                  key={i}
+                                                  fill={entry._key === selectedWeekKey ? color : (entry['Số cọc'] > 0 ? `${color}bb` : '#e2e8f0')}
+                                                />
+                                              ))}
+                                              <LabelList
+                                                dataKey="Số cọc"
+                                                position="top"
+                                                style={{fontSize: 9, fontWeight: 700, fill: '#475569'}}
+                                                formatter={(v: number) => v > 0 ? v : ''}
+                                              />
+                                            </Bar>
+                                          </BarChart>
+                                        );
+                                      })()}
                                     </ResponsiveContainer>
                                   </div>
                                 </div>
@@ -6177,46 +6187,6 @@ function SummaryView({
                 })()}
 
                 {/* ── Biểu đồ cột: số cọc theo từng tuần — đã chuyển vào trong từng card dự án ── */}
-
-                {/* KPI cards nhỏ bên dưới */}
-                <div className="grid grid-cols-4 gap-3">
-                  {[
-                    { label: 'Cọc tuần này', value: selectedWeekRecords.length, unit: 'cọc', color: 'bg-orange-500', icon: <Layers className="w-4 h-4 text-white"/> },
-                    { label: 'Chiều sâu tuần', value: formatNumber(totalWeekDepth, 1), unit: 'm', color: 'bg-blue-600', icon: <ArrowDownToLine className="w-4 h-4 text-white"/> },
-                    { label: 'Tốc độ TB', value: formatNumber(avgWeekSpeed, 2), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-4 h-4 text-white"/> },
-                    { label: 'Dự án tham gia', value: projectCount, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-4 h-4 text-white"/> },
-                  ].map((k,i)=>(
-                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all">
-                      <div className={`w-8 h-8 rounded-xl ${k.color} flex items-center justify-center mb-2`}>{k.icon}</div>
-                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">{k.label}</p>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-black text-slate-900">{k.value}</span>
-                        <span className="text-[10px] font-bold text-slate-400">{k.unit}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Bar chart: piles per project */}
-                {weeklyProjectStats.length >= 1 && (
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                    <div className="flex items-center gap-2 mb-4">
-                      <BarChart2 size={15} className="text-blue-500"/>
-                      <h5 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">So sánh số lượng cọc theo dự án</h5>
-                    </div>
-                    <ResponsiveContainer width="100%" height={180}>
-                      <BarChart data={weeklyProjectStats.map(p=>({ name: p.proj, 'Số cọc': p.totalPiles, 'Chiều sâu (m)': Math.round(p.totalDepth*10)/10 }))} margin={{top:4,right:16,bottom:30,left:0}}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-                        <XAxis dataKey="name" tick={{fontSize:9,fontWeight:700,fill:'#64748b'}} angle={-20} textAnchor="end" interval={0}/>
-                        <YAxis tick={{fontSize:9,fill:'#94a3b8'}}/>
-                        <Tooltip contentStyle={{fontSize:11,borderRadius:10,border:'1px solid #e2e8f0'}}/>
-                        <Legend wrapperStyle={{fontSize:10}}/>
-                        <Bar dataKey="Số cọc" fill="#3b82f6" radius={[4,4,0,0]}/>
-                        <Bar dataKey="Chiều sâu (m)" fill="#f97316" radius={[4,4,0,0]}/>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
 
                 {/* Per-project comparison table */}
                 <div className="bg-white border-2 border-slate-300 rounded-2xl overflow-hidden shadow-md">
