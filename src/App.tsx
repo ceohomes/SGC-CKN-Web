@@ -6121,12 +6121,16 @@ function SummaryView({
                           // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tou0309ng hou0323p vau0300o sheet 1
                           if (imgAll) {
                             sh1.addRow([]);
-                            const imgAllRow = sh1.addRow(["Bieu do: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
+                            const imgAllRow = sh1.addRow(["BIEU DO: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
                             imgAllRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
                             imgAllRow.height = 20;
-                            const imgAllId = wb.addImage({ base64: imgAll.split(",")[1], extension: "png" });
-                            sh1.addImage(imgAllId, { tl: { col: 0, row: sh1.rowCount }, ext: { width: 900, height: 220 } });
-                            for (let i = 0; i < 14; i++) sh1.addRow([]);
+                            const startRow = sh1.rowCount; // 1-based, ExcelJS addImage dùng 0-based nên trừ 1
+                            const imgAllId = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                            sh1.addImage(imgAllId, {
+                              tl: { col: 0, row: startRow }, // 0-based: startRow đã là index tiếp theo
+                              ext: { width: 860, height: 200 }
+                            });
+                            for (let i = 0; i < 13; i++) sh1.addRow([]);
                           }
 
                           // ══════════════════════════════════════════════
@@ -6213,11 +6217,15 @@ function SummaryView({
                             const projImg = imgProjs[pi];
                             if (projImg) {
                               sh.addRow([]);
-                              const imgRow = sh.addRow(["Bieu do: SO COC THEO TUNG TUAN"]);
+                              const imgRow = sh.addRow(["BIEU DO: SO COC THEO TUNG TUAN"]);
                               imgRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
                               imgRow.height = 20;
-                              const imgId = wb.addImage({ base64: projImg.split(",")[1], extension: "png" });
-                              sh.addImage(imgId, { tl: { col: 0, row: sh.rowCount }, ext: { width: 900, height: 200 } });
+                              const startRowSh = sh.rowCount;
+                              const imgId = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                              sh.addImage(imgId, {
+                                tl: { col: 0, row: startRowSh },
+                                ext: { width: 860, height: 200 }
+                              });
                               for (let i = 0; i < 13; i++) sh.addRow([]);
                             }
                           });
