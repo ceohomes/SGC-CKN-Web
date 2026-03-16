@@ -5994,18 +5994,14 @@ function SummaryView({
                             title: string
                           ): string => {
                             const scale = 2; // Tăng độ phân giải để ảnh nét hơn
-                            const W = 1200 * scale, H = 280 * scale;
-                            const PAD = { top: 40 * scale, right: 20 * scale, bottom: 30 * scale, left: 44 * scale };
+                            const W = 1200 * scale, H = 260 * scale;
+                            const PAD = { top: 20 * scale, right: 20 * scale, bottom: 30 * scale, left: 44 * scale };
                             const cW = W - PAD.left - PAD.right;
                             const cH = H - PAD.top - PAD.bottom;
                             const cv = document.createElement('canvas');
                             cv.width = W; cv.height = H;
                             const ctx = cv.getContext('2d')!;
                             ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-                            
-                            // Tiêu đề biểu đồ
-                            ctx.fillStyle = '#1a3a6b'; ctx.font = `bold ${15 * scale}px Arial`; ctx.textAlign = 'center';
-                            ctx.fillText(title.toUpperCase(), W/2, 25 * scale);
 
                             const maxVal = Math.max(...chartData.map(d => d.values.reduce((s,v)=>s+v,0)), 5);
                             const gap = cW / chartData.length;
