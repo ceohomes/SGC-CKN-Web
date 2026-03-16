@@ -5440,6 +5440,7 @@ function SummaryView({
   onExportAll: (rows: ExtractionResult[]) => void,
 }) {
   const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
+  const [isExportingWeekly, setIsExportingWeekly] = useState(false);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
 
   // Năm mặc định = năm có dữ liệu mới nhất (không phải năm hiện tại)
@@ -5977,11 +5978,10 @@ function SummaryView({
                       </div>
                     </div>
                     {/* Button xuất Excel */}
-                    {(() => {
-                      const [exporting, setExporting] = React.useState(false);
-                      const handleExport = async () => {
-                        if (exporting) return;
-                        setExporting(true);
+                    <button
+                      onClick={async () => {
+                        if (isExportingWeekly) return;
+                        setIsExportingWeekly(true);
                         try {
                           const ExcelJS = await loadExcelJS();
                           const wb = new ExcelJS.Workbook();
@@ -5993,33 +5993,21 @@ function SummaryView({
                           // ── Sheet 1: Tổng hợp tuần ──
                           const shTong = wb.addWorksheet('Tổng hợp tuần');
                           const navyFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A3A6B' } };
-                          const orangeFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF7ED' } };
-                          const greenFill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
-                          const blueFill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
                           const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
                           const boldDark   = { bold: true, color: { argb: 'FF1E293B' }, size: 10 };
 
-                          // Tiêu đề
                           shTong.mergeCells('A1:H1');
                           shTong.getCell('A1').value = `BÁO CÁO TUẦN ${weekNo} · ${fmtDate(weekStart)} → ${fmtDate(thu5)}`;
                           shTong.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
                           shTong.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
                           shTong.getCell('A1').fill = navyFill as any;
                           shTong.getRow(1).height = 30;
-
                           shTong.addRow([]);
 
-                          // Header bảng tổng hợp
                           const hRow = shTong.addRow(['DỰ ÁN', 'SỐ CỌC', 'CHIỀU SÂU (m)', 'THỜI GIAN (h)', 'VẬN TỐC TB (m/h)', 'LŨY KẾ TRƯỚC (cọc)', 'LŨY KẾ ĐẾN NAY (cọc)', 'CHIỀU SÂU LŨY KẾ (m)']);
-                          hRow.eachCell(cell => {
-                            cell.fill = navyFill as any;
-                            cell.font = headerFont as any;
-                            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-                            cell.border = { bottom: { style: 'thin', color: { argb: 'FF3B82F6' } } };
-                          });
+                          hRow.eachCell(cell => { cell.fill = navyFill as any; cell.font = headerFont as any; cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
                           hRow.height = 28;
 
-                          // Dữ liệu từng dự án
                           allProjsSorted.forEach((proj, pi) => {
                             const projPrev = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return r.project === proj && d && d.getTime() < weekStart.getTime(); });
                             const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
@@ -6030,15 +6018,9 @@ function SummaryView({
                             const cumDepth = projCum.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
                             const fills = ['FFEFF6FF','FFFFF7ED','FFF0FDF4','FFF5F3FF','FFFEFCE8','FFF0FDFA'];
                             const row = shTong.addRow([proj, projWeek.length, Math.round(wDepth*10)/10, Math.round(wDur*10)/10, wSpeed > 0 ? Math.round(wSpeed*100)/100 : '—', projPrev.length, projCum.length, Math.round(cumDepth*10)/10]);
-                            row.eachCell((cell, col) => {
-                              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fills[pi % fills.length] } } as any;
-                              cell.font = boldDark as any;
-                              cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
-                              cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
-                            });
+                            row.eachCell((cell, col) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fills[pi % fills.length] } } as any; cell.font = boldDark as any; cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' }; cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } }; });
                           });
 
-                          // Row tổng
                           const totalWeekDepthSum = selectedWeekRecords.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
                           const totalWeekDurSum   = selectedWeekRecords.reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.durationHours||0), 0), 0);
                           const totalSpeedSum = totalWeekDurSum > 0 ? totalWeekDepthSum / totalWeekDurSum : 0;
@@ -6046,79 +6028,47 @@ function SummaryView({
                           const totalCumCount  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return d && d.getTime() <= weekEnd.getTime(); }).length;
                           const totalCumDepth  = history.filter((r: any) => { const d = parseViDate(r.constructionEnd); return d && d.getTime() <= weekEnd.getTime(); }).reduce((s: number, r: any) => s + (r.layers||[]).reduce((ls: number, l: any) => ls + (l.lengthMeters||0), 0), 0);
                           const totalRow = shTong.addRow(['TỔNG TUẦN', selectedWeekRecords.length, Math.round(totalWeekDepthSum*10)/10, Math.round(totalWeekDurSum*10)/10, totalSpeedSum > 0 ? Math.round(totalSpeedSum*100)/100 : '—', totalPrevCount, totalCumCount, Math.round(totalCumDepth*10)/10]);
-                          totalRow.eachCell((cell, col) => {
-                            cell.fill = navyFill as any;
-                            cell.font = { bold: true, color: { argb: 'FFFFD580' }, size: 11 };
-                            cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' };
-                          });
+                          totalRow.eachCell((cell, col) => { cell.fill = navyFill as any; cell.font = { bold: true, color: { argb: 'FFFFD580' }, size: 11 }; cell.alignment = { horizontal: col === 1 ? 'left' : 'center', vertical: 'middle' }; });
                           totalRow.height = 24;
                           shTong.columns = [{ width: 45 },{ width: 10 },{ width: 16 },{ width: 16 },{ width: 18 },{ width: 20 },{ width: 20 },{ width: 22 }];
 
-                          // ── Sheet 2: Chi tiết cọc từng dự án ──
+                          // ── Sheet 2: Chi tiết từng dự án ──
                           allProjsSorted.forEach(proj => {
                             const projWeek = selectedWeekRecords.filter((r: any) => r.project === proj);
                             if (projWeek.length === 0) return;
                             const shName = proj.length > 28 ? proj.substring(0, 28) : proj;
                             const sh = wb.addWorksheet(shName);
-
-                            // Tiêu đề sheet
                             sh.mergeCells('A1:K1');
                             sh.getCell('A1').value = proj;
                             sh.getCell('A1').font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' } };
                             sh.getCell('A1').fill = navyFill as any;
                             sh.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
                             sh.getRow(1).height = 26;
-
                             sh.mergeCells('A2:K2');
                             sh.getCell('A2').value = `Tuần ${weekNo} · ${fmtDate(weekStart)} → ${fmtDate(thu5)}`;
                             sh.getCell('A2').font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
                             sh.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E4480' } } as any;
                             sh.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
-                            sh.getRow(2).height = 20;
-
                             sh.addRow([]);
-
-                            // Header cọc
-                            const ch = sh.addRow(['STT', 'SỐ HIỆU CỌC', 'BB SỐ', 'TÊN BỘ PHẬN', 'ĐƯỜNG KÍNH', 'NGÀY BĐ', 'NGÀY KT', 'CHIỀU SÂU (m)', 'THỜI GIAN (h)', 'V.TỐC TB (m/h)', 'GHI CHÚ']);
-                            ch.eachCell(cell => {
-                              cell.fill = navyFill as any;
-                              cell.font = headerFont as any;
-                              cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-                            });
+                            const ch = sh.addRow(['STT','SỐ HIỆU CỌC','BB SỐ','TÊN BỘ PHẬN','ĐƯỜNG KÍNH','NGÀY BĐ','NGÀY KT','CHIỀU SÂU (m)','THỜI GIAN (h)','V.TỐC TB (m/h)','GHI CHÚ']);
+                            ch.eachCell(cell => { cell.fill = navyFill as any; cell.font = headerFont as any; cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
                             ch.height = 26;
-
                             projWeek.forEach((r: any, ri: number) => {
                               const depth = (r.layers||[]).reduce((s: number, l: any) => s + (l.lengthMeters||0), 0);
                               const dur   = (r.layers||[]).reduce((s: number, l: any) => s + (l.durationHours||0), 0);
                               const spd   = dur > 0 ? depth / dur : 0;
-                              const hasSlowLayer = (r.layers||[]).some((l: any) => l.speedMph > 0 && l.speedMph < 1);
-                              const row = sh.addRow([ri+1, r.pileId||'—', r.reportNumber||'—', r.componentName||r.item||'—', r.diameter||'—', r.constructionStart||'—', r.constructionEnd||'—', Math.round(depth*10)/10, Math.round(dur*10)/10, spd > 0 ? Math.round(spd*100)/100 : '—', r.notes||'']);
-                              row.eachCell((cell, col) => {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hasSlowLayer ? 'FFFEE2E2' : (ri%2===0 ? 'FFFFFFFF' : 'FFF8FAFC') } } as any;
-                                cell.font = { size: 10, color: { argb: 'FF1E293B' }, bold: col <= 2 };
-                                cell.alignment = { horizontal: col <= 2 || col === 5 ? 'center' : 'left', vertical: 'middle' };
-                                cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
-                              });
-                              if (hasSlowLayer) {
-                                sh.getCell(`K${row.number}`).value = '⚠ Có đoạn chậm < 1m/h';
-                                sh.getCell(`K${row.number}`).font = { size: 10, color: { argb: 'FFDC2626' }, bold: true };
-                              }
-
-                              // Chi tiết lớp địa chất
+                              const hasSlow = (r.layers||[]).some((l: any) => l.speedMph > 0 && l.speedMph < 1);
+                              const row = sh.addRow([ri+1, r.pileId||'—', r.reportNumber||'—', r.componentName||r.item||'—', r.diameter||'—', r.constructionStart||'—', r.constructionEnd||'—', Math.round(depth*10)/10, Math.round(dur*10)/10, spd > 0 ? Math.round(spd*100)/100 : '—', hasSlow ? '⚠ Có đoạn chậm < 1m/h' : (r.notes||'')]);
+                              row.eachCell((cell, col) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hasSlow ? 'FFFEE2E2' : (ri%2===0 ? 'FFFFFFFF' : 'FFF8FAFC') } } as any; cell.font = { size: 10, color: { argb: hasSlow && col === 11 ? 'FFDC2626' : 'FF1E293B' }, bold: col <= 2 }; cell.alignment = { horizontal: col <= 2 || col === 5 ? 'center' : 'left', vertical: 'middle' }; cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } }; });
                               (r.layers||[]).forEach((l: any, li: number) => {
-                                const layerRow = sh.addRow(['', `  └ Lớp ${l.layerNumber||li+1}`, '', l.layerDesign||l.actualGeology||'—', '', l.dateFrom||'', l.dateTo||'', Math.round((l.lengthMeters||0)*10)/10, Math.round((l.durationHours||0)*10)/10, l.speedMph > 0 ? Math.round(l.speedMph*100)/100 : '—', l.notes||'']);
-                                layerRow.eachCell((cell, col) => {
-                                  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFFFF1F2' : 'FFFAFAFA' } } as any;
-                                  cell.font = { size: 9, color: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFDC2626' : 'FF64748B' }, italic: true };
-                                  cell.alignment = { horizontal: col >= 8 ? 'center' : 'left', vertical: 'middle' };
-                                });
+                                const lr = sh.addRow(['', `  └ Lớp ${l.layerNumber||li+1}`, '', l.layerDesign||l.actualGeology||'—', '', l.dateFrom||'', l.dateTo||'', Math.round((l.lengthMeters||0)*10)/10, Math.round((l.durationHours||0)*10)/10, l.speedMph > 0 ? Math.round(l.speedMph*100)/100 : '—', l.notes||'']);
+                                lr.eachCell((cell, col) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFFFF1F2' : 'FFFAFAFA' } } as any; cell.font = { size: 9, color: { argb: l.speedMph > 0 && l.speedMph < 1 ? 'FFDC2626' : 'FF64748B' }, italic: true }; cell.alignment = { horizontal: col >= 8 ? 'center' : 'left', vertical: 'middle' }; });
                               });
                             });
-
                             sh.columns = [{ width: 6 },{ width: 14 },{ width: 12 },{ width: 35 },{ width: 12 },{ width: 12 },{ width: 12 },{ width: 14 },{ width: 13 },{ width: 14 },{ width: 28 }];
                           });
 
-                          // ── Sheet 3: Biểu đồ cọc theo tuần ──
+                          // ── Sheet 3: Cọc theo tuần ──
                           const shChart = wb.addWorksheet('Cọc theo tuần');
                           shChart.mergeCells('A1:Z1');
                           shChart.getCell('A1').value = `SỐ CỌC THEO TỪNG TUẦN · NĂM ${weeklyYear}`;
@@ -6127,27 +6077,21 @@ function SummaryView({
                           shChart.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
                           shChart.getRow(1).height = 28;
                           shChart.addRow([]);
-
                           const chartHeader = ['TUẦN', ...allProjsSorted, 'TỔNG'];
-                          const chRow = shChart.addRow(chartHeader);
-                          chRow.eachCell(cell => { cell.fill = navyFill as any; cell.font = headerFont as any; cell.alignment = { horizontal: 'center' }; });
-
+                          const chRow2 = shChart.addRow(chartHeader);
+                          chRow2.eachCell(cell => { cell.fill = navyFill as any; cell.font = headerFont as any; cell.alignment = { horizontal: 'center' }; });
                           weekKeys.forEach(wk => {
                             const [cy,cm,cd] = wk.split('-').map(Number);
                             const dt = new Date(cy, cm-1, cd);
                             const jan1 = new Date(dt.getFullYear(), 0, 1);
-                            const wNum = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
-                            if (wNum > 52) return;
+                            const wNum2 = Math.ceil(((dt.getTime()-jan1.getTime())/86400000 + jan1.getDay() + 1) / 7);
+                            if (wNum2 > 52) return;
                             const recs = weeklyData[wk] || [];
                             const projCounts = allProjsSorted.map(p => recs.filter((r: any) => r.project === p).length);
                             const total = projCounts.reduce((s, v) => s + v, 0);
-                            const row = shChart.addRow([`T${wNum}`, ...projCounts, total]);
-                            const isSelectedWk = wk === selectedWeekKey;
-                            row.eachCell((cell, col) => {
-                              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isSelectedWk ? 'FFFFF7ED' : (total > 0 ? 'FFF8FAFC' : 'FFFFFFFF') } } as any;
-                              cell.font = { size: 10, bold: isSelectedWk || col === chartHeader.length, color: { argb: isSelectedWk ? 'FFEA580C' : (total > 0 ? 'FF1E293B' : 'FFCBD5E1') } };
-                              cell.alignment = { horizontal: 'center' };
-                            });
+                            const row = shChart.addRow([`T${wNum2}`, ...projCounts, total]);
+                            const isSelWk = wk === selectedWeekKey;
+                            row.eachCell((cell, col) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isSelWk ? 'FFFFF7ED' : (total > 0 ? 'FFF8FAFC' : 'FFFFFFFF') } } as any; cell.font = { size: 10, bold: isSelWk || col === chartHeader.length, color: { argb: isSelWk ? 'FFEA580C' : (total > 0 ? 'FF1E293B' : 'FFCBD5E1') } }; cell.alignment = { horizontal: 'center' }; });
                           });
                           shChart.columns = [{ width: 8 }, ...allProjsSorted.map(() => ({ width: 20 })), { width: 10 }];
 
@@ -6164,23 +6108,18 @@ function SummaryView({
                           console.error(err);
                           alert('Xuất Excel thất bại!');
                         } finally {
-                          setExporting(false);
+                          setIsExportingWeekly(false);
                         }
-                      };
-                      return (
-                        <button
-                          onClick={handleExport}
-                          disabled={exporting}
-                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 disabled:opacity-60"
-                          style={{background:'linear-gradient(135deg,#16a34a,#15803d)', color:'#fff'}}
-                        >
-                          {exporting
-                            ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"/><span>Đang xuất...</span></>
-                            : <><FileDown size={14}/><span>Xuất báo cáo Excel</span></>
-                          }
-                        </button>
-                      );
-                    })()}
+                      }}
+                      disabled={isExportingWeekly}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 disabled:opacity-60"
+                      style={{background:'linear-gradient(135deg,#16a34a,#15803d)', color:'#fff'}}
+                    >
+                      {isExportingWeekly
+                        ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"/><span>Đang xuất...</span></>
+                        : <><FileDown size={14}/><span>Xuất báo cáo Excel</span></>
+                      }
+                    </button>
                   </div>
                 </div>
 
