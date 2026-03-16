@@ -6206,12 +6206,10 @@ function SummaryView({
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
                           // Helper nhúng ảnh biểu đồ với chiều cao cố định theo pixel (EMU)
-                          // 1 pixel = 9525 EMU
+                          // ExcelJS ext nhận pixels trực tiếp
                           const embedChart = (sh: any, base64img: string) => {
                             const CHART_H_PX = 210;   // chiều cao hiển thị trong Excel (px)
                             const CHART_W_PX = 600;   // chiều rộng hiển thị trong Excel (px)
-                            const CHART_W_EMU = CHART_W_PX * 9525;
-                            const CHART_H_EMU = CHART_H_PX * 9525;
                             const ROW_H_PT = 15;       // chiều cao mỗi placeholder row (points)
                             const ROW_H_PX = ROW_H_PT * 96 / 72; // ~20px
                             const NUM_ROWS = Math.ceil(CHART_H_PX / ROW_H_PX) + 1;
@@ -6219,7 +6217,7 @@ function SummaryView({
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh.addImage(iid, {
                               tl: { col: 0, row: anchorRow },
-                              ext: { width: CHART_W_EMU, height: CHART_H_EMU }
+                              ext: { width: CHART_W_PX, height: CHART_H_PX }
                             });
                             for (let i = 0; i < NUM_ROWS; i++) {
                               const r = sh.addRow([]);
