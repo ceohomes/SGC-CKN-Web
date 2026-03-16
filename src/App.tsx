@@ -6135,15 +6135,14 @@ function SummaryView({
                                     <span className="text-[9px] font-black uppercase tracking-widest" style={{color}}>Số cọc theo từng tuần · Năm {weeklyYear}</span>
                                   </div>
                                   <div className="px-2 pb-3">
-                                    <ResponsiveContainer width="100%" height={160}>
-                                      <BarChart data={projChartData} margin={{top:4,right:12,bottom:28,left:0}} barCategoryGap="20%">
+                                    <ResponsiveContainer width="100%" height={180}>
+                                      <BarChart data={projChartData} margin={{top:14,right:8,bottom:20,left:0}} barCategoryGap="15%">
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
                                         <XAxis
                                           dataKey="week"
-                                          tick={{fontSize:8, fontWeight:700, fill:'#64748b'}}
-                                          angle={-45}
-                                          textAnchor="end"
-                                          interval={1}
+                                          tick={{fontSize:7, fontWeight:700, fill:'#64748b'}}
+                                          interval={0}
+                                          tickLine={false}
                                         />
                                         <YAxis tick={{fontSize:9, fill:'#94a3b8'}} allowDecimals={false} width={20}/>
                                         <Tooltip
