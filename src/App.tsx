@@ -6206,7 +6206,7 @@ function SummaryView({
                           // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng col 0→9
                           // anchorRow: row index (0-based) nơi ảnh bắt đầu
                           const embedChart = (sh: any, base64img: string, anchorRow: number) => {
-                            const NUM_ROWS = 10;
+                            const NUM_ROWS = 18;
                             const ROW_H_PT = 20;
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh.addImage(iid, {
