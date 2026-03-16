@@ -6269,6 +6269,159 @@ function SummaryView({
                           // Define print area to only show data area dynamically
                           sh1.pageSetup.printArea = `A1:I${sh1.rowCount}`;
 
+                          // ══════════════════════════════════════════════
+                          // SHEET 2: Dữ liệu thi công (toàn bộ cọc trong tuần)
+                          // ══════════════════════════════════════════════
+                          const wsDTC = wb.addWorksheet('Dữ liệu thi công');
+                          wsDTC.views = [{ showGridLines: true }];
+                          wsDTC.columns = [
+                            { width: 6 }, { width: 28 }, { width: 22 }, { width: 22 }, { width: 10 },
+                            { width: 14 }, { width: 10 }, { width: 18 }, { width: 18 }, { width: 12 },
+                            { width: 12 }, { width: 14 }, { width: 18 },
+                          ];
+                          {
+                            const titleRow = wsDTC.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
+                            titleRow.height = 30;
+                            wsDTC.mergeCells(1, 1, 1, 13);
+                            const tc = titleRow.getCell(1);
+                            tc.value = 'BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG';
+                            tc.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 14 };
+                            tc.fill = solidFill('FF1E3A6E') as any;
+                            tc.alignment = center;
+
+                            const HDRS = ['STT','Dự án','Hạng mục','Tên bộ phận','Số hiệu','Biên bản số','Đường kính','Bắt đầu','Kết thúc','Chiều dài (m)','T.Gian TC (h)','Vận tốc TB (m/h)','Sheet ảnh'];
+                            const hdrRow = wsDTC.addRow(HDRS);
+                            hdrRow.height = 25;
+                            hdrRow.eachCell((c: any, ci: number) => {
+                              c.fill = solidFill('FF1E3A6E') as any;
+                              c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+                              c.alignment = { ...center, wrapText: true };
+                              c.border = { bottom: thinBorder, right: thinBorder };
+                            });
+                            wsDTC.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+
+                            // Sắp xếp theo ngày kết thúc giảm dần (mới nhất lên trên)
+                            const sortedRecs = [...selectedWeekRecords].sort((a: any, b: any) => {
+                              const da = parseViDate(a.constructionEnd), db = parseViDate(b.constructionEnd);
+                              return (db?.getTime() || 0) - (da?.getTime() || 0);
+                            });
+                            sortedRecs.forEach((res: any, idx: number) => {
+                              const stt = idx + 1;
+                              const totalLen = (res.layers || []).reduce((s: number, l: any) => s + (l.lengthMeters || 0), 0);
+                              const totalDur = (res.layers || []).reduce((s: number, l: any) => s + (l.durationHours || 0), 0);
+                              const avgSpeed = totalDur > 0 ? totalLen / totalDur : 0;
+                              const rawName = `BB${stt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
+                              const sheetName = rawName.slice(0, 31);
+                              const row = wsDTC.addRow([
+                                stt, res.project, res.item, res.componentName, res.pileId,
+                                res.reportNumber, res.diameter, res.constructionStart, res.constructionEnd,
+                                parseFloat(totalLen.toFixed(2)), parseFloat(totalDur.toFixed(2)), parseFloat(avgSpeed.toFixed(2)),
+                                { text: `→ ${sheetName}`, hyperlink: `#'${sheetName}'!A1` }
+                              ]);
+                              row.height = 18;
+                              row.eachCell((c: any, ci: number) => {
+                                const isText = [2,3,4,6].includes(ci);
+                                const isLink = ci === 13;
+                                c.font = { size: 9, color: { argb: isLink ? 'FF2563EB' : 'FF1E293B' }, bold: isLink, underline: isLink };
+                                c.alignment = { vertical: 'middle', horizontal: isText ? 'left' : 'center', wrapText: isText };
+                                c.fill = solidFill(idx % 2 === 0 ? 'FFFAFAFA' : 'FFFFFFFF') as any;
+                                c.border = { bottom: thinBorder, right: thinBorder };
+                              });
+                            });
+                          }
+
+                          // ══════════════════════════════════════════════
+                          // SHEET 3+: Chi tiết từng biên bản trong tuần
+                          // ══════════════════════════════════════════════
+                          {
+                            const sortedRecs = [...selectedWeekRecords].sort((a: any, b: any) => {
+                              const da = parseViDate(a.constructionEnd), db = parseViDate(b.constructionEnd);
+                              return (db?.getTime() || 0) - (da?.getTime() || 0);
+                            });
+                            sortedRecs.forEach((res: any, idx: number) => {
+                              const stt = idx + 1;
+                              const rawName = `BB${stt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
+                              const sheetName = rawName.slice(0, 31);
+                              const wsB = wb.addWorksheet(sheetName);
+                              wsB.views = [{ showGridLines: false }];
+                              wsB.columns = [{ width: 28 }, { width: 40 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }];
+
+                              // Tiêu đề sheet
+                              wsB.mergeCells('A1:H1');
+                              const t1 = wsB.getCell('A1');
+                              t1.value = `CHI TIẾT BIÊN BẢN: ${res.pileId || ''} — ${res.componentName || ''}`;
+                              t1.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13 };
+                              t1.fill = solidFill('FF1A3A6B') as any;
+                              t1.alignment = center;
+                              wsB.getRow(1).height = 28;
+
+                              // Nút quay lại
+                              wsB.mergeCells('A2:H2');
+                              const t2 = wsB.getCell('A2');
+                              t2.value = { text: '← Quay lại Dữ liệu thi công', hyperlink: `#'Dữ liệu thi công'!A1` };
+                              t2.font = { size: 9, color: { argb: 'FF2563EB' }, italic: true, underline: true };
+                              t2.fill = solidFill('FFEFF6FF') as any;
+                              t2.alignment = { horizontal: 'left', vertical: 'middle' };
+                              wsB.getRow(2).height = 18;
+
+                              wsB.addRow([]);
+
+                              // Thông tin chung
+                              const infoItems = [
+                                ['Dự án', res.project], ['Hạng mục', res.item], ['Tên bộ phận', res.componentName],
+                                ['Số hiệu cọc', res.pileId], ['Biên bản số', res.reportNumber], ['Đường kính', res.diameter],
+                                ['Bắt đầu', res.constructionStart], ['Kết thúc', res.constructionEnd],
+                                ['Tổng chiều dài (m)', parseFloat(((res.layers||[]).reduce((s:number,l:any)=>s+(l.lengthMeters||0),0)).toFixed(2))],
+                                ['Tổng thời gian TC (h)', parseFloat(((res.layers||[]).reduce((s:number,l:any)=>s+(l.durationHours||0),0)).toFixed(2))],
+                              ];
+                              infoItems.forEach(([k, v]) => {
+                                const row = wsB.addRow([k, v]);
+                                row.height = 18;
+                                const c1 = row.getCell(1), c2 = row.getCell(2);
+                                c1.font = { bold: true, size: 9, color: { argb: 'FF1E3A6E' } };
+                                c1.fill = solidFill('FFEFF6FF') as any;
+                                c1.alignment = { horizontal: 'left', vertical: 'middle' };
+                                c1.border = { bottom: thinBorder, right: thinBorder };
+                                c2.font = { size: 9, color: { argb: 'FF374151' } };
+                                c2.fill = solidFill('FFFFFFFF') as any;
+                                c2.alignment = { horizontal: 'left', vertical: 'middle' };
+                                c2.border = { bottom: thinBorder };
+                              });
+
+                              wsB.addRow([]);
+
+                              // Header bảng lớp địa chất
+                              const LAYER_HDRS = ['Mô tả lớp TK', 'Ký hiệu ĐC', 'Từ (h)', 'Đến (h)', 'C.độ từ', 'C.độ đến', 'T.gian (h)', 'Dài (m)'];
+                              const lhRow = wsB.addRow(LAYER_HDRS);
+                              lhRow.height = 22;
+                              lhRow.eachCell((c: any) => {
+                                c.fill = solidFill('FF334155') as any;
+                                c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 9 };
+                                c.alignment = { ...center, wrapText: true };
+                                c.border = { bottom: thinBorder, right: thinBorder };
+                              });
+
+                              // Dữ liệu từng lớp
+                              (res.layers || []).forEach((layer: any, li: number) => {
+                                const lr = wsB.addRow([
+                                  layer.layerDesign, layer.designLayerCode || '',
+                                  `${layer.timeFrom||''} ${layer.dateFrom||''}`.trim(),
+                                  `${layer.timeTo||''} ${layer.dateTo||''}`.trim(),
+                                  layer.elevationFrom ?? '', layer.elevationTo ?? '',
+                                  parseFloat((layer.durationHours||0).toFixed(2)),
+                                  parseFloat((layer.lengthMeters||0).toFixed(2)),
+                                ]);
+                                lr.height = 18;
+                                lr.eachCell((c: any, ci: number) => {
+                                  c.fill = solidFill(li % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF') as any;
+                                  c.font = { size: 9, color: { argb: 'FF1E293B' } };
+                                  c.alignment = { vertical: 'middle', horizontal: ci === 1 ? 'left' : 'center', wrapText: ci === 1 };
+                                  c.border = { bottom: thinBorder, right: thinBorder };
+                                });
+                              });
+                            });
+                          }
+
                           // ── Xuất file ──
                           const buffer = await wb.xlsx.writeBuffer();
                           const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
