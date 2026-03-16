@@ -5980,6 +5980,18 @@ function SummaryView({
                 {/* ── Bảng lũy kế tiến độ — từng dự án A-Z ── */}
                 {(() => {
                   const allProjs = [...new Set(history.map(r => r.project).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'vi'));
+
+                  // Tổng hợp tất cả dự án
+                  const totalPrev = calcStats(history.filter(r => { const d = parseViDate(r.constructionEnd); return d && d.getTime() < weekStart.getTime(); }));
+                  const totalWeek = {
+                    piles: selectedWeekRecords.length,
+                    depth: selectedWeekRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0),
+                    dur:   selectedWeekRecords.reduce((s,r)=>s+(r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0),0),
+                  };
+                  const totalCum  = calcStats(history.filter(r => { const d = parseViDate(r.constructionEnd); return d && d.getTime() <= weekEnd.getTime(); }));
+                  const totalSpeedWeek = totalWeek.dur > 0 ? totalWeek.depth / totalWeek.dur : 0;
+                  const totalPct = totalCum.piles > 0 ? Math.min(100, (totalWeek.piles / totalCum.piles) * 100) : 0;
+
                   return (
                     <div className="space-y-4">
                       {/* Tiêu đề chung */}
@@ -5987,6 +5999,118 @@ function SummaryView({
                         <TrendingUp size={15} className="text-orange-300"/>
                         <h5 className="text-[11px] font-black text-white uppercase tracking-widest">Thống kê lũy kế tiến độ</h5>
                         <span className="ml-auto text-[9px] font-bold text-blue-200 uppercase tracking-widest">Từng dự án · Tuần {weekNo}</span>
+                      </div>
+
+                      {/* ── Card tổng hợp tất cả dự án ── */}
+                      <div className="bg-white border-2 border-slate-700 rounded-2xl overflow-hidden shadow-lg">
+                        {/* Header */}
+                        <div className="px-5 py-2.5 flex items-center gap-3" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
+                          <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                            <Building2 size={14} className="text-white"/>
+                          </div>
+                          <p className="text-[12px] font-black text-white flex-1">Tổng hợp tất cả dự án</p>
+                          <span className="text-[10px] font-black text-white bg-white/20 px-3 py-0.5 rounded-full shrink-0">{allProjs.length} dự án · Tuần {weekNo}</span>
+                        </div>
+
+                        {/* 3 cột */}
+                        <div className="grid grid-cols-3 divide-x divide-slate-200">
+                          {/* Lũy kế đến tuần trước */}
+                          <div className="p-4 bg-emerald-50">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <div className="w-2 h-2 rounded-full bg-emerald-500"/>
+                              <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Lũy kế đến tuần trước</p>
+                            </div>
+                            <div className="flex items-baseline gap-1 mb-2">
+                              <span className="text-[22px] font-black text-emerald-700">{totalPrev.piles}</span>
+                              <span className="text-[10px] font-bold text-emerald-400">cọc</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Chiều sâu</p>
+                                <span className="text-[12px] font-black text-emerald-700">{formatNumber(totalPrev.depth,1)}</span>
+                                <span className="text-[8px] font-bold text-emerald-400 ml-1">m</span>
+                              </div>
+                              <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Thời gian</p>
+                                <span className="text-[12px] font-black text-emerald-700">{formatNumber(totalPrev.dur,1)}</span>
+                                <span className="text-[8px] font-bold text-emerald-400 ml-1">h</span>
+                              </div>
+                              <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-emerald-500 uppercase mb-0.5">Vận tốc TB</p>
+                                {(() => { const s = totalPrev.dur > 0 ? totalPrev.depth/totalPrev.dur : 0; return <><span className={`text-[12px] font-black ${s>=1?'text-emerald-700':s>0?'text-amber-600':'text-slate-400'}`}>{s>0?formatNumber(s,2):'—'}</span>{s>0&&<span className="text-[8px] font-bold text-emerald-400 ml-1">m/h</span>}</>; })()}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Thực hiện tuần này */}
+                          <div className="p-4 bg-orange-50 relative">
+                            {totalWeek.piles > 0 && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-orange-500 animate-pulse"/>}
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <div className="w-2 h-2 rounded-full bg-orange-500"/>
+                              <p className="text-[9px] font-black text-orange-700 uppercase tracking-widest">Thực hiện tuần này</p>
+                            </div>
+                            <div className="flex items-baseline gap-1 mb-2">
+                              <span className={`text-[22px] font-black ${totalWeek.piles > 0 ? 'text-orange-600' : 'text-slate-400'}`}>{totalWeek.piles}</span>
+                              <span className="text-[10px] font-bold text-orange-400">cọc</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <div className="bg-white border border-orange-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Chiều sâu</p>
+                                <span className="text-[12px] font-black text-orange-600">{formatNumber(totalWeek.depth,1)}</span>
+                                <span className="text-[8px] font-bold text-orange-400 ml-1">m</span>
+                              </div>
+                              <div className="bg-white border border-orange-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Thời gian</p>
+                                <span className="text-[12px] font-black text-orange-600">{formatNumber(totalWeek.dur,1)}</span>
+                                <span className="text-[8px] font-bold text-orange-400 ml-1">h</span>
+                              </div>
+                              <div className="bg-white border border-orange-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-orange-400 uppercase mb-0.5">Vận tốc TB</p>
+                                <span className={`text-[12px] font-black ${totalSpeedWeek>=1?'text-emerald-600':totalSpeedWeek>0?'text-amber-600':'text-slate-400'}`}>{totalSpeedWeek>0?formatNumber(totalSpeedWeek,2):'—'}</span>
+                                {totalSpeedWeek>0&&<span className="text-[8px] font-bold text-orange-400 ml-1">m/h</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Lũy kế đến tuần này */}
+                          <div className="p-4 bg-blue-50">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-600"/>
+                              <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">Lũy kế đến tuần này</p>
+                            </div>
+                            <div className="flex items-baseline gap-1 mb-2">
+                              <span className="text-[22px] font-black text-blue-700">{totalCum.piles}</span>
+                              <span className="text-[10px] font-bold text-blue-400">cọc</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <div className="bg-white border border-blue-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Chiều sâu</p>
+                                <span className="text-[12px] font-black text-blue-700">{formatNumber(totalCum.depth,1)}</span>
+                                <span className="text-[8px] font-bold text-blue-400 ml-1">m</span>
+                              </div>
+                              <div className="bg-white border border-blue-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Thời gian</p>
+                                <span className="text-[12px] font-black text-blue-700">{formatNumber(totalCum.dur,1)}</span>
+                                <span className="text-[8px] font-bold text-blue-400 ml-1">h</span>
+                              </div>
+                              <div className="bg-white border border-blue-200 rounded-xl p-2">
+                                <p className="text-[8px] font-bold text-blue-400 uppercase mb-0.5">Vận tốc TB</p>
+                                {(() => { const s = totalCum.dur > 0 ? totalCum.depth/totalCum.dur : 0; return <><span className={`text-[12px] font-black ${s>=1?'text-emerald-600':s>0?'text-amber-600':'text-slate-400'}`}>{s>0?formatNumber(s,2):'—'}</span>{s>0&&<span className="text-[8px] font-bold text-blue-400 ml-1">m/h</span>}</>; })()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Progress bar */}
+                        {totalCum.piles > 0 && (
+                          <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
+                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest shrink-0">Tuần này / Lũy kế:</span>
+                            <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{width:`${totalPct.toFixed(1)}%`, background:'linear-gradient(90deg,#1a3a6b,#3b82f6)'}}/>
+                            </div>
+                            <span className="text-[9px] font-black text-blue-700 shrink-0">{totalPct.toFixed(1)}% tuần này</span>
+                          </div>
+                        )}
                       </div>
 
                       {allProjs.map((proj, pidx) => {
