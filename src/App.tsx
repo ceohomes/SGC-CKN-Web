@@ -5983,35 +5983,81 @@ function SummaryView({
                         if (isExportingWeekly) return;
                         setIsExportingWeekly(true);
                         try {
-                          // Load ExcelJS và html2canvas song song
-                          const [ExcelJS, html2canvas] = await Promise.all([
-                            loadExcelJS(),
-                            new Promise<any>((res, rej) => {
-                              if ((window as any).html2canvas) { res((window as any).html2canvas); return; }
-                              const s = document.createElement('script');
-                              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-                              s.onload = () => res((window as any).html2canvas);
-                              s.onerror = () => rej(new Error('Không tải được html2canvas'));
-                              document.head.appendChild(s);
-                            })
-                          ]);
+                          const ExcelJS = await loadExcelJS();
+                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
 
-                          // Hàm chụp ảnh 1 element → base64 PNG
-                          const captureChart = async (id: string): Promise<string | null> => {
-                            const el = document.getElementById(id);
-                            if (!el) return null;
-                            try {
-                              const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2, logging: false, useCORS: true });
-                              return canvas.toDataURL('image/png');
-                            } catch { return null; }
+                          // ── Vẽ biểu đồ cột bằng canvas thuần → base64 PNG ──
+                          const CHART_COLORS_EX = ['#3b82f6','#f97316','#10b981','#8b5cf6','#f59e0b','#06b6d4','#ef4444','#84cc16'];
+                          const drawBarChartEx = (
+                            chartData: { week: string; values: number[]; isSelected: boolean }[],
+                            projNames: string[],
+                            title: string
+                          ): string => {
+                            const W = 1200, H = 340;
+                            const PAD = { top: 44, right: 20, bottom: 70, left: 44 };
+                            const cW = W - PAD.left - PAD.right;
+                            const cH = H - PAD.top - PAD.bottom;
+                            const cv = document.createElement('canvas');
+                            cv.width = W; cv.height = H;
+                            const ctx = cv.getContext('2d')!;
+                            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+                            ctx.fillStyle = '#1a3a6b'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
+                            ctx.fillText(title, W/2, 26);
+                            const maxVal = Math.max(...chartData.map(d => d.values.reduce((s,v)=>s+v,0)), 1);
+                            const barW = Math.max(5, (cW / chartData.length) * 0.55);
+                            const gap = cW / chartData.length;
+                            for (let i = 0; i <= 5; i++) {
+                              const y = PAD.top + cH - (i/5)*cH;
+                              ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 1;
+                              ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+cW,y); ctx.stroke();
+                              ctx.fillStyle='#94a3b8'; ctx.font='10px Arial'; ctx.textAlign='right';
+                              ctx.fillText(String(Math.round((i/5)*maxVal)), PAD.left-4, y+3);
+                            }
+                            chartData.forEach((d, i) => {
+                              const x = PAD.left + i*gap + gap/2 - barW/2;
+                              let yB = PAD.top+cH; let tot = 0;
+                              d.values.forEach((v, pi) => {
+                                if (v===0) return;
+                                const bH = (v/maxVal)*cH;
+                                ctx.fillStyle = CHART_COLORS_EX[pi % CHART_COLORS_EX.length] + (d.isSelected?'':'bb');
+                                ctx.beginPath();
+                                if (ctx.roundRect) ctx.roundRect(x, yB-bH, barW, bH, 2); else ctx.rect(x, yB-bH, barW, bH);
+                                ctx.fill();
+                                yB -= bH; tot += v;
+                              });
+                              if (tot>0) { ctx.fillStyle=d.isSelected?'#ea580c':'#475569'; ctx.font=`bold ${d.isSelected?11:9}px Arial`; ctx.textAlign='center'; ctx.fillText(String(tot),x+barW/2,yB-4); }
+                              ctx.fillStyle=d.isSelected?'#ea580c':'#64748b'; ctx.font=`${d.isSelected?'bold ':''}8px Arial`; ctx.textAlign='center';
+                              ctx.fillText(d.week, x+barW/2, PAD.top+cH+14);
+                            });
+                            if (projNames.length>1) {
+                              let lx=PAD.left; const ly=H-12;
+                              projNames.forEach((name,pi) => {
+                                ctx.fillStyle=CHART_COLORS_EX[pi%CHART_COLORS_EX.length]; ctx.fillRect(lx,ly-10,12,10);
+                                ctx.fillStyle='#475569'; ctx.font='9px Arial'; ctx.textAlign='left';
+                                const lbl=name.length>25?name.substring(0,25)+'…':name;
+                                ctx.fillText(lbl, lx+15, ly); lx+=ctx.measureText(lbl).width+32;
+                              });
+                            }
+                            return cv.toDataURL('image/png');
                           };
 
-                          // Chụp tất cả biểu đồ trước khi tạo workbook
-                          const allProjsSorted = [...new Set(history.map((r: any) => r.project).filter(Boolean))].sort((a: any, b: any) => a.localeCompare(b, 'vi')) as string[];
-                          const [imgAll, ...imgProjs] = await Promise.all([
-                            captureChart('chart-all-projects'),
-                            ...allProjsSorted.map((_: string, i: number) => captureChart(`chart-proj-${i}`))
-                          ]);
+                          const buildChartRowsEx = (filterProj?: string) =>
+                            weekKeys.map(wk => {
+                              const [cy,cm,cd]=wk.split('-').map(Number);
+                              const dt=new Date(cy,cm-1,cd); const jan1=new Date(dt.getFullYear(),0,1);
+                              const wn=Math.ceil(((dt.getTime()-jan1.getTime())/86400000+jan1.getDay()+1)/7);
+                              if(wn>52) return null;
+                              const recs=weeklyData[wk]||[];
+                              const values=filterProj
+                                ?[recs.filter((r:any)=>r.project===filterProj).length]
+                                :allProjsSorted.map((p:string)=>recs.filter((r:any)=>r.project===p).length);
+                              return {week:`T${wn}`,values,isSelected:wk===selectedWeekKey};
+                            }).filter(Boolean) as {week:string;values:number[];isSelected:boolean}[];
+
+                          const imgAll = drawBarChartEx(buildChartRowsEx(), allProjsSorted, `So coc theo tung tuan - Tat ca du an - Nam ${weeklyYear}`);
+                          const imgProjs = allProjsSorted.map((proj:string) =>
+                            drawBarChartEx(buildChartRowsEx(proj), [proj], `So coc theo tung tuan - ${proj.length>35?proj.substring(0,35)+'...':proj} - Nam ${weeklyYear}`)
+                          );
 
                           const wb = new ExcelJS.Workbook();
                           wb.creator = 'SGC-CKN';
@@ -6119,17 +6165,15 @@ function SummaryView({
                           sh1.columns = [{width:40},{width:9},{width:11},{width:13},{width:9},{width:11},{width:13},{width:9},{width:11}];
 
                           // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tou0309ng hou0323p vau0300o sheet 1
-                          if (imgAll) {
+                          // Nhúng ảnh biểu đồ tổng hợp
+                          {
                             sh1.addRow([]);
-                            const imgAllRow = sh1.addRow(["BIEU DO: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
-                            imgAllRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
-                            imgAllRow.height = 20;
-                            const startRow = sh1.rowCount; // 1-based, ExcelJS addImage dùng 0-based nên trừ 1
-                            const imgAllId = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                            sh1.addImage(imgAllId, {
-                              tl: { col: 0, row: startRow }, // 0-based: startRow đã là index tiếp theo
-                              ext: { width: 860, height: 200 }
-                            });
+                            const r = sh1.addRow(["BIEU DO: SO COC THEO TUNG TUAN - TAT CA DU AN"]);
+                            r.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                            r.height = 20;
+                            const anchorRow = sh1.rowCount - 1; // 0-based
+                            const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                            sh1.addImage(iid, { tl: { col: 0, row: anchorRow }, ext: { width: 860, height: 200 } });
                             for (let i = 0; i < 13; i++) sh1.addRow([]);
                           }
 
@@ -6214,18 +6258,16 @@ function SummaryView({
                             sh.columns = [{width:6},{width:14},{width:12},{width:36},{width:12},{width:12},{width:12},{width:10},{width:10},{width:13},{width:26}];
 
                             // Nhuu0301ng au0309nh bieu0309u u0111ou0300 tuu0300ng duu0323 au0301n
-                            const projImg = imgProjs[pi];
-                            if (projImg) {
+                            // Nhúng ảnh biểu đồ từng dự án
+                            {
+                              const projImg = imgProjs[pi];
                               sh.addRow([]);
-                              const imgRow = sh.addRow(["BIEU DO: SO COC THEO TUNG TUAN"]);
-                              imgRow.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
-                              imgRow.height = 20;
-                              const startRowSh = sh.rowCount;
-                              const imgId = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
-                              sh.addImage(imgId, {
-                                tl: { col: 0, row: startRowSh },
-                                ext: { width: 860, height: 200 }
-                              });
+                              const rp = sh.addRow(["BIEU DO: SO COC THEO TUNG TUAN"]);
+                              rp.getCell(1).font = { bold: true, color: { argb: "FF1A3A6B" }, size: 11 };
+                              rp.height = 20;
+                              const anchorRowP = sh.rowCount - 1; // 0-based
+                              const iidp = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
+                              sh.addImage(iidp, { tl: { col: 0, row: anchorRowP }, ext: { width: 860, height: 200 } });
                               for (let i = 0; i < 13; i++) sh.addRow([]);
                             }
                           });
