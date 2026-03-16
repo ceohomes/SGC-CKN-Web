@@ -6199,25 +6199,21 @@ function SummaryView({
                             sh1.getRow(totalStartRow+2).height = 30;
                             sh1.getRow(totalStartRow+3).height = 16;
                             sh1.getRow(totalStartRow+4).height = 22;
-                            // Advance rowCount to after the 5-row block
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                           }
-                          sh1.addRow([]); sh1.addRow([]);
-
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
 
-                          // Nhúng ảnh biểu đồ tổng hợp
+                          // Nhúng ảnh biểu đồ tổng hợp — neo ngay sau block 5 dòng
                           {
-                            const CHART_ROWS = 14; // số dòng placeholder khớp chiều cao ảnh
-                            sh1.addRow([]);
-                            const anchorRow = sh1.rowCount; 
+                            const CHART_ROWS = 15;
+                            const anchorRow = sh1.rowCount + 5; // block summary chiếm 5 dòng kể từ rowCount hiện tại
                             const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
                               tl: { col: 0, row: anchorRow }, 
                               br: { col: 9, row: anchorRow + CHART_ROWS } 
                             });
-                            for (let i = 0; i < CHART_ROWS; i++) sh1.addRow([]);
+                            // Advance rowCount: 5 dòng block + CHART_ROWS
+                            for (let i = 0; i < 5 + CHART_ROWS; i++) sh1.addRow([]);
                           }
 
                           // ══════════════════════════════════════════════
@@ -6256,19 +6252,18 @@ function SummaryView({
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
                             sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
-                            for (let i = 0; i < 5; i++) sh1.addRow([]);
                             
-                            // Thêm biểu đồ cho từng dự án
+                            // Thêm biểu đồ cho từng dự án — neo ngay sau block 5 dòng
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
                             {
-                              const CHART_ROWS = 14;
-                              const anchorRow = sh1.rowCount;
+                              const CHART_ROWS = 15;
+                              const anchorRow = sh1.rowCount + 5;
                               const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                               sh1.addImage(iid, { 
                                 tl: { col: 0, row: anchorRow }, 
                                 br: { col: 9, row: anchorRow + CHART_ROWS } 
                               });
-                              for (let i = 0; i < CHART_ROWS; i++) sh1.addRow([]);
+                              for (let i = 0; i < 5 + CHART_ROWS; i++) sh1.addRow([]);
                             }
                           });
 
