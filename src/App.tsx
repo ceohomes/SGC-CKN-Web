@@ -6123,7 +6123,16 @@ function SummaryView({
                           sh1.views = [{ showGridLines: false, view: 'pageBreakPreview' }];
                           
                           setTitle(sh1, `BÁO CÁO TUẦN ${weekNo}  ·  ${fmtDate(weekStart)} → ${fmtDate(thu5)}`, 9, `Thứ 6: ${fmtDate(weekStart)}  →  Thứ 5: ${fmtDate(thu5)}  ·  ${allProjsSorted.length} dự án`);
-                          sh1.addRow([]);
+
+                          // Tiêu đề tổng hợp tất cả dự án
+                          {
+                            const rTotalHeader = sh1.addRow(['TỔNG HỢP TẤT CẢ DỰ ÁN']);
+                            sh1.mergeCells(`A${sh1.rowCount}:I${sh1.rowCount}`);
+                            rTotalHeader.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+                            rTotalHeader.getCell(1).fill = solidFill('FF1A3A6B') as any;
+                            rTotalHeader.getCell(1).alignment = center;
+                            rTotalHeader.height = 24;
+                          }
 
                           // Helper vẽ block Dashboard
                           const drawSummaryBlock = (sh: any, startCol: number, startRow: number, title: string, stats: any, bg: string, fg: string, accent: string) => {
@@ -6180,11 +6189,15 @@ function SummaryView({
                             dur:   history.filter((r: any)=>{const d=parseViDate(r.constructionEnd);return d&&d.getTime()<=weekEnd.getTime();}).reduce((s: number,r: any)=>s+(r.layers||[]).reduce((ls: number,l: any)=>ls+(l.durationHours||0),0),0),
                           };
 
-                          drawSummaryBlock(sh1, 1, 4, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
-                          drawSummaryBlock(sh1, 4, 4, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
-                          drawSummaryBlock(sh1, 7, 4, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
+                          drawSummaryBlock(sh1, 1, sh1.rowCount + 1, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
+                          drawSummaryBlock(sh1, 4, sh1.rowCount + 1, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
+                          drawSummaryBlock(sh1, 7, sh1.rowCount + 1, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
-                          sh1.getRow(4).height = 20; sh1.getRow(5).height = 20; sh1.getRow(6).height = 20; sh1.getRow(7).height = 16; sh1.getRow(8).height = 22;
+                          {
+                            const r0 = sh1.rowCount + 1;
+                            sh1.getRow(r0).height = 20; sh1.getRow(r0+1).height = 20; sh1.getRow(r0+2).height = 20; sh1.getRow(r0+3).height = 16; sh1.getRow(r0+4).height = 22;
+                          }
+                          for (let i = 0; i < 5; i++) sh1.addRow([]);
                           sh1.addRow([]); sh1.addRow([]);
 
 
@@ -6197,9 +6210,9 @@ function SummaryView({
                             const iid = wb.addImage({ base64: imgAll.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
                               tl: { col: 0, row: anchorRow }, 
-                              br: { col: 9, row: anchorRow + 9 } 
+                              br: { col: 9, row: anchorRow + 20 } 
                             });
-                            for (let i = 0; i < 10; i++) sh1.addRow([]);
+                            for (let i = 0; i < 21; i++) sh1.addRow([]);
                           }
 
                           // ══════════════════════════════════════════════
@@ -6246,9 +6259,9 @@ function SummaryView({
                             const iid = wb.addImage({ base64: projImg.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh1.addImage(iid, { 
                               tl: { col: 0, row: anchorRow }, 
-                              br: { col: 9, row: anchorRow + 9 } 
+                              br: { col: 9, row: anchorRow + 20 } 
                             });
-                            for (let i = 0; i < 10; i++) sh1.addRow([]);
+                            for (let i = 0; i < 21; i++) sh1.addRow([]);
                           });
 
                           // Define print area to only show data area dynamically
