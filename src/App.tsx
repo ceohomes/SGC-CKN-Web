@@ -6364,25 +6364,16 @@ function SummaryView({
                               return (db?.getTime() || 0) - (da?.getTime() || 0);
                             });
 
-                            // Fetch ảnh song song
-                            const imgResults: ({ base64: string; ext: string } | null)[] = await Promise.all(
-                              sortedRecs.map(async (res: any) => {
-                                if (!res.imageUrl) return null;
-                                try {
-                                  const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(res.imageUrl)}`;
-                                  const r = await fetch(proxyUrl);
-                                  if (!r.ok) return null;
-                                  const blob2 = await r.blob();
-                                  const base64 = await new Promise<string>((resolve) => {
-                                    const reader = new FileReader();
-                                    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-                                    reader.readAsDataURL(blob2);
-                                  });
-                                  const ext = blob2.type.includes('png') ? 'png' : 'jpeg';
-                                  return { base64, ext };
-                                } catch { return null; }
-                              })
-                            );
+                            // Fetch ảnh song song dùng ensureImageData (giống file xuất tổng)
+                            const CHUNK_W = 5;
+                            const imgResults: ({ base64: string; ext: string } | null)[] = new Array(sortedRecs.length).fill(null);
+                            for (let ci = 0; ci < sortedRecs.length; ci += CHUNK_W) {
+                              const chunk = sortedRecs.slice(ci, ci + CHUNK_W);
+                              const fetched = await Promise.all(
+                                chunk.map((res: any) => ensureImageData(res, githubCreds).catch(() => null))
+                              );
+                              fetched.forEach((img, j) => { imgResults[ci + j] = img; });
+                            }
 
                             sortedRecs.forEach((res: any, idx: number) => {
                               const stt = idx + 1;
