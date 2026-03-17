@@ -920,6 +920,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       const absElevFrom = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
       cumulativeDepth += layerLength;
       const absElevTo = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
+      // lengthMeters giữ nguyên từ chiều dài đã đọc — không tính lại từ cao độ để tránh sai lệch làm tròn
       return {
         ...layer,
         elevationFrom: absElevFrom,
@@ -2357,8 +2358,19 @@ export default function App() {
   const handleSaveAll = async () => {
     if (pendingResults.length === 0) return;
 
+    // ── QUAN TRỌNG: Merge currentResult (data đang chỉnh sửa) vào pendingResults ──
+    // Đảm bảo lấy data MỚI NHẤT dù user chưa bấm "Lưu thay đổi" trong EditSplitView
+    let latestPending = pendingResults;
+    if (currentResult) {
+      latestPending = pendingResults.map(r =>
+        r.id === currentResult.id ? { ...currentResult } : r
+      );
+      // Cập nhật state luôn để nhất quán
+      setPendingResults(latestPending);
+    }
+
     // Kiểm tra tính nhất quán cho TẤT CẢ biên bản trước khi lưu
-    for (const r of pendingResults) {
+    for (const r of latestPending) {
       const { valid, conflicts } = validateLayerConsistency(r);
       if (!valid) {
         // Dừng lại, hiện dialog cho biên bản bị lỗi
@@ -2370,7 +2382,7 @@ export default function App() {
             // Lưu biên bản này (bỏ qua validate) rồi tiếp tục
             await saveResult(r, true);
             // Tiếp tục lưu các biên bản còn lại
-            const remaining = pendingResults.filter(x => x.id !== r.id);
+            const remaining = latestPending.filter(x => x.id !== r.id);
             for (const rr of remaining) await saveResult(rr);
             setPendingResults([]);
             setProcessingFiles([]);
@@ -2382,7 +2394,7 @@ export default function App() {
     }
 
     setIsProcessing(true);
-    const resultsToSave = [...pendingResults];
+    const resultsToSave = [...latestPending];
     
     for (const r of resultsToSave) {
       await saveResult(r, true); // đã validate ở trên rồi
@@ -7835,6 +7847,25 @@ function EditSplitView({
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
   const dataRef = React.useRef<ExtractionResult>(data);
   React.useEffect(() => { dataRef.current = data; }, [data]);
+
+  // ── Reset data khi chuyển sang file khác (result.id thay đổi) ──
+  React.useEffect(() => {
+    setData(result);
+    dataRef.current = result;
+  }, [result.id]);
+
+  // ── AUTO-SYNC (embedded mode): mỗi khi data thay đổi → push ngay ra pendingResults ──
+  // Đảm bảo "Lưu tất cả" luôn lấy data đã chỉnh sửa dù user chưa bấm "Lưu thay đổi"
+  const onSaveRef = React.useRef(onSave);
+  React.useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+  React.useEffect(() => {
+    if (!embedded) return;
+    // Debounce 400ms để tránh gọi liên tục khi đang gõ
+    const timer = setTimeout(() => {
+      onSaveRef.current(dataRef.current);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [data, embedded]);
   const [zoom, setZoom] = useState(1);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isRescanning, setIsRescanning] = useState(false);
@@ -8819,21 +8850,21 @@ function EditSplitView({
           </div>
 
           {/* ── Cao độ đỉnh casing + Tính lại cao độ ── */}
-          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-blue-600 rounded-lg shrink-0">
-                <ArrowDownToLine size={14} className="text-white" />
+          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Label + Icon */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="p-1.5 bg-blue-600 rounded-lg">
+                  <ArrowDownToLine size={13} className="text-white" />
+                </div>
+                <div>
+                  <h4 className="text-[11px] font-black text-blue-900 uppercase tracking-widest">Cao độ đỉnh casing (m)</h4>
+                  <p className="text-[9px] text-blue-500 font-medium">Nhập → bấm "Tính lại" để cập nhật Cao độ từ/đến</p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-[12px] font-black text-blue-900 uppercase tracking-widest">Cao độ đỉnh casing & Tính lại cao độ tuyệt đối</h4>
-                <p className="text-[10px] text-blue-600 font-medium mt-0.5">
-                  Nhập cao độ đỉnh casing → bấm "Tính lại" → hệ thống tự tính Cao độ từ/đến cho từng lớp
-                </p>
-              </div>
-            </div>
-            <div className="flex items-end gap-3">
-              <div className="flex-1 space-y-1.5">
-                <label className="text-[11px] font-black text-blue-800 uppercase tracking-widest">Cao độ đỉnh casing (m)</label>
+
+              {/* Input + Button inline */}
+              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
                 <input
                   type="number"
                   step="0.01"
@@ -8842,76 +8873,44 @@ function EditSplitView({
                     const val = e.target.value === '' ? null : parseFloat(e.target.value);
                     setData(prev => ({ ...prev, casingElevation: isNaN(val as number) ? null : val }));
                   }}
-                  className="w-full bg-white border-2 border-blue-300 rounded-xl px-4 py-2.5 text-sm text-blue-900 font-bold focus:border-blue-500 outline-none transition-all shadow-sm"
-                  placeholder="VD: -1.50 hoặc +2.30"
+                  className="flex-1 bg-white border-2 border-blue-300 rounded-xl px-3 py-2 text-sm text-blue-900 font-bold focus:border-blue-500 outline-none transition-all"
+                  placeholder="VD: 0 hoặc -1.50"
                 />
-                <p className="text-[10px] text-blue-500 font-medium">
-                  {data.casingElevation != null
-                    ? `Cao độ hiện tại: ${data.casingElevation >= 0 ? '+' : ''}${data.casingElevation.toFixed(2)}m`
-                    : 'Chưa có cao độ — cao độ từng lớp sẽ hiển thị là 0'}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  const casing = data.casingElevation;
-                  if (casing == null) {
-                    // Reset về 0 nếu không có casing
-                    let cum = 0;
+                <button
+                  onClick={() => {
+                    const casing = data.casingElevation ?? 0;
+                    let cumulativeDepth = 0;
                     const newLayers = data.layers.map(l => {
-                      const from = 0;
-                      const to = parseFloat((-l.lengthMeters).toFixed(3));
-                      return { ...l, elevationFrom: from, elevationTo: to };
+                      const absFrom = parseFloat((casing - cumulativeDepth).toFixed(3));
+                      cumulativeDepth += l.lengthMeters;
+                      const absTo = parseFloat((casing - cumulativeDepth).toFixed(3));
+                      const newLength = Math.abs(absTo - absFrom);
+                      const newSpeed = l.durationHours > 0 ? newLength / l.durationHours : l.speedMph;
+                      return { ...l, elevationFrom: absFrom, elevationTo: absTo, lengthMeters: newLength, speedMph: newSpeed };
                     });
                     setData(prev => ({ ...prev, layers: newLayers }));
-                    return;
-                  }
-                  // Tính cao độ tuyệt đối từng lớp
-                  let cumulativeDepth = 0;
-                  const newLayers = data.layers.map(l => {
-                    const absFrom = parseFloat((casing - cumulativeDepth).toFixed(3));
-                    cumulativeDepth += l.lengthMeters;
-                    const absTo = parseFloat((casing - cumulativeDepth).toFixed(3));
-                    return { ...l, elevationFrom: absFrom, elevationTo: absTo };
-                  });
-                  setData(prev => ({ ...prev, layers: newLayers }));
-                }}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2 shrink-0 active:scale-95"
-              >
-                <RefreshCw size={13} />
-                Tính lại cao độ
-              </button>
-            </div>
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow flex items-center gap-1.5 shrink-0 active:scale-95"
+                >
+                  <RefreshCw size={12} />
+                  Tính lại
+                </button>
+              </div>
 
-            {/* Preview cao độ nhanh */}
-            {data.casingElevation != null && data.layers.length > 0 && (() => {
-              const casing = data.casingElevation!;
-              let cum = 0;
-              const preview = data.layers.slice(0, 5).map((l, i) => {
-                const from = parseFloat((casing - cum).toFixed(2));
-                cum += l.lengthMeters;
-                const to = parseFloat((casing - cum).toFixed(2));
-                return { i, from, to, len: l.lengthMeters };
-              });
-              return (
-                <div className="bg-white rounded-xl border border-blue-200 p-3">
-                  <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest mb-2">Preview cao độ (5 lớp đầu)</p>
-                  <div className="space-y-1">
-                    {preview.map(p => (
-                      <div key={p.i} className="flex items-center gap-2 text-[10px]">
-                        <span className="w-14 font-black text-blue-800">Lớp {p.i + 1}:</span>
-                        <span className="text-slate-600">{p.from >= 0 ? '+' : ''}{p.from.toFixed(2)}m</span>
-                        <span className="text-slate-400">→</span>
-                        <span className="text-slate-600">{p.to >= 0 ? '+' : ''}{p.to.toFixed(2)}m</span>
-                        <span className="ml-auto text-slate-400">({p.len.toFixed(2)}m)</span>
-                      </div>
-                    ))}
-                    {data.layers.length > 5 && (
-                      <p className="text-[9px] text-blue-400 font-medium">... và {data.layers.length - 5} lớp khác</p>
-                    )}
-                  </div>
+              {/* Mini preview inline — hiện ngay sau khi tính */}
+              {data.layers.length > 0 && data.layers[0].elevationFrom !== 0 && (
+                <div className="flex items-center gap-2 text-[10px] bg-white border border-blue-200 rounded-xl px-3 py-1.5 flex-wrap">
+                  {data.layers.slice(0, 3).map((l, i) => (
+                    <span key={i} className="text-blue-700 font-bold whitespace-nowrap">
+                      L{i+1}: {l.elevationFrom >= 0 ? '+' : ''}{l.elevationFrom.toFixed(2)}→{l.elevationTo >= 0 ? '+' : ''}{l.elevationTo.toFixed(2)}m
+                    </span>
+                  ))}
+                  {data.layers.length > 3 && (
+                    <span className="text-blue-400 font-medium">+{data.layers.length - 3} lớp...</span>
+                  )}
                 </div>
-              );
-            })()}
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
