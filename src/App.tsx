@@ -557,47 +557,43 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
   ┌──────────────────────────────────────────────────────────────────────────────────┐
   │ NHIỆM VỤ CỦA AI CHO LOẠI B:                                                     │
   │   1. Đọc "casingElevation" từ ô "Cao độ đỉnh casing (vết lắng lần 1):" (số ÂM) │
-  │   2. Đọc "chiều dài từng lớp" = số NHỎ trong cột "Độ sâu (từ đỉnh casing)"     │
-  │   3. Trả về elevationFrom=0, elevationTo=-chiều_dài cho từng lớp               │
-  │      (Hệ thống sẽ tự tính lại cao độ tuyệt đối từ casingElevation)             │
+  │   2. Với mỗi lớp: đọc "cumulativeDepth" = SỐ LỚN (tích lũy từ đỉnh casing)     │
+  │   3. Trả về elevationFrom=0, elevationTo=-cumulativeDepth cho từng lớp          │
+  │      (Hệ thống tự tính cao độ tuyệt đối và chiều dài từ cumulativeDepth)        │
   │                                                                                  │
-  │ ⚠️ TRỌNG TÂM DUY NHẤT: Đọc ĐÚNG chiều dài từng lớp (số nhỏ)                   │
-  │                                                                                  │
-  │ CẤU TRÚC CỘT "Độ sâu (m) từ đỉnh casing":                                      │
-  │   Mỗi dòng có 2 số:                                                              │
-  │   • Số NHỎ (trên/trái) = chiều dài LỚP ĐÓ → lengthMeters, elevationTo=-số_này  │
-  │   • Số LỚN (dưới/phải) = tổng tích lũy → CHỈ dùng để XÁC NHẬN                  │
-  │                                                                                  │
-  │ VÍ DỤ: casingElevation=-1, các số nhỏ = [1,81 ; 6,00 ; 5,19 ...]              │
-  │   Lớp 1: elevationFrom=0, elevationTo=-1,81  (lengthMeters=1,81)               │
-  │   Lớp 2: elevationFrom=0, elevationTo=-6,00  (lengthMeters=6,00)               │
-  │   → Hệ thống sẽ tự tính: Lớp1: -1→-2,81 ; Lớp2: -2,81→-8,81                  │
+  │ ⚠️ TRỌNG TÂM DUY NHẤT: Đọc ĐÚNG số LỚN (tích lũy) của mỗi lớp                 │
   └──────────────────────────────────────────────────────────────────────────────────┘
 
   ⭐ ĐỌC "casingElevation":
   - Tìm ô "Cao độ đỉnh casing (vết lắng lần 1):" trong header biên bản
   - Số viết tay trong ô đó là độ sâu → LUÔN gán dấu ÂM
-  - VD: đọc "0,9" → casingElevation = -0.9 ; đọc "1,00" → casingElevation = -1.0
-  - Nếu đã có dấu âm trên giấy → giữ nguyên
+  - VD: đọc "0,71" → casingElevation=-0.71 ; đọc "1,00" → casingElevation=-1.0
   - Nếu không tìm thấy → casingElevation = 0
 
-  ⭐ LOẠI B — CHIỀU DÀI LỚP (TRỌNG TÂM DUY NHẤT, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
+  ⭐ LOẠI B — ĐỌC SỐ TÍCH LŨY (cumulativeDepth) — TRỌNG TÂM DUY NHẤT:
 
   CẤU TRÚC 2 SỐ TRONG CỘT "Độ sâu (m) từ đỉnh casing":
     Mỗi dòng có 2 con số xếp theo chiều dọc (hoặc 2 cột sát nhau):
-      • Số NHỎ (trên/trái)  = chiều dài của LỚP ĐÓ → ĐÂY LÀ GIÁ TRỊ CẦN LẤY → lengthMeters
-      • Số LỚN (dưới/phải) = tổng tích lũy đến cuối lớp đó → dùng để XÁC NHẬN CHÉO
+      • Số NHỎ (trên/trái)  = chiều dài LỚP ĐÓ (không cần quan tâm)
+      • Số LỚN (dưới/phải) = tổng tích lũy từ đỉnh casing → ĐÂY LÀ cumulativeDepth CẦN LẤY
 
-    Trả về: elevationFrom=0, elevationTo=-số_nhỏ cho từng lớp
+    Trả về: elevationFrom=0, elevationTo=-cumulativeDepth cho từng lớp
 
-  ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO — BẮT BUỘC:
-    Cộng dồn số nhỏ (chiều dài) từ trên xuống → kết quả phải = số lớn cùng dòng:
+  CÁCH NHẬN BIẾT SỐ LỚN (tích lũy):
+    - Luôn LỚN HƠN số nhỏ trên cùng dòng
+    - Tăng dần từ dòng trên xuống dòng dưới (không bao giờ giảm)
+    - Thường nằm THẤP HƠN hoặc BÊN PHẢI trong ô
 
-    Số nhỏ dòng 1 = L1 → tích lũy = L1 → phải = số lớn dòng 1
-    Số nhỏ dòng 2 = L2 → tích lũy = L1+L2 → phải = số lớn dòng 2
-    ...
+  VÍ DỤ THỰC TẾ (casingElevation=-0,71):
+    Lớp 1: số nhỏ=1,88 | SỐ LỚN=2,78  → cumulativeDepth=2,78 → elevationTo=-2,78
+    Lớp 2: số nhỏ=10,18 | SỐ LỚN=12,96 → cumulativeDepth=12,96 → elevationTo=-12,96
+    Lớp 3: số nhỏ=5,24 | SỐ LỚN=18,20  → cumulativeDepth=18,20 → elevationTo=-18,20
+    → Hệ thống sẽ tính: Lớp1:-0,71→-3,49 ; Lớp2:-3,49→-13,67 ; Lớp3:-13,67→-18,91
 
-    Nếu KHÔNG khớp → đọc sai số nhỏ (chiều dài), phải đọc lại.
+  ⭐ XÁC NHẬN CHÉO — BẮT BUỘC:
+    cumulativeDepth(dòng N) > cumulativeDepth(dòng N-1) → phải tăng dần ✓
+    cumulativeDepth(dòng N) - cumulativeDepth(dòng N-1) ≈ số nhỏ(dòng N) ✓
+    Nếu KHÔNG thoả → đọc sai số lớn, phải đọc lại.
 
   VÍ DỤ CỤ THỂ từ biên bản thực tế:
     Dòng 1: số trên = 1,1 → L1 = 1.1  |  số dưới = 1,1  ✓ (1.1 = 1.1)
@@ -774,6 +770,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
                 dateTo: { type: Type.STRING },
                 elevationFrom: { type: Type.NUMBER },
                 elevationTo: { type: Type.NUMBER },
+                cumulativeDepth: { type: Type.NUMBER, description: "Loại B: Số LỚN (tích lũy từ đỉnh casing đến cuối lớp này). VD: 2,78 hoặc 12,96. Loại A: để 0." },
                 actualGeology: { type: Type.STRING, description: "Số hiệu lớp địa chất thực tế (ví dụ: \"1\", \"2\"). Tuyệt đối không lấy mô tả chữ." },
                 notes: { type: Type.STRING, description: "Ghi chú cho lớp địa chất này (nếu có)" }
               },
@@ -910,26 +907,15 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     let finalElevationTo = 0;
 
     if (isTypeB) {
-      // Loại B: AI đã tính cao độ tuyệt đối từ casingElevation
-      // Chiều dài = |elevationTo - elevationFrom| (khoảng cách tuyệt đối giữa 2 cao độ)
-      const elevFrom = toNum(layer.elevationFrom, 0);
+      // Loại B: chiều dài sơ bộ từ cumulativeDepth hoặc elevationTo
+      // (sẽ được tính lại chính xác trong block finalLayers bên dưới)
+      const cumDepth = toNum(layer.cumulativeDepth, 0);
       const elevTo   = toNum(layer.elevationTo, 0);
-      length = Math.abs(elevTo - elevFrom);
-
-      // Nếu AI tính sai (cả 2 đều là 0 hoặc length = 0) → fallback về chiều dài từ độ sâu
-      if (length < 0.01) {
-        // Thử đọc từ chiều sâu tích lũy nếu có
-        length = Math.abs(elevTo) || 0;
-      }
-
-      // Giữ nguyên cao độ AI đã tính (không reset về 0)
-      finalElevationFrom = elevFrom;
-      finalElevationTo   = elevTo;
-
-      // Cảnh báo nếu chiều dài bất thường
-      if (length < 0.1 || length > 80) {
-        console.warn(`[TypeB CrossCheck] Lớp ${idx+1} chiều dài = ${length}m — có thể đọc sai. Kiểm tra lại biên bản gốc.`);
-      }
+      // Ưu tiên dùng cumulativeDepth, fallback về |elevationTo|
+      length = cumDepth > 0 ? cumDepth : Math.abs(elevTo);
+      if (length < 0.01) length = 0;
+      finalElevationFrom = 0; // tạm thời, sẽ tính lại
+      finalElevationTo   = -length; // tạm thời
     } else {
       // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
       length = Math.abs(toNum(layer.elevationTo) - toNum(layer.elevationFrom));
@@ -968,19 +954,45 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 
   let finalLayers = processedLayers;
 
-  // ── LUÔN tính lại cao độ cho Loại B từ casingElevation + lengthMeters ──
-  // Không phụ thuộc vào AI tính đúng hay sai — đảm bảo nhất quán 100%
+  // ── LUÔN tính lại cao độ cho Loại B từ casingElevation + cumulativeDepth ──
+  // casingElevation luôn là số ÂM (độ sâu từ mặt đất)
+  // elevationTo(lớp N) = casingElevation - cumulativeDepth(lớp N)
+  // elevationFrom(lớp N) = casingElevation - cumulativeDepth(lớp N-1)
+  // lengthMeters(lớp N) = cumulativeDepth(lớp N) - cumulativeDepth(lớp N-1)
   if (isTypeB) {
     const casing = casingElevation ?? 0;
-    let cumulative = 0;
+
+    // Ưu tiên dùng cumulativeDepth AI đã đọc (số tích lũy lớn)
+    const hasCumulative = processedLayers.every((l: any) => toNum(l.cumulativeDepth, 0) > 0);
+
+    let prevCumulative = 0;
     finalLayers = processedLayers.map((layer: any) => {
-      const layerLength = toNum(layer.lengthMeters, 0);
-      const absElevFrom = parseFloat((casing - cumulative).toFixed(3));
-      cumulative += layerLength;
-      const absElevTo = parseFloat((casing - cumulative).toFixed(3));
-      return { ...layer, elevationFrom: absElevFrom, elevationTo: absElevTo };
+      let cumDepth: number;
+
+      if (hasCumulative && toNum(layer.cumulativeDepth, 0) > 0) {
+        // AI đọc được số tích lũy → dùng trực tiếp
+        cumDepth = toNum(layer.cumulativeDepth);
+      } else {
+        // Fallback: cộng dồn từ lengthMeters
+        cumDepth = prevCumulative + toNum(layer.lengthMeters, 0);
+      }
+
+      const absElevFrom = parseFloat((casing - prevCumulative).toFixed(3));
+      const absElevTo   = parseFloat((casing - cumDepth).toFixed(3));
+      const newLength   = parseFloat((cumDepth - prevCumulative).toFixed(3));
+      const newSpeed    = toNum(layer.durationHours) > 0 ? newLength / toNum(layer.durationHours) : toNum(layer.speedMph);
+
+      prevCumulative = cumDepth;
+
+      return {
+        ...layer,
+        elevationFrom: absElevFrom,
+        elevationTo:   absElevTo,
+        lengthMeters:  newLength > 0 ? newLength : toNum(layer.lengthMeters),
+        speedMph:      newSpeed,
+      };
     });
-    console.log(`[CasingCalc] casing=${casing}m, ${finalLayers.length} lớp, tổng sâu=${cumulative.toFixed(2)}m`);
+    console.log(`[CasingCalc] casing=${casing}m, hasCumulative=${hasCumulative}, ${finalLayers.length} lớp`);
   }
 
   return { 
