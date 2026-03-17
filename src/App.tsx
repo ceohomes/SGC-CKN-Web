@@ -444,6 +444,39 @@ const AutoResizeTextarea = ({ value, onChange, className, placeholder, style, ..
   );
 };
 
+// Component Input số hỗ trợ dấu phẩy và local state để tránh lỗi hook trong loop
+const NumericCell = ({ value, onChange, className, style }: { value: any, onChange: (val: number) => void, className?: string, style?: React.CSSProperties }) => {
+  const [localVal, setLocalVal] = React.useState(toNum(value).toString().replace('.', ','));
+  
+  React.useEffect(() => {
+    setLocalVal(toNum(value).toString().replace('.', ','));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      value={localVal}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setLocalVal(raw);
+        const parsed = parseFloat(raw.replace(',', '.'));
+        if (!isNaN(parsed)) onChange(parsed);
+      }}
+      onBlur={(e) => {
+        const parsed = parseFloat(e.target.value.replace(',', '.'));
+        if (!isNaN(parsed)) {
+          onChange(parsed);
+          setLocalVal(parsed.toString().replace('.', ','));
+        } else {
+          setLocalVal(toNum(value).toString().replace('.', ','));
+        }
+      }}
+      className={className}
+      style={style}
+    />
+  );
+};
+
 // --- Gemini Service ---
 
 // Kiểm tra lỗi quota/rate-limit từ Gemini
@@ -4470,6 +4503,7 @@ export default function App() {
             onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
             isExportingAll={isExportingAll}
             onExportAll={exportAllToExcel}
+            githubCreds={githubCreds}
           />
         )}
       </main>
@@ -5502,6 +5536,7 @@ function SummaryView({
   onUploadClick,
   isExportingAll,
   onExportAll,
+  githubCreds,
 }: { 
   history: ExtractionResult[], 
   onSelectResult: (res: ExtractionResult) => void,
@@ -5510,6 +5545,7 @@ function SummaryView({
   onUploadClick: () => void,
   isExportingAll: boolean,
   onExportAll: (rows: ExtractionResult[]) => void,
+  githubCreds: { token: string; username: string; repo: string } | null;
 }) {
   const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
   const [isExportingWeekly, setIsExportingWeekly] = useState(false);
@@ -8905,7 +8941,6 @@ function EditSplitView({
                 <table className="w-full border-collapse table-auto">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-1 py-2 text-center text-[11px] font-black text-slate-500 uppercase border-r border-slate-300 whitespace-nowrap" style={{width:'72px'}}>Di chuyển</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT <br/> THỰC TẾ</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
@@ -8949,28 +8984,6 @@ function EditSplitView({
                         const { row: rowBg, text: rowText } = groupColors[rowColorIdx[idx]];
                         return (
                       <tr key={idx} className={`group transition-colors hover:opacity-90`}>
-                        {/* Cột di chuyển lên/xuống */}
-                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'72px'}}>
-                          <div className="flex items-center justify-center gap-0.5 py-1">
-                            <button
-                              onClick={() => moveLayer(idx, 'up')}
-                              disabled={idx === 0}
-                              title="Lên"
-                              className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 15l-6-6-6 6"/></svg>
-                            </button>
-                            <span className="text-[10px] font-black text-slate-400 w-4 text-center">{idx+1}</span>
-                            <button
-                              onClick={() => moveLayer(idx, 'down')}
-                              disabled={idx === data.layers.length - 1}
-                              title="Xuống"
-                              className="p-1 rounded hover:bg-blue-100 text-slate-400 hover:text-blue-600 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
-                            </button>
-                          </div>
-                        </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'60px'}}>
                           <div className="flex flex-col items-center px-1 py-1">
                             <input 
@@ -9038,67 +9051,20 @@ function EditSplitView({
                           </div>
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
-                          {(() => {
-                            const [localVal, setLocalVal] = React.useState(toNum(layer.elevationFrom).toString().replace('.', ','));
-                            React.useEffect(() => {
-                              setLocalVal(toNum(layer.elevationFrom).toString().replace('.', ','));
-                            }, [layer.elevationFrom]);
-                            return (
-                              <input
-                                type="text"
-                                value={localVal}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  setLocalVal(raw);
-                                  // Chỉ parse và cập nhật khi là số hợp lệ (cho phép gõ dở "-1,")
-                                  const parsed = parseFloat(raw.replace(',', '.'));
-                                  if (!isNaN(parsed)) updateLayer(idx, 'elevationFrom', parsed);
-                                }}
-                                onBlur={(e) => {
-                                  const parsed = parseFloat(e.target.value.replace(',', '.'));
-                                  if (!isNaN(parsed)) {
-                                    updateLayer(idx, 'elevationFrom', parsed);
-                                    setLocalVal(parsed.toString().replace('.', ','));
-                                  } else {
-                                    setLocalVal(toNum(layer.elevationFrom).toString().replace('.', ','));
-                                  }
-                                }}
-                                className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
-                                style={{ minWidth: '80px', width: '80px' }}
-                              />
-                            );
-                          })()}
+                          <NumericCell
+                            value={layer.elevationFrom}
+                            onChange={(val) => updateLayer(idx, 'elevationFrom', val)}
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                            style={{ minWidth: '80px', width: '80px' }}
+                          />
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
-                          {(() => {
-                            const [localVal, setLocalVal] = React.useState(toNum(layer.elevationTo).toString().replace('.', ','));
-                            React.useEffect(() => {
-                              setLocalVal(toNum(layer.elevationTo).toString().replace('.', ','));
-                            }, [layer.elevationTo]);
-                            return (
-                              <input
-                                type="text"
-                                value={localVal}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  setLocalVal(raw);
-                                  const parsed = parseFloat(raw.replace(',', '.'));
-                                  if (!isNaN(parsed)) updateLayer(idx, 'elevationTo', parsed);
-                                }}
-                                onBlur={(e) => {
-                                  const parsed = parseFloat(e.target.value.replace(',', '.'));
-                                  if (!isNaN(parsed)) {
-                                    updateLayer(idx, 'elevationTo', parsed);
-                                    setLocalVal(parsed.toString().replace('.', ','));
-                                  } else {
-                                    setLocalVal(toNum(layer.elevationTo).toString().replace('.', ','));
-                                  }
-                                }}
-                                className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
-                                style={{ minWidth: '80px', width: '80px' }}
-                              />
-                            );
-                          })()}
+                          <NumericCell
+                            value={layer.elevationTo}
+                            onChange={(val) => updateLayer(idx, 'elevationTo', val)}
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                            style={{ minWidth: '80px', width: '80px' }}
+                          />
                         </td>
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {formatNumber(layer.durationHours)}
