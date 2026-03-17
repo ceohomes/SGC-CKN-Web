@@ -2408,7 +2408,6 @@ export default function App() {
     setProcessingFiles([]);
     setCurrentResult(null);
     setIsProcessing(false);
-    setActiveSheet('summary');
     alert(`✅ Đã lưu thành công ${resultsToSave.length} biên bản!`);
   };
 
