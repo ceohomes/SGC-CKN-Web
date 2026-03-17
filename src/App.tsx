@@ -481,10 +481,15 @@ const AutoResizeTextarea = ({ value, onChange, className, placeholder, style, ..
 
 // Component Input số hỗ trợ dấu phẩy và local state để tránh lỗi hook trong loop
 const NumericCell = ({ value, onChange, className, style }: { value: any, onChange: (val: number) => void, className?: string, style?: React.CSSProperties }) => {
-  const [localVal, setLocalVal] = React.useState(toNum(value).toString().replace('.', ','));
+  const format = (v: any) => {
+    const n = toNum(v);
+    return n.toFixed(2).replace('.', ',');
+  };
+
+  const [localVal, setLocalVal] = React.useState(format(value));
   
   React.useEffect(() => {
-    setLocalVal(toNum(value).toString().replace('.', ','));
+    setLocalVal(format(value));
   }, [value]);
 
   return (
@@ -501,9 +506,9 @@ const NumericCell = ({ value, onChange, className, style }: { value: any, onChan
         const parsed = parseFloat(e.target.value.replace(',', '.'));
         if (!isNaN(parsed)) {
           onChange(parsed);
-          setLocalVal(parsed.toString().replace('.', ','));
+          setLocalVal(format(parsed));
         } else {
-          setLocalVal(toNum(value).toString().replace('.', ','));
+          setLocalVal(format(value));
         }
       }}
       className={className}
@@ -8807,12 +8812,12 @@ function EditSplitView({
       }
     }
     
-    // Recalculate duration and speed if times or elevations change
+    // Recalculate duration and speed if times or dates change
     if (['timeFrom', 'timeTo', 'dateFrom', 'dateTo'].includes(field as string)) {
       newLayers[idx] = recalculateLayer(newLayers[idx]);
     }
 
-    // Logic mới: Khi sửa chiều dài (lengthMeters) hoặc cao độ (elevationFrom, elevationTo)
+    // Logic: Khi sửa chiều dài (lengthMeters) hoặc cao độ (elevationFrom, elevationTo)
     if (['lengthMeters', 'elevationFrom', 'elevationTo'].includes(field as string)) {
       const currentLayer = newLayers[idx];
       const elevFrom = parseFloat(toNum(currentLayer.elevationFrom).toString().replace(',', '.'));
@@ -9192,7 +9197,7 @@ function EditSplitView({
                           <NumericCell
                             value={layer.elevationFrom}
                             onChange={(val) => updateLayer(idx, 'elevationFrom', val)}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
@@ -9200,15 +9205,20 @@ function EditSplitView({
                           <NumericCell
                             value={layer.elevationTo}
                             onChange={(val) => updateLayer(idx, 'elevationTo', val)}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {formatNumber(layer.durationHours)}
                         </td>
-                        <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
-                          {formatNumber(layer.lengthMeters)}
+                        <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
+                          <NumericCell
+                            value={layer.lengthMeters}
+                            onChange={(val) => updateLayer(idx, 'lengthMeters', val)}
+                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                            style={{ minWidth: '75px', width: '75px' }}
+                          />
                         </td>
                         <td className={cn(
                           "px-2 py-1 text-[12px] font-normal text-center align-middle border-r border-slate-200 whitespace-nowrap",
