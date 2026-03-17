@@ -382,14 +382,26 @@ const formatNumber = (num: number | string | undefined | null, decimals: number 
 };
 
 // Tính thời gian thi công (giờ) từ constructionStart đến constructionEnd
-// Định dạng: "HH:mm DD/MM/YYYY"
+// Định dạng: "HH:mm DD/MM/YYYY" hoặc "DD/MM/YYYY HH:mm" hoặc "DD/MM/YYYY"
 const calcConstructionDurationHours = (start: string, end: string): number => {
   if (!start || !end) return 0;
   const parseDateTime = (s: string): Date | null => {
-    // Expect "HH:mm DD/MM/YYYY"
-    const m = s.trim().match(/(\d{1,2}):(\d{2})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (!m) return null;
-    return new Date(parseInt(m[5]), parseInt(m[4]) - 1, parseInt(m[3]), parseInt(m[1]), parseInt(m[2]));
+    if (!s) return null;
+    const trimmed = s.trim();
+    
+    // 1. HH:mm DD/MM/YYYY
+    const m1 = trimmed.match(/(\d{1,2})[:h](\d{2})\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+    if (m1) return new Date(parseInt(m1[5]), parseInt(m1[4]) - 1, parseInt(m1[3]), parseInt(m1[1]), parseInt(m1[2]));
+    
+    // 2. DD/MM/YYYY HH:mm
+    const m2 = trimmed.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2})[:h](\d{2})/i);
+    if (m2) return new Date(parseInt(m2[3]), parseInt(m2[2]) - 1, parseInt(m2[1]), parseInt(m2[4]), parseInt(m2[5]));
+
+    // 3. DD/MM/YYYY
+    const m3 = trimmed.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m3) return new Date(parseInt(m3[3]), parseInt(m3[2]) - 1, parseInt(m3[1]), 0, 0);
+
+    return null;
   };
   const d1 = parseDateTime(start);
   const d2 = parseDateTime(end);
@@ -682,7 +694,8 @@ BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
 - ⚠️ KIỂM TRA LIÊN TỤC: Nếu dòng trước kết thúc 16h57 mà dòng sau bắt đầu 7h20 → phải là 17h20.
 
 - Ngày tháng: Đối chiếu với năm hiện tại (${currentYear}). Văn bản ghi "2026" → trích xuất "2026".
-- constructionStart / constructionEnd: lấy từ "Bắt đầu" / "Kết thúc" ở header biên bản.
+- constructionStart / constructionEnd: lấy từ "Bắt đầu" / "Kết thúc" ở header biên bản. Đây là nguồn tin cậy nhất cho NGÀY và NĂM.
+- ⚠️ QUY TẮC ĐỒNG BỘ NGÀY: Ngày (dateFrom, dateTo) trong bảng "Chi tiết các lớp địa chất" PHẢI khớp với ngày trong "constructionStart" trừ khi có sự chuyển ngày rõ rệt (qua 24h00). Nếu văn bản bảng địa chất chỉ ghi giờ hoặc ngày tháng bị mờ/sai năm, hãy ưu tiên lấy ngày/năm từ constructionStart.
 
 ════════════════════════════════════════════════════
 BƯỚC 4: TRÍCH XUẤT CAO ĐỘ VÀ CHIỀU DÀI
@@ -1045,6 +1058,33 @@ const expandYear = (val: string) => {
   return s;
 };
 
+const expandDateTime = (val: string) => {
+  if (!val) return val;
+  let s = val.trim();
+
+  // Tìm định dạng giờ: HH:mm hoặc HHhMM
+  const timeMatch = s.match(/(\d{1,2})[:h](\d{1,2})/i);
+  let timePart = "";
+  let remaining = s;
+
+  if (timeMatch) {
+    timePart = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2].padStart(2, '0')}`;
+    // Loại bỏ phần giờ để xử lý phần ngày riêng
+    remaining = s.replace(timeMatch[0], '').trim();
+  }
+
+  // Nếu còn nội dung, thử mở rộng như một ngày
+  if (remaining) {
+    const expandedDate = expandYear(remaining);
+    if (timePart) {
+      return `${timePart} ${expandedDate}`;
+    }
+    return expandedDate;
+  }
+
+  return timePart || s;
+};
+
 // --- Components ---
 const SmartDateInput = ({ 
   label, 
@@ -1249,7 +1289,7 @@ export default function App() {
   const [filterItem, setFilterItem] = useState('');
   const [filterStt, setFilterStt] = useState('');
   const [filterComponentName, setFilterComponentName] = useState('');
-  const [filterReportNumber, setFilterReportNumber] = useState('');
+  const [filterPileId, setFilterPileId] = useState('');
   const [filterDiameter, setFilterDiameter] = useState('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -4048,7 +4088,7 @@ export default function App() {
                 if (filterProject && !item.project?.toLowerCase().includes(filterProject.toLowerCase())) return false;
                 if (filterItem && !item.item?.toLowerCase().includes(filterItem.toLowerCase())) return false;
                 if (filterComponentName && !item.componentName?.toLowerCase().includes(filterComponentName.toLowerCase())) return false;
-                if (filterReportNumber && !item.reportNumber?.toLowerCase().includes(filterReportNumber.toLowerCase())) return false;
+                if (filterPileId && !item.pileId?.toLowerCase().includes(filterPileId.toLowerCase())) return false;
                 if (filterDiameter && !item.diameter?.toLowerCase().includes(filterDiameter.toLowerCase())) return false;
                 if (filterDateFrom) {
                   const from = parseFilterDate(filterDateFrom);
@@ -4063,11 +4103,11 @@ export default function App() {
                 return true;
               });
 
-              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterReportNumber || filterDiameter || filterDateFrom || filterDateTo || filterStt;
+              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterPileId || filterDiameter || filterDateFrom || filterDateTo || filterStt;
 
               const resetFilters = () => {
                 setFilterProject(''); setFilterItem(''); setFilterComponentName('');
-                setFilterReportNumber(''); setFilterDiameter('');
+                setFilterPileId(''); setFilterDiameter('');
                 setFilterDateFrom(''); setFilterDateTo('');
                 setFilterStt('');
               };
@@ -4150,7 +4190,7 @@ export default function App() {
                       Bộ lọc
                       {hasActiveFilter && (
                         <span className="bg-orange-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm">
-                          {[filterProject, filterItem, filterComponentName, filterReportNumber, filterDiameter, filterDateFrom, filterDateTo, filterStt].filter(Boolean).length}
+                          {[filterProject, filterItem, filterComponentName, filterPileId, filterDiameter, filterDateFrom, filterDateTo, filterStt].filter(Boolean).length}
                         </span>
                       )}
                     </button>
@@ -4278,14 +4318,14 @@ export default function App() {
                           {filterComponentName && <button onClick={() => setFilterComponentName('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
-                      {/* Biên bản số */}
+                      {/* Số hiệu cọc */}
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Biên bản số</label>
+                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Số hiệu cọc</label>
                         <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
                           <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          <input value={filterReportNumber} onChange={e => setFilterReportNumber(e.target.value)} placeholder="Tìm kiếm biên bản..."
+                          <input value={filterPileId} onChange={e => setFilterPileId(e.target.value)} placeholder="Tìm kiếm số hiệu cọc..."
                             className="w-full pl-9 pr-9 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
-                          {filterReportNumber && <button onClick={() => setFilterReportNumber('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                          {filterPileId && <button onClick={() => setFilterPileId('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
                       {/* Đường kính - Dropdown + Search */}
@@ -8667,7 +8707,24 @@ function EditSplitView({
   };
 
   const updateField = (field: keyof ExtractionResult, value: string) => {
-    setData(prev => ({ ...prev, [field]: value }));
+    setData(prev => {
+      const newData = { ...prev, [field]: value };
+      
+      // Đồng bộ ngày trong bảng địa chất khi thay đổi ngày bắt đầu thi công
+      if (field === 'constructionStart') {
+        const dateMatch = value.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (dateMatch) {
+          const newDate = dateMatch[1];
+          newData.layers = prev.layers.map(layer => ({
+            ...layer,
+            dateFrom: newDate,
+            dateTo: newDate
+          }));
+        }
+      }
+      
+      return newData;
+    });
   };
 
   const updateLayer = (idx: number, field: keyof DrillLayer, value: any) => {
@@ -8904,7 +8961,7 @@ function EditSplitView({
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
-                onBlur={(e) => updateField('constructionStart', expandYear(e.target.value))}
+                onBlur={(e) => updateField('constructionStart', expandDateTime(e.target.value))}
                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
                 placeholder="HH:mm dd/mm/yyyy"
               />
@@ -8914,7 +8971,7 @@ function EditSplitView({
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
-                onBlur={(e) => updateField('constructionEnd', expandYear(e.target.value))}
+                onBlur={(e) => updateField('constructionEnd', expandDateTime(e.target.value))}
                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
                 placeholder="HH:mm dd/mm/yyyy"
               />
