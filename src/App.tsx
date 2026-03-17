@@ -135,6 +135,18 @@ function getGeoDisplay(layer: { actualGeology?: string; designLayerCode?: string
   return geo;
 }
 
+// ── Bỏ số thứ tự ở đầu chuỗi mô tả lớp địa chất ──
+// VD: "2.Sét pha, xám nâu..."  → "Sét pha, xám nâu..."
+//     "11.Sét xám vàng..."     → "Sét xám vàng..."
+//     "3.Sét lẫn hữu cơ..."   → "Sét lẫn hữu cơ..."
+//     "Đất Lấp"               → "Đất Lấp"  (giữ nguyên nếu không có số đầu)
+function stripLayerPrefix(desc: string): string {
+  if (!desc) return desc;
+  // Khớp: số (1 hoặc nhiều chữ số) theo sau là dấu chấm/gạch/ngoặc rồi khoảng trắng tuỳ ý
+  // VD: "2.", "11.", "2. ", "2 - ", "2) "
+  return desc.replace(/^\d+[\.\-\)]\s*/, '').trim();
+}
+
 // --- Types ---
 
 interface DrillLayer {
@@ -182,6 +194,7 @@ interface ExtractionResult {
   _base64?: string;   // Tạm lưu để upload GitHub khi xác nhận
   _mimeType?: string;
   designLayerMap?: Record<string, string>; // Bảng tra cứu lớp địa chất
+  casingElevation?: number | null; // Cao độ đỉnh casing (m) — dùng để tính cao độ tuyệt đối cho Loại B
 }
 
 const GROUP_COLORS = [
@@ -657,6 +670,7 @@ Loại B — KHÔNG trích xuất cao độ:
 Yêu cầu JSON đầu ra:
 - project, item, componentName, pileId, reportNumber, diameter.
 - constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
+- casingElevation: Cao độ đỉnh casing (số thực, ví dụ: -1.5 hoặc +2.3). Loại A: để null. Loại B: tìm dòng "Cao độ đỉnh casing" hoặc "Cao độ đỉnh ống vách" trong header biên bản, trích xuất số (có thể âm hoặc dương).
 - layers: [{ designLayerCode, actualGeology, layerNumber, layerDesign, timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo, notes }]
 - designLayerMap: { "1": "mô tả 1", ... } (để {} cho Loại B)
 - notes: Ghi chú tổng hợp (nếu có).
@@ -668,7 +682,8 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 4. Loại B: Chiều dài lấy từ CỘT TRÁI (số nhỏ), KHÔNG phải cột tích lũy (số lớn)?
 5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
 6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
-7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?`
+7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?
+8. Loại B: Đã tìm và trích xuất "casingElevation" từ header biên bản chưa?`
           },
           {
             inlineData: {
@@ -717,7 +732,8 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
               required: ["layerNumber", "designLayerCode", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
-          notes: { type: Type.STRING, description: "Ghi chú tổng hợp cho toàn bộ biên bản" }
+          notes: { type: Type.STRING, description: "Ghi chú tổng hợp cho toàn bộ biên bản" },
+          casingElevation: { type: Type.NUMBER, description: "Cao độ đỉnh casing (m) — trích từ header biên bản Loại B. Null/0 nếu không có hoặc Loại A." }
         },
         required: ["project", "item", "componentName", "pileId", "reportNumber", "diameter", "constructionStart", "constructionEnd", "layers"]
       }
@@ -733,7 +749,10 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
   const vlookupMap: Record<string, string> = {};
   if (rawData.designLayerMap && typeof rawData.designLayerMap === 'object') {
     Object.entries(rawData.designLayerMap).forEach(([code, desc]) => {
-      if (code && desc) vlookupMap[code.toString().trim()] = desc as string;
+      if (code && desc) {
+        // ⭐ Bỏ số thứ tự đầu mô tả trong designLayerMap (VD: "2.Sét pha..." → "Sét pha...")
+        vlookupMap[code.toString().trim()] = stripLayerPrefix(desc as string);
+      }
     });
   }
 
@@ -814,6 +833,8 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       if (!layer.layerDesign || layer.layerDesign.trim().length < 3) {
         layer.layerDesign = geoCode;
       }
+      // ⭐ Bỏ số thứ tự đầu mô tả (VD: "3.Sét lẫn..." → "Sét lẫn...")
+      layer.layerDesign = stripLayerPrefix(layer.layerDesign);
       // ⭐ AUTO-ĐÁNH STT: designLayerCode = số thứ tự từ 1 trở đi (idx + 1), LUÔN ghi đè
       layer.designLayerCode = String(idx + 1);
       layer.layerNumber = idx + 1;
@@ -822,6 +843,10 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       if (geoCode && vlookupMap[geoCode]) {
         layer.layerDesign = vlookupMap[geoCode];
         layer.designLayerCode = geoCode;
+      }
+      // ⭐ Bỏ số thứ tự đầu mô tả cho Loại A (VD: "2.Sét pha..." → "Sét pha...")
+      if (layer.layerDesign) {
+        layer.layerDesign = stripLayerPrefix(layer.layerDesign);
       }
     }
 
@@ -880,12 +905,37 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     };
   });
 
+  // ── Tính cao độ tuyệt đối cho Loại B nếu có casingElevation ──
+  // casingElevation là cao độ đỉnh casing (thường âm, ví dụ -1.5m)
+  // Cao độ tuyệt đối từng lớp = casingElevation - chiều_sâu_tích_lũy
+  const casingElevation = typeof rawData.casingElevation === 'number' && rawData.casingElevation !== 0
+    ? rawData.casingElevation
+    : null;
+
+  let finalLayers = processedLayers;
+  if (isTypeB && casingElevation !== null) {
+    let cumulativeDepth = 0;
+    finalLayers = processedLayers.map((layer: any) => {
+      const layerLength = layer.lengthMeters || 0;
+      const absElevFrom = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
+      cumulativeDepth += layerLength;
+      const absElevTo = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
+      return {
+        ...layer,
+        elevationFrom: absElevFrom,
+        elevationTo: absElevTo,
+      };
+    });
+    console.log(`[CasingElevation] Đã tính cao độ tuyệt đối từ casing=${casingElevation}m cho ${finalLayers.length} lớp.`);
+  }
+
   return { 
     ...rawData, 
     constructionStart: normalizeDateTime(rawData.constructionStart), 
     constructionEnd: normalizeDateTime(rawData.constructionEnd), 
-    layers: processedLayers,
-    notes: rawData.notes || ''
+    layers: finalLayers,
+    notes: rawData.notes || '',
+    casingElevation: casingElevation,
   };
 };
 
@@ -1211,7 +1261,7 @@ export default function App() {
             supabase
               .from('drill_extractions')
               // Lấy đầy đủ layers để tính chiều dài, thời gian, vận tốc chính xác
-              .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt, layers')
+              .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt, layers, casingElevation')
               .order('timestamp', { ascending: false }),
             supabase.from('app_settings').select('id, value'),
           ]);
@@ -1228,15 +1278,20 @@ export default function App() {
             }
             const merged = historyRes.data.map((row: any) => {
               const local = localMap[row.id] || {};
+              const rawLayers = (Array.isArray(row.layers) && row.layers.length > 0)
+                ? row.layers
+                : (Array.isArray(local.layers) && local.layers.length > 0)
+                  ? local.layers
+                  : [];
+              // ⭐ Strip số thứ tự đầu mô tả cho dữ liệu đã lưu trong DB
+              const cleanLayers = rawLayers.map((l: any) => ({
+                ...l,
+                layerDesign: l.layerDesign ? stripLayerPrefix(l.layerDesign) : (l.layerDesign || ''),
+              }));
               return {
                 ...local,
                 ...row,
-                // Luôn giữ layers: ưu tiên Supabase nếu có, fallback về local, cuối cùng là []
-                layers: (Array.isArray(row.layers) && row.layers.length > 0)
-                  ? row.layers
-                  : (Array.isArray(local.layers) && local.layers.length > 0)
-                    ? local.layers
-                    : [],
+                layers: cleanLayers,
               };
             });
             setHistory(merged);
@@ -1671,11 +1726,11 @@ export default function App() {
               // Chỉ VLOOKUP nếu có map VÀ geoCode là số (Loại A)
               if (hasMap && geoCode && /^\d+$/.test(geoCode) && map[geoCode]) {
                 if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-                  return { ...layer, layerDesign: map[geoCode] };
+                  return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
                 }
               }
-              // Loại B: giữ nguyên actualGeology và layerDesign từ AI
-              return layer;
+              // Loại B: giữ nguyên nhưng strip số thứ tự đầu mô tả
+              return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
             });
 
             const result: ExtractionResult = {
@@ -3062,6 +3117,8 @@ export default function App() {
             // Lưu fileUrl và fileName mới khi đã thay thế file trên GitHub
             if (finalResult.fileUrl) minimalUpdate.fileUrl = finalResult.fileUrl;
             if (finalResult.fileName) minimalUpdate.fileName = finalResult.fileName;
+            // Lưu casingElevation (có thể null)
+            minimalUpdate.casingElevation = finalResult.casingElevation ?? null;
 
             const { error } = await supabase
               .from('drill_extractions')
@@ -3117,7 +3174,7 @@ export default function App() {
       const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
 
       const commitEdit = async (oldVal: string) => {
-        const newVal = editValue.trim();
+        const newVal = stripLayerPrefix(editValue.trim());
         if (!newVal || newVal === oldVal) { cancelEdit(); return; }
 
         type ToUpdate = { result: ExtractionResult; newLayers?: DrillLayer[]; newRes?: Partial<ExtractionResult> };
@@ -7953,9 +8010,9 @@ function EditSplitView({
             const geoCode = (layer.actualGeology || '').trim();
             const currentDesign = (layer.layerDesign || '').trim();
             if (geoCode && map[geoCode] && (!currentDesign || currentDesign.length < 5)) {
-              return { ...layer, layerDesign: map[geoCode] };
+              return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
             }
-            return layer;
+            return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
           });
 
           setData(prev => ({
@@ -8059,10 +8116,10 @@ function EditSplitView({
         
         if (geoCode && map[geoCode]) {
           if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-            return { ...layer, layerDesign: map[geoCode] };
+            return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
           }
         }
-        return layer;
+        return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
       });
 
       // Bước 4: Merge kết quả mới vào data hiện tại
@@ -8759,6 +8816,102 @@ function EditSplitView({
                 placeholder="HH:mm dd/mm/yyyy"
               />
             </div>
+          </div>
+
+          {/* ── Cao độ đỉnh casing + Tính lại cao độ ── */}
+          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-600 rounded-lg shrink-0">
+                <ArrowDownToLine size={14} className="text-white" />
+              </div>
+              <div>
+                <h4 className="text-[12px] font-black text-blue-900 uppercase tracking-widest">Cao độ đỉnh casing & Tính lại cao độ tuyệt đối</h4>
+                <p className="text-[10px] text-blue-600 font-medium mt-0.5">
+                  Nhập cao độ đỉnh casing → bấm "Tính lại" → hệ thống tự tính Cao độ từ/đến cho từng lớp
+                </p>
+              </div>
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-1.5">
+                <label className="text-[11px] font-black text-blue-800 uppercase tracking-widest">Cao độ đỉnh casing (m)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={data.casingElevation ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                    setData(prev => ({ ...prev, casingElevation: isNaN(val as number) ? null : val }));
+                  }}
+                  className="w-full bg-white border-2 border-blue-300 rounded-xl px-4 py-2.5 text-sm text-blue-900 font-bold focus:border-blue-500 outline-none transition-all shadow-sm"
+                  placeholder="VD: -1.50 hoặc +2.30"
+                />
+                <p className="text-[10px] text-blue-500 font-medium">
+                  {data.casingElevation != null
+                    ? `Cao độ hiện tại: ${data.casingElevation >= 0 ? '+' : ''}${data.casingElevation.toFixed(2)}m`
+                    : 'Chưa có cao độ — cao độ từng lớp sẽ hiển thị là 0'}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const casing = data.casingElevation;
+                  if (casing == null) {
+                    // Reset về 0 nếu không có casing
+                    let cum = 0;
+                    const newLayers = data.layers.map(l => {
+                      const from = 0;
+                      const to = parseFloat((-l.lengthMeters).toFixed(3));
+                      return { ...l, elevationFrom: from, elevationTo: to };
+                    });
+                    setData(prev => ({ ...prev, layers: newLayers }));
+                    return;
+                  }
+                  // Tính cao độ tuyệt đối từng lớp
+                  let cumulativeDepth = 0;
+                  const newLayers = data.layers.map(l => {
+                    const absFrom = parseFloat((casing - cumulativeDepth).toFixed(3));
+                    cumulativeDepth += l.lengthMeters;
+                    const absTo = parseFloat((casing - cumulativeDepth).toFixed(3));
+                    return { ...l, elevationFrom: absFrom, elevationTo: absTo };
+                  });
+                  setData(prev => ({ ...prev, layers: newLayers }));
+                }}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2 shrink-0 active:scale-95"
+              >
+                <RefreshCw size={13} />
+                Tính lại cao độ
+              </button>
+            </div>
+
+            {/* Preview cao độ nhanh */}
+            {data.casingElevation != null && data.layers.length > 0 && (() => {
+              const casing = data.casingElevation!;
+              let cum = 0;
+              const preview = data.layers.slice(0, 5).map((l, i) => {
+                const from = parseFloat((casing - cum).toFixed(2));
+                cum += l.lengthMeters;
+                const to = parseFloat((casing - cum).toFixed(2));
+                return { i, from, to, len: l.lengthMeters };
+              });
+              return (
+                <div className="bg-white rounded-xl border border-blue-200 p-3">
+                  <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest mb-2">Preview cao độ (5 lớp đầu)</p>
+                  <div className="space-y-1">
+                    {preview.map(p => (
+                      <div key={p.i} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-14 font-black text-blue-800">Lớp {p.i + 1}:</span>
+                        <span className="text-slate-600">{p.from >= 0 ? '+' : ''}{p.from.toFixed(2)}m</span>
+                        <span className="text-slate-400">→</span>
+                        <span className="text-slate-600">{p.to >= 0 ? '+' : ''}{p.to.toFixed(2)}m</span>
+                        <span className="ml-auto text-slate-400">({p.len.toFixed(2)}m)</span>
+                      </div>
+                    ))}
+                    {data.layers.length > 5 && (
+                      <p className="text-[9px] text-blue-400 font-medium">... và {data.layers.length - 5} lớp khác</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="space-y-4">

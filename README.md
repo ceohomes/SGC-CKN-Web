@@ -1,39 +1,46 @@
-# SGC - CKN | Construction Management
+# SGC-CKN v2.7 — Hướng dẫn Deploy lên Cloudflare Pages
 
-Hệ thống quản lý dữ liệu thi công cọc khoan nhồi.
-
-## Tính năng mới (cập nhật)
-- ✅ **Cột "File Dữ liệu"**: Tự động tạo file Excel và lưu link tải trực tiếp trên bảng danh sách
-- ✅ Khi lưu biên bản → hệ thống tự export Excel → upload GitHub → lưu link vào Supabase
-- ✅ Click link Excel trên bảng → tải về ngay lập tức
+## ✅ Thay đổi trong v2.7
+- **Nhập cao độ đỉnh casing** → hệ thống tự tính Cao độ từ/đến tuyệt đối cho từng lớp địa chất
+- AI đọc "Cao độ đỉnh casing" từ header biên bản (cả Loại A và Loại B)
+- Nút **"Tính lại cao độ"** trong màn hình chỉnh sửa
+- Preview nhanh cao độ 5 lớp đầu trước khi áp dụng
 
 ---
 
-## Deploy lên Cloudflare Pages / Vercel / Netlify
+## 🚀 Deploy lên Cloudflare Pages
 
-### Bước 1: Cài đặt
+### 1. Push code lên GitHub
+```bash
+git init && git add . && git commit -m "SGC-CKN v2.7"
+git remote add origin https://github.com/YOUR_USERNAME/sgc-ckn.git
+git push -u origin main
+```
+
+### 2. Tạo project Cloudflare Pages
+- Vào dash.cloudflare.com → Workers & Pages → Create → Pages → Connect Git
+- Build command: `npm run build` | Output: `dist` | Node: `20`
+
+### 3. Environment Variables (Settings → Environment variables)
+| Variable | Mô tả |
+|----------|-------|
+| `VITE_SUPABASE_URL` | URL Supabase project |
+| `VITE_SUPABASE_ANON_KEY` | Anon key Supabase |
+| `GITHUB_TOKEN` | GitHub Personal Access Token (quyền repo) |
+| `GITHUB_USERNAME` | GitHub username |
+| `GITHUB_REPO` | Tên repo lưu file (VD: construction-reports) |
+| `GEMINI_API_KEY` | API Key Gemini (tùy chọn) |
+
+### 4. Thêm cột Supabase (chạy 1 lần)
+```sql
+ALTER TABLE drill_extractions 
+ADD COLUMN IF NOT EXISTS "casingElevation" NUMERIC DEFAULT NULL;
+```
+
+---
+
+## Chạy local
 ```bash
 npm install
+npm run dev
 ```
-
-### Bước 2: Build
-```bash
-npm run build
-```
-→ Kết quả nằm trong thư mục `dist/`
-
-### Bước 3: Deploy
-- **Cloudflare Pages**: Upload `dist/` hoặc kết nối GitHub repo (Build command: `npm run build`, Output: `dist`)
-- **Vercel**: `vercel --prod`
-- **Netlify**: Drag & drop thư mục `dist/`
-
----
-
-## Cấu hình trong ứng dụng
-
-Sau khi deploy, vào **Cài đặt** (⚙️) để nhập:
-1. **Gemini API Key** — AI trích xuất dữ liệu
-2. **GitHub Token + Username + Repo** — lưu file ảnh và Excel tự động
-3. **Logo** — tuỳ chỉnh logo công ty
-
-Node.js 18+ required.
