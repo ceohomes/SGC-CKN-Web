@@ -555,61 +555,47 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
 
   ⭐ LOẠI B — CAO ĐỘ TUYỆT ĐỐI (QUAN TRỌNG — ĐỌC KỸ):
   ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │ HIỂU ĐÚNG CẤU TRÚC BIÊN BẢN LOẠI B:                                            │
+  │ NHIỆM VỤ CỦA AI CHO LOẠI B:                                                     │
+  │   1. Đọc "casingElevation" từ ô "Cao độ đỉnh casing (vết lắng lần 1):" (số ÂM) │
+  │   2. Đọc "chiều dài từng lớp" = số NHỎ trong cột "Độ sâu (từ đỉnh casing)"     │
+  │   3. Trả về elevationFrom=0, elevationTo=-chiều_dài cho từng lớp               │
+  │      (Hệ thống sẽ tự tính lại cao độ tuyệt đối từ casingElevation)             │
   │                                                                                  │
-  │ Cột "Cao độ đỉnh casing (vết lắng lần 1)" trong HEADER → gọi là C (m)          │
-  │   VD: C = -0,9m  (thường là số ÂM, viết không có dấu âm trên giấy)             │
-  │   Nếu viết "0,9" không có dấu → hiểu là -0,9m (vì là độ sâu)                   │
-  │   Nếu viết "-0,9" → giữ nguyên -0,9m                                            │
+  │ ⚠️ TRỌNG TÂM DUY NHẤT: Đọc ĐÚNG chiều dài từng lớp (số nhỏ)                   │
   │                                                                                  │
-  │ Cột "Độ sâu (m) từ đỉnh casing" trong BẢNG → chứa 2 số:                        │
-  │   • Số NHỎ (trên): chiều dài của LỚP ĐÓ (VD: 1,88m)                            │
-  │   • Số LỚN (dưới): tổng tích lũy từ đỉnh casing đến đáy lớp đó (VD: 2,78m)    │
+  │ CẤU TRÚC CỘT "Độ sâu (m) từ đỉnh casing":                                      │
+  │   Mỗi dòng có 2 số:                                                              │
+  │   • Số NHỎ (trên/trái) = chiều dài LỚP ĐÓ → lengthMeters, elevationTo=-số_này  │
+  │   • Số LỚN (dưới/phải) = tổng tích lũy → CHỈ dùng để XÁC NHẬN                  │
   │                                                                                  │
-  │ CÔNG THỨC TÍNH CAO ĐỘ TUYỆT ĐỐI:                                               │
-  │   elevationFrom(lớp N) = C - tích_lũy_đến_ĐẦU_lớp_N                            │
-  │   elevationTo(lớp N)   = C - tích_lũy_đến_CUỐI_lớp_N  = C - số_lớn_dòng_N     │
-  │                                                                                  │
-  │ VÍ DỤ THỰC TẾ: C = -0,9m                                                        │
-  │   Lớp 1: số nhỏ=1,88, số lớn=2,78                                               │
-  │     elevationFrom = -0,9 - 0      = -0,90m                                       │
-  │     elevationTo   = -0,9 - 2,78   = -3,68m  ← KHÔNG phải -0,9 - 1,88           │
-  │   Lớp 2: số nhỏ=10,18, số lớn=12,96                                             │
-  │     elevationFrom = -0,9 - 2,78   = -3,68m  (= elevationTo lớp 1)               │
-  │     elevationTo   = -0,9 - 12,96  = -13,86m                                     │
-  │   Lớp 3: số nhỏ=5,24, số lớn=18,20                                              │
-  │     elevationFrom = -0,9 - 12,96  = -13,86m (= elevationTo lớp 2)               │
-  │     elevationTo   = -0,9 - 18,20  = -19,10m                                     │
-  │                                                                                  │
-  │ ❌ SAI: elevationTo = C - số_nhỏ (dùng chiều dài lớp thay vì tích lũy)          │
-  │ ✅ ĐÚNG: elevationTo = C - số_lớn (dùng số tích lũy đến CUỐI lớp)               │
-  │ ✅ ĐÚNG: elevationFrom lớp N = elevationTo lớp N-1 (liên tiếp, không reset về C) │
+  │ VÍ DỤ: casingElevation=-1, các số nhỏ = [1,81 ; 6,00 ; 5,19 ...]              │
+  │   Lớp 1: elevationFrom=0, elevationTo=-1,81  (lengthMeters=1,81)               │
+  │   Lớp 2: elevationFrom=0, elevationTo=-6,00  (lengthMeters=6,00)               │
+  │   → Hệ thống sẽ tự tính: Lớp1: -1→-2,81 ; Lớp2: -2,81→-8,81                  │
   └──────────────────────────────────────────────────────────────────────────────────┘
 
-  ⭐ CÁCH ĐỌC "casingElevation" TỪ HEADER:
-  - Tìm ô "Cao độ đỉnh casing (vết lắng lần 1):" trong phần thông tin chung
-  - Số viết tay trong ô đó = độ sâu (thường không có dấu âm trên giấy)
-  - Luôn gán dấu ÂM: nếu đọc được "0,9" → casingElevation = -0.9
-  - Nếu đã có dấu âm trên giấy "-0,9" → casingElevation = -0.9
+  ⭐ ĐỌC "casingElevation":
+  - Tìm ô "Cao độ đỉnh casing (vết lắng lần 1):" trong header biên bản
+  - Số viết tay trong ô đó là độ sâu → LUÔN gán dấu ÂM
+  - VD: đọc "0,9" → casingElevation = -0.9 ; đọc "1,00" → casingElevation = -1.0
+  - Nếu đã có dấu âm trên giấy → giữ nguyên
   - Nếu không tìm thấy → casingElevation = 0
 
-  ⭐ LOẠI B — CHIỀU DÀI LỚP VÀ SỐ TÍCH LŨY (TRỌNG TÂM, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
+  ⭐ LOẠI B — CHIỀU DÀI LỚP (TRỌNG TÂM DUY NHẤT, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
 
   CẤU TRÚC 2 SỐ TRONG CỘT "Độ sâu (m) từ đỉnh casing":
     Mỗi dòng có 2 con số xếp theo chiều dọc (hoặc 2 cột sát nhau):
-      • Số NHỎ (trên/trái)  = chiều dài của LỚP ĐÓ → dùng để tính lengthMeters
-      • Số LỚN (dưới/phải) = tổng tích lũy từ đỉnh casing đến CUỐI lớp đó → dùng để tính elevationTo
+      • Số NHỎ (trên/trái)  = chiều dài của LỚP ĐÓ → ĐÂY LÀ GIÁ TRỊ CẦN LẤY → lengthMeters
+      • Số LỚN (dưới/phải) = tổng tích lũy đến cuối lớp đó → dùng để XÁC NHẬN CHÉO
 
-    elevationTo(lớp N) = casingElevation - số_lớn(dòng N)
-    elevationFrom(lớp N) = elevationTo(lớp N-1)  [lớp 1: elevationFrom = casingElevation]
+    Trả về: elevationFrom=0, elevationTo=-số_nhỏ cho từng lớp
 
-  ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO — BẮT BUỘC THỰC HIỆN:
-    Sau khi đọc được 2 số của mỗi dòng, PHẢI kiểm tra:
-    Số nhỏ (chiều dài lớp N) + số lớn (tích lũy lớp N-1) = số lớn (tích lũy lớp N)
+  ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO — BẮT BUỘC:
+    Cộng dồn số nhỏ (chiều dài) từ trên xuống → kết quả phải = số lớn cùng dòng:
 
-    VD: Dòng 1: số nhỏ=1,88, số lớn=2,78  → 1,88 + 0 = 1,88? ❌ → thực ra số lớn dòng 1 = tích lũy đầu tiên
-        Dòng 2: số nhỏ=10,18, số lớn=12,96 → 2,78 + 10,18 = 12,96 ✓
-        Dòng 3: số nhỏ=5,24,  số lớn=18,20 → 12,96 + 5,24 = 18,20 ✓
+    Số nhỏ dòng 1 = L1 → tích lũy = L1 → phải = số lớn dòng 1
+    Số nhỏ dòng 2 = L2 → tích lũy = L1+L2 → phải = số lớn dòng 2
+    ...
 
     Nếu KHÔNG khớp → đọc sai số nhỏ (chiều dài), phải đọc lại.
 
@@ -739,15 +725,13 @@ Yêu cầu JSON đầu ra:
 
 KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 1. Đã xác định đúng loại biên bản chưa?
-2. "item" có lấy từ dòng "Hạng mục" không? (không nhầm với Công trình/Dự án)
+2. "item" có lấy từ dòng "Hạng mục" không?
 3. Loại B: "actualGeology" là MÔ TẢ CHỮ?
-4. Loại B: Chiều dài (số nhỏ) và tích lũy (số lớn) đã đọc đúng chưa? Kiểm tra: số_nhỏ + tích_lũy_trước = tích_lũy_hiện_tại?
-5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
+4. Loại B: Số nhỏ (chiều dài) cộng dồn = số lớn tích lũy? (XÁC NHẬN CHÉO)
+5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP chưa?
 6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
 7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?
-8. Loại B: casingElevation đã đọc và gán dấu ÂM chưa? (VD: "0,9" trên giấy → -0.9)
-9. Loại B: elevationTo(lớp N) = casingElevation - số_lớn(dòng N)?
-10. Loại B: elevationFrom(lớp N) = elevationTo(lớp N-1)? (lớp 1: elevationFrom = casingElevation)`
+8. Loại B: casingElevation là số ÂM? (VD: "1,00" trên giấy → -1.0)`
           },
           {
             inlineData: {
@@ -984,34 +968,19 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 
   let finalLayers = processedLayers;
 
-  // Fallback: Nếu AI không tính được cao độ đúng (lớp 2+ vẫn có elevationFrom=elevationTo hoặc = casingElevation)
-  // → tự tính lại từ casingElevation và lengthMeters (chiều dài từng lớp)
+  // ── LUÔN tính lại cao độ cho Loại B từ casingElevation + lengthMeters ──
+  // Không phụ thuộc vào AI tính đúng hay sai — đảm bảo nhất quán 100%
   if (isTypeB) {
     const casing = casingElevation ?? 0;
-
-    // Phát hiện AI tính sai: lớp 2 có elevationFrom != elevationTo lớp 1
-    const aiIsWrong = processedLayers.length > 1 && (() => {
-      const l1To  = toNum(processedLayers[0].elevationTo);
-      const l2From = toNum(processedLayers[1].elevationFrom);
-      // Nếu lệch > 0.01m hoặc tất cả lớp từ 2 đều có elevationFrom = 0 hay = casing
-      return Math.abs(l1To - l2From) > 0.05 ||
-        processedLayers.slice(1).every((l: any) => toNum(l.elevationFrom) === 0 || toNum(l.elevationFrom) === casing);
-    })();
-
-    if (aiIsWrong) {
-      // Tính lại theo công thức đúng: tích lũy chiều dài từng lớp
-      let cumulative = 0;
-      finalLayers = processedLayers.map((layer: any) => {
-        const layerLength = toNum(layer.lengthMeters, 0);
-        const absElevFrom = parseFloat((casing - cumulative).toFixed(3));
-        cumulative += layerLength;
-        const absElevTo = parseFloat((casing - cumulative).toFixed(3));
-        return { ...layer, elevationFrom: absElevFrom, elevationTo: absElevTo };
-      });
-      console.log(`[CasingFallback] Tính lại từ casing=${casing}m, ${finalLayers.length} lớp`);
-    } else {
-      console.log(`[CasingElevation] AI đã tính đúng, casingElevation=${casing}`);
-    }
+    let cumulative = 0;
+    finalLayers = processedLayers.map((layer: any) => {
+      const layerLength = toNum(layer.lengthMeters, 0);
+      const absElevFrom = parseFloat((casing - cumulative).toFixed(3));
+      cumulative += layerLength;
+      const absElevTo = parseFloat((casing - cumulative).toFixed(3));
+      return { ...layer, elevationFrom: absElevFrom, elevationTo: absElevTo };
+    });
+    console.log(`[CasingCalc] casing=${casing}m, ${finalLayers.length} lớp, tổng sâu=${cumulative.toFixed(2)}m`);
   }
 
   return { 
@@ -9055,22 +9024,67 @@ function EditSplitView({
                           </div>
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
-                          <input 
-                            type="text"
-                            value={toNum(layer.elevationFrom).toString().replace('.', ',')} 
-                            onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value.replace(',', '.'))}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
-                            style={{ minWidth: '80px', width: '80px' }}
-                          />
+                          {(() => {
+                            const [localVal, setLocalVal] = React.useState(toNum(layer.elevationFrom).toString().replace('.', ','));
+                            React.useEffect(() => {
+                              setLocalVal(toNum(layer.elevationFrom).toString().replace('.', ','));
+                            }, [layer.elevationFrom]);
+                            return (
+                              <input
+                                type="text"
+                                value={localVal}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setLocalVal(raw);
+                                  // Chỉ parse và cập nhật khi là số hợp lệ (cho phép gõ dở "-1,")
+                                  const parsed = parseFloat(raw.replace(',', '.'));
+                                  if (!isNaN(parsed)) updateLayer(idx, 'elevationFrom', parsed);
+                                }}
+                                onBlur={(e) => {
+                                  const parsed = parseFloat(e.target.value.replace(',', '.'));
+                                  if (!isNaN(parsed)) {
+                                    updateLayer(idx, 'elevationFrom', parsed);
+                                    setLocalVal(parsed.toString().replace('.', ','));
+                                  } else {
+                                    setLocalVal(toNum(layer.elevationFrom).toString().replace('.', ','));
+                                  }
+                                }}
+                                className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                                style={{ minWidth: '80px', width: '80px' }}
+                              />
+                            );
+                          })()}
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
-                          <input 
-                            type="text"
-                            value={toNum(layer.elevationTo).toString().replace('.', ',')} 
-                            onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value.replace(',', '.'))}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
-                            style={{ minWidth: '80px', width: '80px' }}
-                          />
+                          {(() => {
+                            const [localVal, setLocalVal] = React.useState(toNum(layer.elevationTo).toString().replace('.', ','));
+                            React.useEffect(() => {
+                              setLocalVal(toNum(layer.elevationTo).toString().replace('.', ','));
+                            }, [layer.elevationTo]);
+                            return (
+                              <input
+                                type="text"
+                                value={localVal}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setLocalVal(raw);
+                                  const parsed = parseFloat(raw.replace(',', '.'));
+                                  if (!isNaN(parsed)) updateLayer(idx, 'elevationTo', parsed);
+                                }}
+                                onBlur={(e) => {
+                                  const parsed = parseFloat(e.target.value.replace(',', '.'));
+                                  if (!isNaN(parsed)) {
+                                    updateLayer(idx, 'elevationTo', parsed);
+                                    setLocalVal(parsed.toString().replace('.', ','));
+                                  } else {
+                                    setLocalVal(toNum(layer.elevationTo).toString().replace('.', ','));
+                                  }
+                                }}
+                                className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
+                                style={{ minWidth: '80px', width: '80px' }}
+                              />
+                            );
+                          })()}
                         </td>
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {formatNumber(layer.durationHours)}
