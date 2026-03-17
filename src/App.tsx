@@ -8933,69 +8933,6 @@ function EditSplitView({
             </div>
           </div>
 
-          {/* ── Cao độ đỉnh casing + Tính lại cao độ ── */}
-          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* Label + Icon */}
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="p-1.5 bg-blue-600 rounded-lg">
-                  <ArrowDownToLine size={13} className="text-white" />
-                </div>
-                <div>
-                  <h4 className="text-[11px] font-black text-blue-900 uppercase tracking-widest">Cao độ đỉnh casing (m)</h4>
-                  <p className="text-[9px] text-blue-500 font-medium">Nhập → bấm "Tính lại" để cập nhật Cao độ từ/đến</p>
-                </div>
-              </div>
-
-              {/* Input + Button inline */}
-              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={data.casingElevation ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                    setData(prev => ({ ...prev, casingElevation: isNaN(val as number) ? null : val }));
-                  }}
-                  className="flex-1 bg-white border-2 border-blue-300 rounded-xl px-3 py-2 text-sm text-blue-900 font-bold focus:border-blue-500 outline-none transition-all"
-                  placeholder="VD: 0 hoặc -1.50"
-                />
-                <button
-                  onClick={() => {
-                    const casing = data.casingElevation ?? 0;
-                    let cumulativeDepth = 0;
-                    const newLayers = data.layers.map(l => {
-                      const absFrom = parseFloat((casing - cumulativeDepth).toFixed(3));
-                      cumulativeDepth += l.lengthMeters;
-                      const absTo = parseFloat((casing - cumulativeDepth).toFixed(3));
-                      const newLength = Math.abs(absTo - absFrom);
-                      const newSpeed = l.durationHours > 0 ? newLength / l.durationHours : l.speedMph;
-                      return { ...l, elevationFrom: absFrom, elevationTo: absTo, lengthMeters: newLength, speedMph: newSpeed };
-                    });
-                    setData(prev => ({ ...prev, layers: newLayers }));
-                  }}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow flex items-center gap-1.5 shrink-0 active:scale-95"
-                >
-                  <RefreshCw size={12} />
-                  Tính lại
-                </button>
-              </div>
-
-              {/* Mini preview inline — hiện ngay sau khi tính */}
-              {data.layers.length > 0 && data.layers[0].elevationFrom !== 0 && (
-                <div className="flex items-center gap-2 text-[10px] bg-white border border-blue-200 rounded-xl px-3 py-1.5 flex-wrap">
-                  {data.layers.slice(0, 3).map((l, i) => (
-                    <span key={i} className="text-blue-700 font-bold whitespace-nowrap">
-                      L{i+1}: {toNum(l.elevationFrom) >= 0 ? '+' : ''}{toNum(l.elevationFrom).toFixed(2)}→{toNum(l.elevationTo) >= 0 ? '+' : ''}{toNum(l.elevationTo).toFixed(2)}m
-                    </span>
-                  ))}
-                  {data.layers.length > 3 && (
-                    <span className="text-blue-400 font-medium">+{data.layers.length - 3} lớp...</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -9122,7 +9059,7 @@ function EditSplitView({
                             type="text"
                             value={toNum(layer.elevationFrom).toString().replace('.', ',')} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value.replace(',', '.'))}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
@@ -9131,7 +9068,7 @@ function EditSplitView({
                             type="text"
                             value={toNum(layer.elevationTo).toString().replace('.', ',')} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value.replace(',', '.'))}
-                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
+                            className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
