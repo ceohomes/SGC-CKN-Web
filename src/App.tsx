@@ -427,6 +427,29 @@ const parseTimeToMinutes = (timeStr: string): number => {
   return hours * 60 + minutes;
 };
 
+const parseDateTimeToMinutes = (timeStr: string, dateStr: string): number => {
+  if (!timeStr || !dateStr) return 0;
+  
+  // Parse time
+  let cleanTime = timeStr.toLowerCase().replace('h', ':').split(' ')[0].trim();
+  const timeParts = cleanTime.split(':');
+  if (timeParts.length < 2) return 0;
+  const hours = parseInt(timeParts[0], 10);
+  const minutes = parseInt(timeParts[1], 10);
+  
+  // Parse date (DD/MM/YYYY)
+  const dateParts = dateStr.split('/');
+  if (dateParts.length < 3) return 0;
+  const day = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10) - 1;
+  const year = parseInt(dateParts[2], 10);
+  
+  if (isNaN(hours) || isNaN(minutes) || isNaN(day) || isNaN(month) || isNaN(year)) return 0;
+  
+  const dateObj = new Date(year, month, day, hours, minutes);
+  return Math.floor(dateObj.getTime() / (1000 * 60));
+};
+
 // Component Textarea tự động giãn dòng
 const AutoResizeTextarea = ({ value, onChange, className, placeholder, style, ...props }: any) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -5608,10 +5631,9 @@ function SummaryView({
     ? history.reduce((acc, r) => acc + ((r.layers || []).reduce((s, l) => s + (l.speedMph || 0), 0) / (r.layers?.length || 1)), 0) / history.length
     : 0;
 
-  // Tìm các cọc có vận tốc khoan < 1m/h
+  // Tìm các cọc có vận tốc khoan < 1m/h (Bỏ qua 2 lớp cuối cùng)
   const slowPiles = history.filter(r => 
-    r.layers.some(l => l.speedMph > 0 && l.speedMph < 1)
-
+    (r.layers || []).slice(0, -2).some(l => l.speedMph > 0 && l.speedMph < 1)
   );
 
   // ── Phát hiện trùng lặp (Hạng mục + Số hiệu cọc) ──
@@ -6682,11 +6704,11 @@ function SummaryView({
                           }
 
                           // ══════════════════════════════════════════════
-                          // SHEET: Cảnh báo vận tốc khoan thấp < 1 m/h
+                          // SHEET: Cảnh báo vận tốc khoan thấp < 1 m/h (Bỏ qua 2 lớp cuối)
                           // ══════════════════════════════════════════════
                           {
                             const slowInWeek = selectedWeekRecords.filter((r: any) =>
-                              (r.layers || []).some((l: any) => l.speedMph > 0 && l.speedMph < 1)
+                              (r.layers || []).slice(0, -2).some((l: any) => l.speedMph > 0 && l.speedMph < 1)
                             );
 
                             const wsCB = wb.addWorksheet('Cảnh báo vận tốc');
@@ -6731,7 +6753,7 @@ function SummaryView({
                               noRow.height = 22;
                             } else {
                               slowInWeek.forEach((r: any, si: number) => {
-                                const slowLayers = (r.layers || []).filter((l: any) => l.speedMph > 0 && l.speedMph < 1);
+                                const slowLayers = (r.layers || []).slice(0, -2).filter((l: any) => l.speedMph > 0 && l.speedMph < 1);
                                 const minSpd = Math.min(...slowLayers.map((l: any) => l.speedMph));
                                 const slowDesc = slowLayers.map((l: any) =>
                                   `Lớp ${l.layerNumber}: ${toNum(l.speedMph).toFixed(2)} m/h${l.layerDesign ? ' — ' + l.layerDesign : ''}`
@@ -6757,9 +6779,9 @@ function SummaryView({
 
                               // Dòng tổng kết
                               const totalSlowLayers = slowInWeek.reduce((s: number, r: any) =>
-                                s + (r.layers || []).filter((l: any) => l.speedMph > 0 && l.speedMph < 1).length, 0);
+                                s + (r.layers || []).slice(0, -2).filter((l: any) => l.speedMph > 0 && l.speedMph < 1).length, 0);
                               const allSpeeds = slowInWeek.flatMap((r: any) =>
-                                (r.layers || []).filter((l: any) => l.speedMph > 0 && l.speedMph < 1).map((l: any) => l.speedMph));
+                                (r.layers || []).slice(0, -2).filter((l: any) => l.speedMph > 0 && l.speedMph < 1).map((l: any) => l.speedMph));
                               const minAll = allSpeeds.length > 0 ? Math.min(...allSpeeds).toFixed(2) : '—';
 
                               const sumRow = wsCB.addRow([
@@ -7242,7 +7264,7 @@ function SummaryView({
                             const depth = (r.layers||[]).reduce((s,l)=>s+(l.lengthMeters||0),0);
                             const dur = (r.layers||[]).reduce((s,l)=>s+(l.durationHours||0),0);
                             const spd = dur > 0 ? depth/dur : 0;
-                            const hasSlowLayer = (r.layers||[]).some(l => l.speedMph > 0 && l.speedMph < 1);
+                            const hasSlowLayer = (r.layers||[]).slice(0, -2).some(l => l.speedMph > 0 && l.speedMph < 1);
                             return (
                               <div key={r.id} className={`px-4 py-2.5 flex items-center gap-3 transition-colors group ${hasSlowLayer ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}>
                                 <span className="text-[9px] font-black text-slate-400 w-4 shrink-0">{ri+1}</span>
@@ -7267,10 +7289,10 @@ function SummaryView({
                   })}
                 </div>
 
-                {/* ── Cảnh báo vận tốc thấp trong tuần ── */}
+                {/* ── Cảnh báo vận tốc thấp trong tuần (Bỏ qua 2 lớp cuối mỗi biên bản) ── */}
                 {(() => {
                   const slowInWeek = selectedWeekRecords.filter(r =>
-                    (r.layers||[]).some(l => l.speedMph > 0 && l.speedMph < 1)
+                    (r.layers||[]).slice(0, -2).some(l => l.speedMph > 0 && l.speedMph < 1)
                   );
                   if (slowInWeek.length === 0) return null;
                   return (
@@ -7311,7 +7333,7 @@ function SummaryView({
                           </thead>
                           <tbody>
                             {slowInWeek.map((r, si) => {
-                              const slowLayers = (r.layers||[]).filter(l => l.speedMph > 0 && l.speedMph < 1);
+                              const slowLayers = (r.layers||[]).slice(0, -2).filter(l => l.speedMph > 0 && l.speedMph < 1);
                               return (
                                 <tr key={r.id} className={`border-b border-red-100 ${si % 2 === 0 ? 'bg-white' : 'bg-red-50'} hover:bg-red-100 transition-colors`}>
                                   <td className="px-4 py-3">
@@ -7370,11 +7392,11 @@ function SummaryView({
                                   </span>
                                   <span className="text-[9px] text-red-500 font-medium">·</span>
                                   <span className="text-[10px] font-bold text-red-700">
-                                    {slowInWeek.reduce((s,r)=>(r.layers||[]).filter(l=>l.speedMph>0&&l.speedMph<1).length+s, 0)} đoạn &lt; 1 m/h
+                                    {slowInWeek.reduce((s,r)=>(r.layers||[]).slice(0, -2).filter(l=>l.speedMph>0&&l.speedMph<1).length+s, 0)} đoạn &lt; 1 m/h
                                   </span>
                                   <span className="text-[9px] text-red-500 font-medium">·</span>
                                   <span className="text-[10px] font-bold text-red-700">
-                                    Tốc độ thấp nhất: {Math.min(...slowInWeek.flatMap(r=>(r.layers||[]).filter(l=>l.speedMph>0&&l.speedMph<1).map(l=>l.speedMph))).toFixed(2)} m/h
+                                    Tốc độ thấp nhất: {Math.min(...slowInWeek.flatMap(r=>(r.layers||[]).slice(0, -2).filter(l=>l.speedMph>0&&l.speedMph<1).map(l=>l.speedMph))).toFixed(2)} m/h
                                   </span>
                                 </div>
                               </td>
@@ -7732,7 +7754,7 @@ function SummaryView({
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {slowPiles.map((pile) => {
-              const slowLayers = pile.layers.filter(l => l.speedMph > 0 && l.speedMph < 1);
+              const slowLayers = (pile.layers || []).slice(0, -2).filter(l => l.speedMph > 0 && l.speedMph < 1);
               return (
                 <button
                   key={pile.id}
@@ -8706,6 +8728,44 @@ function EditSplitView({
     });
   };
 
+  const recalculateLayer = (layer: DrillLayer): DrillLayer => {
+    const newLayer = { ...layer };
+    
+    // Parse times with dates
+    const startTotalMinutes = parseDateTimeToMinutes(newLayer.timeFrom, newLayer.dateFrom);
+    const endTotalMinutes = parseDateTimeToMinutes(newLayer.timeTo, newLayer.dateTo);
+    
+    if (startTotalMinutes !== 0 && endTotalMinutes !== 0) {
+      let durationMinutes = endTotalMinutes - startTotalMinutes;
+      // Nếu cùng ngày mà giờ kết thúc < giờ bắt đầu, coi như qua đêm (nhưng thường đã có dateTo khác dateFrom)
+      if (durationMinutes < 0 && newLayer.dateFrom === newLayer.dateTo) durationMinutes += 24 * 60;
+      
+      if (durationMinutes <= 0) durationMinutes = 30; 
+      newLayer.durationHours = durationMinutes / 60;
+    } else {
+      // Fallback về logic cũ nếu thiếu ngày
+      const startMinutes = parseTimeToMinutes(newLayer.timeFrom);
+      const endMinutes = parseTimeToMinutes(newLayer.timeTo);
+      if (startMinutes !== 0 || endMinutes !== 0) {
+        let durationMinutes = endMinutes - startMinutes;
+        if (durationMinutes < 0) durationMinutes += 24 * 60;
+        if (durationMinutes <= 0) durationMinutes = 30; 
+        newLayer.durationHours = durationMinutes / 60;
+      }
+    }
+    
+    const elevStart = parseFloat(toNum(newLayer.elevationFrom).toString().replace(',', '.'));
+    const elevEnd = parseFloat(toNum(newLayer.elevationTo).toString().replace(',', '.'));
+    if (!isNaN(elevStart) && !isNaN(elevEnd)) {
+      newLayer.lengthMeters = Math.abs(elevEnd - elevStart);
+      if (newLayer.durationHours > 0) {
+        newLayer.speedMph = newLayer.lengthMeters / newLayer.durationHours;
+      }
+    }
+    
+    return newLayer;
+  };
+
   const updateField = (field: keyof ExtractionResult, value: string) => {
     setData(prev => {
       const newData = { ...prev, [field]: value };
@@ -8715,7 +8775,7 @@ function EditSplitView({
         const dateMatch = value.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (dateMatch) {
           const newDate = dateMatch[1];
-          newData.layers = prev.layers.map(layer => ({
+          newData.layers = prev.layers.map(layer => recalculateLayer({
             ...layer,
             dateFrom: newDate,
             dateTo: newDate
@@ -8748,26 +8808,47 @@ function EditSplitView({
     }
     
     // Recalculate duration and speed if times or elevations change
-    if (['timeFrom', 'timeTo', 'elevationFrom', 'elevationTo'].includes(field as string)) {
-      const layer = newLayers[idx];
-      
-      // Parse times
-      const startMinutes = parseTimeToMinutes(layer.timeFrom);
-      const endMinutes = parseTimeToMinutes(layer.timeTo);
-      
-      if (startMinutes !== 0 || endMinutes !== 0) {
-        let durationMinutes = endMinutes - startMinutes;
-        if (durationMinutes < 0) durationMinutes += 24 * 60;
-        if (durationMinutes <= 0) durationMinutes = 30; 
-        layer.durationHours = durationMinutes / 60;
+    if (['timeFrom', 'timeTo', 'dateFrom', 'dateTo'].includes(field as string)) {
+      newLayers[idx] = recalculateLayer(newLayers[idx]);
+    }
+
+    // Logic mới: Khi sửa chiều dài (lengthMeters) hoặc cao độ (elevationFrom, elevationTo)
+    if (['lengthMeters', 'elevationFrom', 'elevationTo'].includes(field as string)) {
+      const currentLayer = newLayers[idx];
+      const elevFrom = parseFloat(toNum(currentLayer.elevationFrom).toString().replace(',', '.'));
+      const elevTo = parseFloat(toNum(currentLayer.elevationTo).toString().replace(',', '.'));
+      const len = parseFloat(toNum(currentLayer.lengthMeters).toString().replace(',', '.'));
+
+      if (field === 'lengthMeters') {
+        if (!isNaN(elevFrom) && !isNaN(len)) {
+          newLayers[idx].elevationTo = elevFrom - len;
+        }
+      } else if (field === 'elevationTo') {
+        if (!isNaN(elevFrom) && !isNaN(elevTo)) {
+          newLayers[idx].lengthMeters = Math.abs(elevFrom - elevTo);
+        }
+      } else if (field === 'elevationFrom') {
+        if (!isNaN(elevFrom) && !isNaN(len)) {
+          newLayers[idx].elevationTo = elevFrom - len;
+        }
       }
-      
-      const elevStart = parseFloat(toNum(layer.elevationFrom).toString().replace(',', '.'));
-      const elevEnd = parseFloat(toNum(layer.elevationTo).toString().replace(',', '.'));
-      if (!isNaN(elevStart) && !isNaN(elevEnd)) {
-        layer.lengthMeters = Math.abs(elevEnd - elevStart);
-        if (layer.durationHours > 0) {
-          layer.speedMph = layer.lengthMeters / layer.durationHours;
+
+      // Đảm bảo tính lại speed cho lớp hiện tại
+      newLayers[idx] = recalculateLayer(newLayers[idx]);
+
+      // Cập nhật toàn bộ các lớp phía dưới để đồng bộ cao độ
+      for (let i = idx + 1; i < newLayers.length; i++) {
+        const prevLayer = newLayers[i - 1];
+        const prevElevTo = parseFloat(toNum(prevLayer.elevationTo).toString().replace(',', '.'));
+        
+        if (!isNaN(prevElevTo)) {
+          newLayers[i].elevationFrom = prevElevTo;
+          const currentLen = parseFloat(toNum(newLayers[i].lengthMeters).toString().replace(',', '.'));
+          if (!isNaN(currentLen)) {
+            newLayers[i].elevationTo = newLayers[i].elevationFrom - currentLen;
+          }
+          // Tính lại speed cho lớp này
+          newLayers[i] = recalculateLayer(newLayers[i]);
         }
       }
     }
