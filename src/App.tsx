@@ -147,6 +147,28 @@ function stripLayerPrefix(desc: string): string {
   return desc.replace(/^\d+[\.\-\)]\s*/, '').trim();
 }
 
+// ── Ép kiểu an toàn về number — tránh lỗi "toFixed is not a function" ──
+// Supabase/localStorage đôi khi trả về số dưới dạng string
+function toNum(val: any, fallback = 0): number {
+  if (val === null || val === undefined || val === '') return fallback;
+  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return isNaN(n) ? fallback : n;
+}
+
+// ── Chuẩn hóa toàn bộ fields số trong 1 layer — gọi khi load từ DB/localStorage ──
+function sanitizeLayer(layer: any): any {
+  if (!layer) return layer;
+  return {
+    ...layer,
+    elevationFrom:  toNum(layer.elevationFrom,  0),
+    elevationTo:    toNum(layer.elevationTo,     0),
+    durationHours:  toNum(layer.durationHours,   0),
+    lengthMeters:   toNum(layer.lengthMeters,    0),
+    speedMph:       toNum(layer.speedMph,        0),
+    layerNumber:    toNum(layer.layerNumber,     0),
+  };
+}
+
 // --- Types ---
 
 interface DrillLayer {
@@ -885,7 +907,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 
     const speed = durationHours > 0 ? length / durationHours : 0;
 
-    return {
+    return sanitizeLayer({
       ...layer,
       actualGeology: geoCode,
       elevationFrom: finalElevationFrom,
@@ -902,7 +924,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       durationHours: durationHours,
       lengthMeters: length,
       speedMph: speed
-    };
+    });
   });
 
   // ── Tính cao độ tuyệt đối cho Loại B nếu có casingElevation ──
@@ -1284,8 +1306,8 @@ export default function App() {
                 : (Array.isArray(local.layers) && local.layers.length > 0)
                   ? local.layers
                   : [];
-              // ⭐ Strip số thứ tự đầu mô tả cho dữ liệu đã lưu trong DB
-              const cleanLayers = rawLayers.map((l: any) => ({
+              // ⭐ Strip số thứ tự + ép kiểu số an toàn (tránh lỗi "toFixed is not a function")
+              const cleanLayers = rawLayers.map((l: any) => sanitizeLayer({
                 ...l,
                 layerDesign: l.layerDesign ? stripLayerPrefix(l.layerDesign) : (l.layerDesign || ''),
               }));
@@ -1727,11 +1749,11 @@ export default function App() {
               // Chỉ VLOOKUP nếu có map VÀ geoCode là số (Loại A)
               if (hasMap && geoCode && /^\d+$/.test(geoCode) && map[geoCode]) {
                 if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-                  return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
+                  return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
                 }
               }
               // Loại B: giữ nguyên nhưng strip số thứ tự đầu mô tả
-              return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
+              return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
             });
 
             const result: ExtractionResult = {
@@ -1945,8 +1967,8 @@ export default function App() {
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
-          parseFloat(layer.durationHours.toFixed(2)),
-          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(toNum(layer.durationHours).toFixed(2)),
+          parseFloat(toNum(layer.lengthMeters).toFixed(2)),
           parseFloat(spd.toFixed(2)),
           layer.notes || '',
         ];
@@ -2018,7 +2040,7 @@ export default function App() {
         const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
         const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
         const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
-        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(toNum(g.elevationFrom).toFixed(2)), parseFloat(toNum(g.elevationTo).toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
         const r2 = ws2.addRow(vals2);
         r2.height = 32;
         vals2.forEach((v, ci) => {
@@ -2028,8 +2050,8 @@ export default function App() {
       });
 
       const totVals = ['TỔNG CỘNG','','',result.layers.length,
-        result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
-        result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(toNum(result.layers[0].elevationFrom).toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(toNum(result.layers[result.layers.length - 1].elevationTo).toFixed(2)) : '',
         parseFloat(totalDur.toFixed(2)),parseFloat(totalLen2.toFixed(2)),parseFloat(totalAvgSpd.toFixed(2))];
       const totRow = ws2.addRow(totVals);
       totRow.height = 28;
@@ -2600,8 +2622,8 @@ export default function App() {
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
-          parseFloat(layer.durationHours.toFixed(2)),
-          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(toNum(layer.durationHours).toFixed(2)),
+          parseFloat(toNum(layer.lengthMeters).toFixed(2)),
           parseFloat(spd.toFixed(2)),
           layer.notes || '',
         ];
@@ -2674,7 +2696,7 @@ export default function App() {
         const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
         const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
         const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
-        const vals2 = [i + 1, item.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const vals2 = [i + 1, item.diameter, g.layerDesign, g.segments, parseFloat(toNum(g.elevationFrom).toFixed(2)), parseFloat(toNum(g.elevationTo).toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
         const r2 = ws2.addRow(vals2);
         r2.height = 32;
         vals2.forEach((v, ci) => {
@@ -2683,8 +2705,8 @@ export default function App() {
         });
       });
       const totVals2 = ['TỔNG CỘNG', '', '', item.layers.length,
-        item.layers.length > 0 ? parseFloat(item.layers[0].elevationFrom.toFixed(2)) : '',
-        item.layers.length > 0 ? parseFloat(item.layers[item.layers.length - 1].elevationTo.toFixed(2)) : '',
+        item.layers.length > 0 ? parseFloat(toNum(item.layers[0].elevationFrom).toFixed(2)) : '',
+        item.layers.length > 0 ? parseFloat(toNum(item.layers[item.layers.length - 1].elevationTo).toFixed(2)) : '',
         parseFloat(totalDur2.toFixed(2)), parseFloat(totalLen2b.toFixed(2)), parseFloat(totalAvgSpd2.toFixed(2))];
       const totRow2 = ws2.addRow(totVals2);
       totRow2.height = 28;
@@ -2795,8 +2817,8 @@ export default function App() {
             res.reportNumber, getGeoDisplay(layer), res.diameter, layer.layerDesign,
             layer.timeFrom + ' ' + layer.dateFrom, layer.timeTo + ' ' + layer.dateTo,
             layer.elevationFrom, layer.elevationTo,
-            parseFloat(layer.durationHours.toFixed(2)), parseFloat(layer.lengthMeters.toFixed(2)),
-            parseFloat(layer.speedMph.toFixed(2)), layer.notes,
+            parseFloat(toNum(layer.durationHours).toFixed(2)), parseFloat(toNum(layer.lengthMeters).toFixed(2)),
+            parseFloat(toNum(layer.speedMph).toFixed(2)), layer.notes,
           ]);
           const wrapCols = [2, 3, 4, 6, 9, 17];
           for (let ci = 1; ci <= 17; ci++) {
@@ -3017,8 +3039,8 @@ export default function App() {
             layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
             layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
             layer.elevationFrom, layer.elevationTo,
-            parseFloat(layer.durationHours.toFixed(2)),
-            parseFloat(layer.lengthMeters.toFixed(2)),
+            parseFloat(toNum(layer.durationHours).toFixed(2)),
+            parseFloat(toNum(layer.lengthMeters).toFixed(2)),
             parseFloat(spd.toFixed(2)),
             layer.notes || '',
           ];
@@ -6655,7 +6677,7 @@ function SummaryView({
                                 const slowLayers = (r.layers || []).filter((l: any) => l.speedMph > 0 && l.speedMph < 1);
                                 const minSpd = Math.min(...slowLayers.map((l: any) => l.speedMph));
                                 const slowDesc = slowLayers.map((l: any) =>
-                                  `Lớp ${l.layerNumber}: ${l.speedMph.toFixed(2)} m/h${l.layerDesign ? ' — ' + l.layerDesign : ''}`
+                                  `Lớp ${l.layerNumber}: ${toNum(l.speedMph).toFixed(2)} m/h${l.layerDesign ? ' — ' + l.layerDesign : ''}`
                                 ).join('\n');
                                 const rowBg = si % 2 === 0 ? 'FFFFFFFF' : 'FFFFF1F1';
                                 const dataRow = wsCB.addRow([
@@ -7259,7 +7281,7 @@ function SummaryView({
                                             Lớp {l.layerNumber}
                                           </span>
                                           <span className="text-[9px] text-red-500 font-medium">·</span>
-                                          <span className="text-[10px] font-black text-red-700">{l.speedMph.toFixed(2)} m/h</span>
+                                          <span className="text-[10px] font-black text-red-700">{toNum(l.speedMph).toFixed(2)} m/h</span>
                                           {l.layerDesign && (
                                             <span className="text-[8px] text-red-500 font-medium ml-0.5 max-w-[80px] truncate" title={l.layerDesign}>
                                               · {l.layerDesign}
@@ -7671,7 +7693,7 @@ function SummaryView({
                     <div className="flex flex-wrap gap-1 mt-1">
                       {slowLayers.map((l, idx) => (
                         <span key={idx} className="text-[9px] font-black bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                          Lớp {l.layerNumber}: {l.speedMph.toFixed(2)} m/h
+                          Lớp {l.layerNumber}: {toNum(l.speedMph).toFixed(2)} m/h
                         </span>
                       ))}
                     </div>
@@ -8041,9 +8063,9 @@ function EditSplitView({
             const geoCode = (layer.actualGeology || '').trim();
             const currentDesign = (layer.layerDesign || '').trim();
             if (geoCode && map[geoCode] && (!currentDesign || currentDesign.length < 5)) {
-              return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
+              return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
             }
-            return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
+            return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
           });
 
           setData(prev => ({
@@ -8147,10 +8169,10 @@ function EditSplitView({
         
         if (geoCode && map[geoCode]) {
           if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-            return { ...layer, layerDesign: stripLayerPrefix(map[geoCode]) };
+            return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
           }
         }
-        return { ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') };
+        return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
       });
 
       // Bước 4: Merge kết quả mới vào data hiện tại
@@ -8377,8 +8399,8 @@ function EditSplitView({
           layer.timeFrom + (layer.dateFrom ? '\n' + layer.dateFrom : ''),
           layer.timeTo + (layer.dateTo ? '\n' + layer.dateTo : ''),
           layer.elevationFrom, layer.elevationTo,
-          parseFloat(layer.durationHours.toFixed(2)),
-          parseFloat(layer.lengthMeters.toFixed(2)),
+          parseFloat(toNum(layer.durationHours).toFixed(2)),
+          parseFloat(toNum(layer.lengthMeters).toFixed(2)),
           parseFloat(spd.toFixed(2)),
           layer.notes || '',
         ];
@@ -8464,7 +8486,7 @@ function EditSplitView({
         const { bg, font: fontColor } = GROUP_COLORS[g.colorIdx];
         const isSlowSpd = g.avgSpeed > 0 && g.avgSpeed <= 1;
         const spdBg = isSlowSpd ? 'DC2626' : g.avgSpeed > 5 ? 'D1FAE5' : 'FFF7ED';
-        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(g.elevationFrom.toFixed(2)), parseFloat(g.elevationTo.toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
+        const vals2 = [i + 1, result.diameter, g.layerDesign, g.segments, parseFloat(toNum(g.elevationFrom).toFixed(2)), parseFloat(toNum(g.elevationTo).toFixed(2)), parseFloat(g.totalDuration.toFixed(2)), parseFloat(g.totalLength.toFixed(2)), parseFloat(g.avgSpeed.toFixed(2))];
         const r2 = ws2.addRow(vals2);
         r2.height = 32;
         vals2.forEach((v, ci) => {
@@ -8475,8 +8497,8 @@ function EditSplitView({
 
       // Dòng tổng
       const totVals = ['TỔNG CỘNG', '', '', result.layers.length,
-        result.layers.length > 0 ? parseFloat(result.layers[0].elevationFrom.toFixed(2)) : '',
-        result.layers.length > 0 ? parseFloat(result.layers[result.layers.length - 1].elevationTo.toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(toNum(result.layers[0].elevationFrom).toFixed(2)) : '',
+        result.layers.length > 0 ? parseFloat(toNum(result.layers[result.layers.length - 1].elevationTo).toFixed(2)) : '',
         parseFloat(totalDur.toFixed(2)), parseFloat(totalLen2.toFixed(2)), parseFloat(totalAvgSpd.toFixed(2))];
       const totRow = ws2.addRow(totVals);
       totRow.height = 28;
@@ -8666,8 +8688,8 @@ function EditSplitView({
         layer.durationHours = durationMinutes / 60;
       }
       
-      const elevStart = parseFloat(layer.elevationFrom.toString().replace(',', '.'));
-      const elevEnd = parseFloat(layer.elevationTo.toString().replace(',', '.'));
+      const elevStart = parseFloat(toNum(layer.elevationFrom).toString().replace(',', '.'));
+      const elevEnd = parseFloat(toNum(layer.elevationTo).toString().replace(',', '.'));
       if (!isNaN(elevStart) && !isNaN(elevEnd)) {
         layer.lengthMeters = Math.abs(elevEnd - elevStart);
         if (layer.durationHours > 0) {
@@ -8902,7 +8924,7 @@ function EditSplitView({
                 <div className="flex items-center gap-2 text-[10px] bg-white border border-blue-200 rounded-xl px-3 py-1.5 flex-wrap">
                   {data.layers.slice(0, 3).map((l, i) => (
                     <span key={i} className="text-blue-700 font-bold whitespace-nowrap">
-                      L{i+1}: {l.elevationFrom >= 0 ? '+' : ''}{l.elevationFrom.toFixed(2)}→{l.elevationTo >= 0 ? '+' : ''}{l.elevationTo.toFixed(2)}m
+                      L{i+1}: {toNum(l.elevationFrom) >= 0 ? '+' : ''}{toNum(l.elevationFrom).toFixed(2)}→{toNum(l.elevationTo) >= 0 ? '+' : ''}{toNum(l.elevationTo).toFixed(2)}m
                     </span>
                   ))}
                   {data.layers.length > 3 && (
@@ -9036,7 +9058,7 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
-                            value={layer.elevationFrom.toString().replace('.', ',')} 
+                            value={toNum(layer.elevationFrom).toString().replace('.', ',')} 
                             onChange={(e) => updateLayer(idx, 'elevationFrom', e.target.value.replace(',', '.'))}
                             className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
@@ -9045,7 +9067,7 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <input 
                             type="text"
-                            value={layer.elevationTo.toString().replace('.', ',')} 
+                            value={toNum(layer.elevationTo).toString().replace('.', ',')} 
                             onChange={(e) => updateLayer(idx, 'elevationTo', e.target.value.replace(',', '.'))}
                             className="bg-transparent border-none text-[12px] text-black font-normal focus:bg-white px-2 py-1 outline-none text-center transition-all"
                             style={{ minWidth: '80px', width: '80px' }}
