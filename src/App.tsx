@@ -553,31 +553,65 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
     • Cột phải: Số cộng dồn — chiều sâu tích lũy từ đỉnh casing
   Cột "Địa chất thực tế" — mô tả bằng chữ
 
-  ⭐ LOẠI B — KHÔNG CẦN TÍNH CAO ĐỘ:
-  ┌─────────────────────────────────────────────────────────────────┐
-  │ TUYỆT ĐỐI KHÔNG tính toán hay suy diễn giá trị cao độ.         │
-  │ Đặt: elevationFrom = 0, elevationTo = 0 cho TẤT CẢ các lớp.    │
-  │ Lý do: Biên bản đại trà không ghi cao độ tuyệt đối —            │
-  │         hệ thống sẽ tự tính từ chiều dài sau khi nhập.          │
-  └─────────────────────────────────────────────────────────────────┘
+  ⭐ LOẠI B — CAO ĐỘ TUYỆT ĐỐI (QUAN TRỌNG — ĐỌC KỸ):
+  ┌──────────────────────────────────────────────────────────────────────────────────┐
+  │ HIỂU ĐÚNG CẤU TRÚC BIÊN BẢN LOẠI B:                                            │
+  │                                                                                  │
+  │ Cột "Cao độ đỉnh casing (vết lắng lần 1)" trong HEADER → gọi là C (m)          │
+  │   VD: C = -0,9m  (thường là số ÂM, viết không có dấu âm trên giấy)             │
+  │   Nếu viết "0,9" không có dấu → hiểu là -0,9m (vì là độ sâu)                   │
+  │   Nếu viết "-0,9" → giữ nguyên -0,9m                                            │
+  │                                                                                  │
+  │ Cột "Độ sâu (m) từ đỉnh casing" trong BẢNG → chứa 2 số:                        │
+  │   • Số NHỎ (trên): chiều dài của LỚP ĐÓ (VD: 1,88m)                            │
+  │   • Số LỚN (dưới): tổng tích lũy từ đỉnh casing đến đáy lớp đó (VD: 2,78m)    │
+  │                                                                                  │
+  │ CÔNG THỨC TÍNH CAO ĐỘ TUYỆT ĐỐI:                                               │
+  │   elevationFrom(lớp N) = C - tích_lũy_đến_ĐẦU_lớp_N                            │
+  │   elevationTo(lớp N)   = C - tích_lũy_đến_CUỐI_lớp_N  = C - số_lớn_dòng_N     │
+  │                                                                                  │
+  │ VÍ DỤ THỰC TẾ: C = -0,9m                                                        │
+  │   Lớp 1: số nhỏ=1,88, số lớn=2,78                                               │
+  │     elevationFrom = -0,9 - 0      = -0,90m                                       │
+  │     elevationTo   = -0,9 - 2,78   = -3,68m  ← KHÔNG phải -0,9 - 1,88           │
+  │   Lớp 2: số nhỏ=10,18, số lớn=12,96                                             │
+  │     elevationFrom = -0,9 - 2,78   = -3,68m  (= elevationTo lớp 1)               │
+  │     elevationTo   = -0,9 - 12,96  = -13,86m                                     │
+  │   Lớp 3: số nhỏ=5,24, số lớn=18,20                                              │
+  │     elevationFrom = -0,9 - 12,96  = -13,86m (= elevationTo lớp 2)               │
+  │     elevationTo   = -0,9 - 18,20  = -19,10m                                     │
+  │                                                                                  │
+  │ ❌ SAI: elevationTo = C - số_nhỏ (dùng chiều dài lớp thay vì tích lũy)          │
+  │ ✅ ĐÚNG: elevationTo = C - số_lớn (dùng số tích lũy đến CUỐI lớp)               │
+  │ ✅ ĐÚNG: elevationFrom lớp N = elevationTo lớp N-1 (liên tiếp, không reset về C) │
+  └──────────────────────────────────────────────────────────────────────────────────┘
 
-  ⭐ LOẠI B — CHIỀU DÀI LỚP (TRỌNG TÂM SỐ 1, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
+  ⭐ CÁCH ĐỌC "casingElevation" TỪ HEADER:
+  - Tìm ô "Cao độ đỉnh casing (vết lắng lần 1):" trong phần thông tin chung
+  - Số viết tay trong ô đó = độ sâu (thường không có dấu âm trên giấy)
+  - Luôn gán dấu ÂM: nếu đọc được "0,9" → casingElevation = -0.9
+  - Nếu đã có dấu âm trên giấy "-0,9" → casingElevation = -0.9
+  - Nếu không tìm thấy → casingElevation = 0
 
-  CẤU TRÚC 2 SỐ TRONG CỘT "Độ sâu":
+  ⭐ LOẠI B — CHIỀU DÀI LỚP VÀ SỐ TÍCH LŨY (TRỌNG TÂM, PHẢI CHÍNH XÁC TUYỆT ĐỐI):
+
+  CẤU TRÚC 2 SỐ TRONG CỘT "Độ sâu (m) từ đỉnh casing":
     Mỗi dòng có 2 con số xếp theo chiều dọc (hoặc 2 cột sát nhau):
-      • Số TRÊN (nhỏ hơn) = chiều dài lớp đó  → ĐÂY LÀ GIÁ TRỊ CẦN LẤY
-      • Số DƯỚI (lớn hơn) = tổng cộng dồn      → CHỈ DÙNG ĐỂ XÁC NHẬN
-    elevationFrom = 0, elevationTo = -(số trên)
+      • Số NHỎ (trên/trái)  = chiều dài của LỚP ĐÓ → dùng để tính lengthMeters
+      • Số LỚN (dưới/phải) = tổng tích lũy từ đỉnh casing đến CUỐI lớp đó → dùng để tính elevationTo
+
+    elevationTo(lớp N) = casingElevation - số_lớn(dòng N)
+    elevationFrom(lớp N) = elevationTo(lớp N-1)  [lớp 1: elevationFrom = casingElevation]
 
   ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO — BẮT BUỘC THỰC HIỆN:
-    Sau khi đọc được chiều dài từng lớp, PHẢI kiểm tra bằng cách:
-    Cộng dồn từ trên xuống và so sánh với số tích lũy (số dưới/số lớn):
+    Sau khi đọc được 2 số của mỗi dòng, PHẢI kiểm tra:
+    Số nhỏ (chiều dài lớp N) + số lớn (tích lũy lớp N-1) = số lớn (tích lũy lớp N)
 
-    chiều_dài_lớp_1 = L1
-    chiều_dài_lớp_2 = L2
-    Tổng tích lũy sau lớp 2 = L1 + L2 → phải BẰNG (hoặc xấp xỉ) số tích lũy ghi ở dòng 2
+    VD: Dòng 1: số nhỏ=1,88, số lớn=2,78  → 1,88 + 0 = 1,88? ❌ → thực ra số lớn dòng 1 = tích lũy đầu tiên
+        Dòng 2: số nhỏ=10,18, số lớn=12,96 → 2,78 + 10,18 = 12,96 ✓
+        Dòng 3: số nhỏ=5,24,  số lớn=18,20 → 12,96 + 5,24 = 18,20 ✓
 
-    Nếu KHÔNG khớp → bạn đã đọc sai chiều dài, phải đọc lại.
+    Nếu KHÔNG khớp → đọc sai số nhỏ (chiều dài), phải đọc lại.
 
   VÍ DỤ CỤ THỂ từ biên bản thực tế:
     Dòng 1: số trên = 1,1 → L1 = 1.1  |  số dưới = 1,1  ✓ (1.1 = 1.1)
@@ -683,16 +717,22 @@ Loại A — trích xuất cao độ tuyệt đối:
 - "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
 - ⚠️ ĐỌC SÓT CHỮ SỐ: "-35.08" có thể bị đọc thành "-3.08". Kiểm tra tính liên tục.
 
-Loại B — KHÔNG trích xuất cao độ:
-- elevationFrom = 0, elevationTo = -(chiều_dài_lớp) cho TẤT CẢ dòng.
-- Chiều dài lớp = giá trị cột TRÁI trong "Độ sâu (từ đỉnh casing)" (số nhỏ hơn).
-- KHÔNG tính toán hay cộng dồn bất kỳ giá trị cao độ nào.
+Loại B — tính cao độ tuyệt đối từ casingElevation:
+- ĐỌC "casingElevation" từ header (dòng "Cao độ đỉnh casing").
+- Chiều dài lớp = cột TRÁI trong "Độ sâu (từ đỉnh casing)" (số nhỏ hơn).
+- Tính elevationFrom/To theo công thức cộng dồn:
+    elevationFrom(lớp 1) = casingElevation
+    elevationTo(lớp 1)   = casingElevation - chiềuDài(lớp 1)
+    elevationFrom(lớp N) = elevationTo(lớp N-1)
+    elevationTo(lớp N)   = elevationFrom(lớp N) - chiềuDài(lớp N)
+- ✅ ĐÚNG: elevationFrom lớp 2 = elevationTo lớp 1 (liên tiếp nhau, không reset về 0).
+- ❌ SAI: elevationFrom = 0 cho tất cả các lớp.
 - Ưu tiên tuyệt đối: CHIỀU DÀI phải chính xác 100%, đây là dữ liệu cốt lõi của Loại B.
 
 Yêu cầu JSON đầu ra:
 - project, item, componentName, pileId, reportNumber, diameter.
 - constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
-- casingElevation: Cao độ đỉnh casing (số thực, ví dụ: -1.5 hoặc +2.3). Loại A: để null. Loại B: tìm dòng "Cao độ đỉnh casing" hoặc "Cao độ đỉnh ống vách" trong header biên bản, trích xuất số (có thể âm hoặc dương).
+- casingElevation: Cao độ đỉnh casing (số ÂM, VD: -0.9 hoặc -1.5). Loại A: để null. Loại B: đọc từ ô "Cao độ đỉnh casing (vết lắng lần 1)" trong header. Số viết tay không có dấu âm trên giấy → vẫn gán âm (VD: đọc "0,9" → lưu -0.9).
 - layers: [{ designLayerCode, actualGeology, layerNumber, layerDesign, timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo, notes }]
 - designLayerMap: { "1": "mô tả 1", ... } (để {} cho Loại B)
 - notes: Ghi chú tổng hợp (nếu có).
@@ -700,12 +740,14 @@ Yêu cầu JSON đầu ra:
 KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 1. Đã xác định đúng loại biên bản chưa?
 2. "item" có lấy từ dòng "Hạng mục" không? (không nhầm với Công trình/Dự án)
-3. Loại B: "actualGeology" là MÔ TẢ CHỮ? elevationFrom=0, elevationTo=-(chiều_dài)?
-4. Loại B: Chiều dài lấy từ CỘT TRÁI (số nhỏ), KHÔNG phải cột tích lũy (số lớn)?
+3. Loại B: "actualGeology" là MÔ TẢ CHỮ?
+4. Loại B: Chiều dài (số nhỏ) và tích lũy (số lớn) đã đọc đúng chưa? Kiểm tra: số_nhỏ + tích_lũy_trước = tích_lũy_hiện_tại?
 5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP từ designLayerMap chưa?
 6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
 7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?
-8. Loại B: Đã tìm và trích xuất "casingElevation" từ header biên bản chưa?`
+8. Loại B: casingElevation đã đọc và gán dấu ÂM chưa? (VD: "0,9" trên giấy → -0.9)
+9. Loại B: elevationTo(lớp N) = casingElevation - số_lớn(dòng N)?
+10. Loại B: elevationFrom(lớp N) = elevationTo(lớp N-1)? (lớp 1: elevationFrom = casingElevation)`
           },
           {
             inlineData: {
@@ -884,25 +926,31 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     let finalElevationTo = 0;
 
     if (isTypeB) {
-      // Loại B: chiều dài lấy từ |elevationTo| (AI đặt elevationFrom=0, elevationTo=-chieu_dai)
-      if (layer.elevationFrom === 0) {
-        length = Math.abs(layer.elevationTo);
-      } else {
-        // Fallback: khoảng cách tuyệt đối
-        length = Math.abs(layer.elevationTo - layer.elevationFrom);
+      // Loại B: AI đã tính cao độ tuyệt đối từ casingElevation
+      // Chiều dài = |elevationTo - elevationFrom| (khoảng cách tuyệt đối giữa 2 cao độ)
+      const elevFrom = toNum(layer.elevationFrom, 0);
+      const elevTo   = toNum(layer.elevationTo, 0);
+      length = Math.abs(elevTo - elevFrom);
+
+      // Nếu AI tính sai (cả 2 đều là 0 hoặc length = 0) → fallback về chiều dài từ độ sâu
+      if (length < 0.01) {
+        // Thử đọc từ chiều sâu tích lũy nếu có
+        length = Math.abs(elevTo) || 0;
       }
-      // Normalize: luôn set elevationFrom=0, elevationTo=-length
-      finalElevationFrom = 0;
-      finalElevationTo = parseFloat((-length).toFixed(3));
-      // Log cảnh báo nếu chiều dài có vẻ bất thường (quá nhỏ hoặc quá lớn)
+
+      // Giữ nguyên cao độ AI đã tính (không reset về 0)
+      finalElevationFrom = elevFrom;
+      finalElevationTo   = elevTo;
+
+      // Cảnh báo nếu chiều dài bất thường
       if (length < 0.1 || length > 80) {
         console.warn(`[TypeB CrossCheck] Lớp ${idx+1} chiều dài = ${length}m — có thể đọc sai. Kiểm tra lại biên bản gốc.`);
       }
     } else {
       // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
-      length = Math.abs(layer.elevationTo - layer.elevationFrom);
-      finalElevationFrom = layer.elevationFrom;
-      finalElevationTo = layer.elevationTo;
+      length = Math.abs(toNum(layer.elevationTo) - toNum(layer.elevationFrom));
+      finalElevationFrom = toNum(layer.elevationFrom);
+      finalElevationTo   = toNum(layer.elevationTo);
     }
 
     const speed = durationHours > 0 ? length / durationHours : 0;
@@ -927,29 +975,43 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     });
   });
 
-  // ── Tính cao độ tuyệt đối cho Loại B nếu có casingElevation ──
-  // casingElevation là cao độ đỉnh casing (thường âm, ví dụ -1.5m)
-  // Cao độ tuyệt đối từng lớp = casingElevation - chiều_sâu_tích_lũy
-  const casingElevation = typeof rawData.casingElevation === 'number' && rawData.casingElevation !== 0
+  // ── Kiểm tra và fallback casingElevation ──
+  // casingElevation luôn là số ÂM (độ sâu từ mặt đất)
+  // Công thức: elevationTo(lớp N) = casingElevation - tích_lũy_đến_cuối_lớp_N
+  const casingElevation = typeof rawData.casingElevation === 'number'
     ? rawData.casingElevation
     : null;
 
   let finalLayers = processedLayers;
-  if (isTypeB && casingElevation !== null) {
-    let cumulativeDepth = 0;
-    finalLayers = processedLayers.map((layer: any) => {
-      const layerLength = layer.lengthMeters || 0;
-      const absElevFrom = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
-      cumulativeDepth += layerLength;
-      const absElevTo = parseFloat((casingElevation - cumulativeDepth).toFixed(3));
-      // lengthMeters giữ nguyên từ chiều dài đã đọc — không tính lại từ cao độ để tránh sai lệch làm tròn
-      return {
-        ...layer,
-        elevationFrom: absElevFrom,
-        elevationTo: absElevTo,
-      };
-    });
-    console.log(`[CasingElevation] Đã tính cao độ tuyệt đối từ casing=${casingElevation}m cho ${finalLayers.length} lớp.`);
+
+  // Fallback: Nếu AI không tính được cao độ đúng (lớp 2+ vẫn có elevationFrom=elevationTo hoặc = casingElevation)
+  // → tự tính lại từ casingElevation và lengthMeters (chiều dài từng lớp)
+  if (isTypeB) {
+    const casing = casingElevation ?? 0;
+
+    // Phát hiện AI tính sai: lớp 2 có elevationFrom != elevationTo lớp 1
+    const aiIsWrong = processedLayers.length > 1 && (() => {
+      const l1To  = toNum(processedLayers[0].elevationTo);
+      const l2From = toNum(processedLayers[1].elevationFrom);
+      // Nếu lệch > 0.01m hoặc tất cả lớp từ 2 đều có elevationFrom = 0 hay = casing
+      return Math.abs(l1To - l2From) > 0.05 ||
+        processedLayers.slice(1).every((l: any) => toNum(l.elevationFrom) === 0 || toNum(l.elevationFrom) === casing);
+    })();
+
+    if (aiIsWrong) {
+      // Tính lại theo công thức đúng: tích lũy chiều dài từng lớp
+      let cumulative = 0;
+      finalLayers = processedLayers.map((layer: any) => {
+        const layerLength = toNum(layer.lengthMeters, 0);
+        const absElevFrom = parseFloat((casing - cumulative).toFixed(3));
+        cumulative += layerLength;
+        const absElevTo = parseFloat((casing - cumulative).toFixed(3));
+        return { ...layer, elevationFrom: absElevFrom, elevationTo: absElevTo };
+      });
+      console.log(`[CasingFallback] Tính lại từ casing=${casing}m, ${finalLayers.length} lớp`);
+    } else {
+      console.log(`[CasingElevation] AI đã tính đúng, casingElevation=${casing}`);
+    }
   }
 
   return { 
