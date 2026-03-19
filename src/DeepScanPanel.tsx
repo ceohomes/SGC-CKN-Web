@@ -92,54 +92,66 @@ interface ScanReport {
 // ─────────────────────────────────────────
 // Fetch image (mirrors ensureImageData in App.tsx)
 // ─────────────────────────────────────────
+// Safe base64 encode — won't crash on large images
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 async function fetchImageBase64(
   result: ExtractionResult,
   githubToken?: string
-): Promise<{ base64: string; mimeType: string } | null> {
-  // 1. Use _base64 if available in memory
+): Promise<{ base64: string; mimeType: string; error?: string } | null> {
+  // 1. _base64 in memory
   if (result._base64) {
     const parts = result._base64.split(',');
-    if (parts.length > 1) {
-      return { base64: parts[1], mimeType: result._mimeType || 'image/jpeg' };
-    }
+    if (parts.length > 1) return { base64: parts[1], mimeType: result._mimeType || 'image/jpeg' };
+    return { base64: result._base64, mimeType: result._mimeType || 'image/jpeg' };
   }
 
-  // 2. Fetch from fileUrl via proxy
-  if (result.fileUrl) {
-    let url = result.fileUrl;
-    if (url.includes('github.com') && url.includes('/blob/')) {
-      url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
-    }
-    // Try proxy first
-    try {
-      const resp = await fetch(`/api/proxy-image?url=${encodeURIComponent(url)}`);
-      if (resp.ok) {
-        const buf = await resp.arrayBuffer();
-        if (buf.byteLength > 100) {
-          const mime = resp.headers.get('content-type') || 'image/jpeg';
-          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-          return { base64: b64, mimeType: mime };
-        }
-      }
-    } catch { /* fall through */ }
-
-    // Try direct with token
-    try {
-      const headers: HeadersInit = {};
-      if (githubToken) headers['Authorization'] = `token ${githubToken}`;
-      const resp = await fetch(url, { headers, cache: 'no-store' });
-      if (resp.ok) {
-        const buf = await resp.arrayBuffer();
-        if (buf.byteLength > 100) {
-          const mime = resp.headers.get('content-type') || 'image/jpeg';
-          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-          return { base64: b64, mimeType: mime };
-        }
-      }
-    } catch { /* fall through */ }
+  if (!result.fileUrl) {
+    return { base64: '', mimeType: '', error: 'Biên bản không có ảnh lưu trữ (fileUrl trống). Hãy upload lại.' };
   }
 
-  return null;
+  let url = result.fileUrl;
+  if (url.includes('github.com') && url.includes('/blob/')) {
+    url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+  }
+
+  // Try proxy
+  try {
+    const resp = await fetch(`/api/proxy-image?url=${encodeURIComponent(url)}`);
+    if (resp.ok) {
+      const buf = await resp.arrayBuffer();
+      if (buf.byteLength > 100) {
+        return { base64: arrayBufferToBase64(buf), mimeType: resp.headers.get('content-type') || 'image/jpeg' };
+      }
+      return { base64: '', mimeType: '', error: `Proxy trả về file rỗng (${buf.byteLength} bytes)` };
+    }
+    return { base64: '', mimeType: '', error: `Proxy lỗi HTTP ${resp.status} — URL: ${url.slice(0, 100)}` };
+  } catch (e: any) { /* fall through */ }
+
+  // Try direct
+  try {
+    const headers: HeadersInit = {};
+    if (githubToken) headers['Authorization'] = `token ${githubToken}`;
+    const resp = await fetch(url, { headers, cache: 'no-store' });
+    if (resp.ok) {
+      const buf = await resp.arrayBuffer();
+      if (buf.byteLength > 100) {
+        return { base64: arrayBufferToBase64(buf), mimeType: resp.headers.get('content-type') || 'image/jpeg' };
+      }
+    }
+    return { base64: '', mimeType: '', error: `Không tải được ảnh HTTP ${resp.status}. Kiểm tra GitHub token.` };
+  } catch (e: any) {
+    return { base64: '', mimeType: '', error: `Lỗi mạng: ${e?.message || e}` };
+  }
 }
 
 // ─────────────────────────────────────────
@@ -342,6 +354,7 @@ function ScanReportView({ report }: { report: ScanReport }) {
     : 0;
 
   const rawResponse = (report as any)._rawAiResponse as string | undefined;
+  const fetchError = (report as any)._fetchError as string | undefined;
 
   const accuracyColor = accuracy >= 95 ? 'text-emerald-600' : accuracy >= 80 ? 'text-amber-600' : 'text-red-600';
   const accuracyBg = accuracy >= 95 ? 'bg-emerald-50 border-emerald-200' : accuracy >= 80 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
@@ -388,6 +401,17 @@ function ScanReportView({ report }: { report: ScanReport }) {
           <div className="w-1 h-5 bg-purple-500 rounded-full" />
           <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Kết quả kiểm tra</span>
         </div>
+
+        {/* Fetch error */}
+        {fetchError && (
+          <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs">
+            <p className="font-black text-red-800 mb-1 flex items-center gap-1">
+              <XCircle size={13} /> Không tải được ảnh gốc:
+            </p>
+            <p className="text-red-700">{fetchError}</p>
+            <p className="text-red-500 mt-1 text-[10px]">Tip: Vào Cài đặt kiểm tra GitHub Token, hoặc upload lại file này.</p>
+          </div>
+        )}
 
         {/* Debug: show raw AI response if parsing failed */}
         {rawResponse && (
@@ -575,19 +599,21 @@ export function DeepScanPanel({
 
         // 2. AI deep scan
         let scanResult;
-        if (imgData) {
+        if (imgData && imgData.base64) {
           scanResult = await runDeepScan(result, imgData.base64, imgData.mimeType, apiKey);
         } else {
-          // No image — still do partial check with rule engine note
+          // No image — show fetch error clearly
+          const errMsg = imgData?.error || 'Không có ảnh để quét. Biên bản cần có fileUrl hoặc _base64.';
           scanResult = {
             headerFields: [] as FieldCheck[],
             layers: [] as LayerCheck[],
-            signatureCheck: { found: false, note: 'Không có ảnh để kiểm tra chữ ký' },
+            signatureCheck: { found: false, note: '' },
             totalFields: 0,
             matchedFields: 0,
             mismatchedFields: 0,
             unreadableFields: 0,
-          };
+            _fetchError: errMsg,
+          } as any;
         }
 
         const report: ScanReport = {
