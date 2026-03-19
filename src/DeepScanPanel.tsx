@@ -153,70 +153,47 @@ async function runDeepScan(
 ): Promise<Omit<ScanReport, 'resultId' | 'pileId' | 'project' | 'fileName' | 'fileUrl' | 'scannedAt' | 'imageBase64'>> {
   const ai = new GoogleGenAI({ apiKey });
 
-  const dbSummary = {
-    // Header
-    project: result.project,
-    item: result.item,
-    componentName: result.componentName,
-    pileId: result.pileId,
-    reportNumber: result.reportNumber,
-    diameter: result.diameter,
-    constructionStart: result.constructionStart,
-    constructionEnd: result.constructionEnd,
-    // Layers
-    layers: (result.layers || []).map((l, i) => ({
-      stt: i + 1,
-      timeFrom: l.timeFrom,
-      timeTo: l.timeTo,
-      dateFrom: l.dateFrom,
-      dateTo: l.dateTo,
-      elevationFrom: l.elevationFrom,
-      elevationTo: l.elevationTo,
-      lengthMeters: l.lengthMeters,
-      durationHours: l.durationHours,
-      speedMph: l.speedMph,
-      actualGeology: l.actualGeology,
-    })),
-  };
+  // ── Build compact DB table for prompt ──
+  const headerDB = [
+    { field: 'pileId',            label: 'Số hiệu cọc',    dbValue: result.pileId || '' },
+    { field: 'reportNumber',      label: 'Số biên bản',     dbValue: result.reportNumber || '' },
+    { field: 'diameter',          label: 'Đường kính',      dbValue: result.diameter || '' },
+    { field: 'constructionStart', label: 'Bắt đầu thi công',dbValue: result.constructionStart || '' },
+    { field: 'constructionEnd',   label: 'Kết thúc thi công',dbValue: result.constructionEnd || '' },
+  ];
 
-  const prompt = `Bạn là nhân viên kiểm tra chất lượng dữ liệu, cần mẫn và tỉ mỉ. Nhiệm vụ của bạn là ĐỌC KỸ ảnh biên bản khoan cọc nhồi và ĐỐI CHIẾU từng ô với dữ liệu database bên dưới.
+  const layersDB = (result.layers || []).map((l, i) => ({
+    stt: i + 1,
+    timeFrom:      l.timeFrom,
+    timeTo:        l.timeTo,
+    dateFrom:      l.dateFrom,
+    dateTo:        l.dateTo,
+    elevationFrom: l.elevationFrom,
+    elevationTo:   l.elevationTo,
+    lengthMeters:  l.lengthMeters,
+    durationHours: l.durationHours,
+    speedMph:      l.speedMph,
+  }));
 
-DỮ LIỆU DATABASE (đã trích xuất tự động):
-${JSON.stringify(dbSummary, null, 2)}
+  // ── Prompt — lean, JSON-only, no signature ──
+  const prompt = `Bạn là chuyên viên kiểm tra biên bản khoan cọc. Hãy đọc ảnh và đối chiếu với database.
 
-YÊU CẦU:
-1. Đọc kỹ ảnh biên bản, từng ô một
-2. So sánh với database
-3. Đánh dấu từng trường: "match" / "mismatch" / "unreadable" / "missing"
-4. Cho confidence 0-100 (bạn chắc bao nhiêu % khi đọc ô đó trong ảnh)
-5. Nếu mismatch: ghi rõ bạn đọc được gì trong ảnh
+DATABASE HEADER:
+${headerDB.map(h => `${h.label}: ${h.dbValue}`).join('\n')}
 
-PHẢI kiểm tra:
-- Thông tin header: Dự án, Hạng mục, Tên cấu kiện, Số hiệu cọc, Số BB, Đường kính, Ngày bắt đầu, Ngày kết thúc
-- Từng lớp địa chất: TỪ (H), ĐẾN (H), Ngày từ, Ngày đến, Cao độ từ, Cao độ đến, Dài (m), T.Gian (h), V (m/h)
-- Chữ ký: Có đủ chữ ký Nhà thầu và Tư vấn giám sát không
+DATABASE LAYERS (${layersDB.length} lớp):
+${layersDB.map(l => `Lớp ${l.stt}: TỪ=${l.timeFrom} ĐẾN=${l.timeTo} | ngày ${l.dateFrom}→${l.dateTo} | CĐ ${l.elevationFrom}→${l.elevationTo} | DÀI=${l.lengthMeters}m | TG=${l.durationHours}h | V=${l.speedMph}m/h`).join('\n')}
 
-Trả về JSON THUẦN (không markdown, không giải thích):
-{
-  "headerFields": [
-    { "field": "project", "label": "Dự án", "dbValue": "...", "imageValue": "...", "status": "match|mismatch|unreadable|missing", "confidence": 95, "note": "..." }
-  ],
-  "layers": [
-    {
-      "layerIndex": 0,
-      "fields": [
-        { "field": "timeFrom", "label": "TỪ (H)", "dbValue": "14h10", "imageValue": "14h10", "status": "match", "confidence": 98 },
-        { "field": "timeTo", "label": "ĐẾN (H)", "dbValue": "14h15", "imageValue": "14h15", "status": "match", "confidence": 97 },
-        { "field": "elevationFrom", "label": "Cao độ từ", "dbValue": "0", "imageValue": "0", "status": "match", "confidence": 95 },
-        { "field": "elevationTo", "label": "Cao độ đến", "dbValue": "-1.2", "imageValue": "-1.2", "status": "match", "confidence": 95 },
-        { "field": "lengthMeters", "label": "Dài (m)", "dbValue": "1.2", "imageValue": "1.2", "status": "match", "confidence": 96 },
-        { "field": "durationHours", "label": "T.Gian (h)", "dbValue": "0.08", "imageValue": "0.08", "status": "match", "confidence": 90 },
-        { "field": "speedMph", "label": "V (m/h)", "dbValue": "14.4", "imageValue": "14.4", "status": "match", "confidence": 92 }
-      ]
-    }
-  ],
-  "signatureCheck": { "found": true, "note": "Đủ chữ ký Nhà thầu và TVGS" }
-}`;
+NHIỆM VỤ: Đọc từng ô trong ảnh, so sánh với database. Chỉ tập trung vào:
+1. Header: Số hiệu cọc, Số BB, Đường kính, Ngày bắt đầu, Ngày kết thúc
+2. Mỗi lớp: TỪ (H), ĐẾN (H), Ngày từ, Ngày đến, Cao độ từ, Cao độ đến, Dài (m), T.Gian (h), V (m/h)
+
+Quy tắc status: "match"=khớp, "mismatch"=sai, "unreadable"=không đọc được trong ảnh
+
+CHỈ trả về JSON sau, KHÔNG có text nào khác, KHÔNG có markdown:
+{"headerFields":[{"field":"pileId","label":"Số hiệu cọc","dbValue":"${result.pileId}","imageValue":"<đọc từ ảnh>","status":"match","confidence":95},{"field":"reportNumber","label":"Số biên bản","dbValue":"${result.reportNumber}","imageValue":"<đọc từ ảnh>","status":"match","confidence":90},{"field":"diameter","label":"Đường kính","dbValue":"${result.diameter}","imageValue":"<đọc từ ảnh>","status":"match","confidence":90},{"field":"constructionStart","label":"Bắt đầu","dbValue":"${result.constructionStart}","imageValue":"<đọc từ ảnh>","status":"match","confidence":85},{"field":"constructionEnd","label":"Kết thúc","dbValue":"${result.constructionEnd}","imageValue":"<đọc từ ảnh>","status":"match","confidence":85}],"layers":[${layersDB.map(l => `{"layerIndex":${l.stt-1},"fields":[{"field":"timeFrom","label":"TỪ (H)","dbValue":"${l.timeFrom}","imageValue":"<đọc>","status":"match","confidence":90},{"field":"timeTo","label":"ĐẾN (H)","dbValue":"${l.timeTo}","imageValue":"<đọc>","status":"match","confidence":90},{"field":"dateFrom","label":"Ngày từ","dbValue":"${l.dateFrom}","imageValue":"<đọc>","status":"match","confidence":85},{"field":"dateTo","label":"Ngày đến","dbValue":"${l.dateTo}","imageValue":"<đọc>","status":"match","confidence":85},{"field":"elevationFrom","label":"Cao độ từ","dbValue":"${l.elevationFrom}","imageValue":"<đọc>","status":"match","confidence":90},{"field":"elevationTo","label":"Cao độ đến","dbValue":"${l.elevationTo}","imageValue":"<đọc>","status":"match","confidence":90},{"field":"lengthMeters","label":"Dài (m)","dbValue":"${l.lengthMeters}","imageValue":"<đọc>","status":"match","confidence":88},{"field":"durationHours","label":"T.Gian (h)","dbValue":"${l.durationHours}","imageValue":"<đọc>","status":"match","confidence":85},{"field":"speedMph","label":"V (m/h)","dbValue":"${l.speedMph}","imageValue":"<đọc>","status":"match","confidence":85}]}`).join(',')}]}
+
+Điền đúng imageValue từ ảnh, đổi status thành "mismatch" nếu khác database, "unreadable" nếu không đọc được. Giữ nguyên cấu trúc JSON, chỉ thay các giá trị trong dấu <>.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -228,21 +205,60 @@ Trả về JSON THUẦN (không markdown, không giải thích):
     }],
   });
 
-  const raw = (response.text || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch {
-    // Try to extract JSON from response
+  // ── Robust JSON extraction ──
+  const raw = (response.text || '').trim();
+  let parsed: any = null;
+
+  // Strategy 1: direct parse
+  try { parsed = JSON.parse(raw); } catch { /* */ }
+
+  // Strategy 2: strip markdown fences
+  if (!parsed) {
+    try {
+      const stripped = raw.replace(/^```[\w]*\n?/gm, '').replace(/\n?```$/gm, '').trim();
+      parsed = JSON.parse(stripped);
+    } catch { /* */ }
+  }
+
+  // Strategy 3: extract first {...} block
+  if (!parsed) {
     const match = raw.match(/\{[\s\S]*\}/);
     if (match) {
-      try { parsed = JSON.parse(match[0]); } catch { /* empty */ }
+      try { parsed = JSON.parse(match[0]); } catch { /* */ }
     }
   }
 
-  const headerFields: FieldCheck[] = parsed.headerFields || [];
-  const layers: LayerCheck[] = parsed.layers || [];
-  const signatureCheck = parsed.signatureCheck || { found: false, note: 'Không đọc được' };
+  // Strategy 4: if all fail, build empty structure so UI still renders
+  if (!parsed) {
+    console.error('[DeepScan] Failed to parse AI response:', raw.slice(0, 500));
+    parsed = { headerFields: [], layers: [] };
+  }
 
-  // Calculate totals
+  const headerFields: FieldCheck[] = (parsed.headerFields || []).map((f: any) => ({
+    field: f.field || '',
+    label: f.label || '',
+    dbValue: String(f.dbValue ?? ''),
+    imageValue: String(f.imageValue ?? ''),
+    status: (['match','mismatch','unreadable','missing'].includes(f.status) ? f.status : 'unreadable') as FieldStatus,
+    confidence: Number(f.confidence) || 0,
+    note: f.note || '',
+  }));
+
+  const layers: LayerCheck[] = (parsed.layers || []).map((l: any) => ({
+    layerIndex: Number(l.layerIndex) || 0,
+    fields: (l.fields || []).map((f: any) => ({
+      field: f.field || '',
+      label: f.label || '',
+      dbValue: String(f.dbValue ?? ''),
+      imageValue: String(f.imageValue ?? ''),
+      status: (['match','mismatch','unreadable','missing'].includes(f.status) ? f.status : 'unreadable') as FieldStatus,
+      confidence: Number(f.confidence) || 0,
+      note: f.note || '',
+    })),
+  }));
+
+  const signatureCheck = { found: false, note: 'Không kiểm tra chữ ký' };
+
   const allFields = [
     ...headerFields,
     ...layers.flatMap((l: LayerCheck) => l.fields),
@@ -407,20 +423,8 @@ function ScanReportView({ report }: { report: ScanReport }) {
           )}
         </div>
 
-        {/* Signature */}
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
-          report.signatureCheck.found
-            ? 'bg-emerald-50 border-emerald-200'
-            : 'bg-red-50 border-red-200'
-        }`}>
-          {report.signatureCheck.found
-            ? <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-            : <XCircle size={14} className="text-red-500 flex-shrink-0" />}
-          <span className="font-bold text-slate-600">Chữ ký</span>
-          <span className={report.signatureCheck.found ? 'text-emerald-700' : 'text-red-700'}>
-            {report.signatureCheck.note}
-          </span>
-        </div>
+        {/* Signature — hidden per user request */}
+
 
         {/* Layers */}
         <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1 mt-1">
