@@ -231,7 +231,17 @@ CHỈ trả về JSON sau, KHÔNG có text nào khác, KHÔNG có markdown:
   // Strategy 4: if all fail, build empty structure so UI still renders
   if (!parsed) {
     console.error('[DeepScan] Failed to parse AI response:', raw.slice(0, 500));
-    parsed = { headerFields: [], layers: [] };
+    // Return a special error marker so UI can show the raw response
+    return {
+      headerFields: [],
+      layers: [],
+      signatureCheck: { found: false, note: '' },
+      totalFields: 0,
+      matchedFields: 0,
+      mismatchedFields: 0,
+      unreadableFields: 0,
+      _rawAiResponse: raw.slice(0, 1000),
+    } as any;
   }
 
   const headerFields: FieldCheck[] = (parsed.headerFields || []).map((f: any) => ({
@@ -331,6 +341,8 @@ function ScanReportView({ report }: { report: ScanReport }) {
     ? Math.round((report.matchedFields / report.totalFields) * 100)
     : 0;
 
+  const rawResponse = (report as any)._rawAiResponse as string | undefined;
+
   const accuracyColor = accuracy >= 95 ? 'text-emerald-600' : accuracy >= 80 ? 'text-amber-600' : 'text-red-600';
   const accuracyBg = accuracy >= 95 ? 'bg-emerald-50 border-emerald-200' : accuracy >= 80 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
 
@@ -376,6 +388,18 @@ function ScanReportView({ report }: { report: ScanReport }) {
           <div className="w-1 h-5 bg-purple-500 rounded-full" />
           <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Kết quả kiểm tra</span>
         </div>
+
+        {/* Debug: show raw AI response if parsing failed */}
+        {rawResponse && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs">
+            <p className="font-black text-amber-800 mb-2 flex items-center gap-1">
+              <AlertTriangle size={13} /> AI trả về không phải JSON — nội dung thô:
+            </p>
+            <pre className="text-amber-700 whitespace-pre-wrap break-all font-mono text-[10px] max-h-48 overflow-y-auto bg-amber-100 rounded p-2">
+              {rawResponse}
+            </pre>
+          </div>
+        )}
         <div className={`rounded-xl border p-4 ${accuracyBg}`}>
           <div className="flex items-center justify-between">
             <div>
