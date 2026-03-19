@@ -70,6 +70,7 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabase';
+import { ValidationPanel } from './ValidationPanel';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -5615,7 +5616,7 @@ function SummaryView({
   onExportAll: (rows: ExtractionResult[]) => void,
   githubCreds: { token: string; username: string; repo: string } | null;
 }) {
-  const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
+  const [dashTab, setDashTab] = useState<'overview' | 'weekly' | 'validate'>('overview');
   const [isExportingWeekly, setIsExportingWeekly] = useState(false);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
 
@@ -6007,6 +6008,12 @@ function SummaryView({
               className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'weekly' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <span className="flex items-center gap-1.5"><Calendar size={12} /> Báo cáo tuần</span>
+            </button>
+            <button
+              onClick={() => setDashTab('validate')}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'validate' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <span className="flex items-center gap-1.5"><AlertCircle size={12} /> Kiểm tra dữ liệu</span>
             </button>
           </div>
         </div>
@@ -7903,6 +7910,21 @@ function SummaryView({
       </div>
 
       </>}
+
+      {/* ── VALIDATE TAB ── */}
+      {dashTab === 'validate' && (
+        <ValidationPanel
+          history={history}
+          onSelectResult={(res) => { onSelectResult(res); }}
+          apiKey={(() => {
+            // Lấy API key đầu tiên có giá trị từ localStorage (đồng bộ với App state)
+            try {
+              const keys = JSON.parse(localStorage.getItem('gemini_api_keys') || '[]') as string[];
+              return keys.find(k => k?.trim()) || localStorage.getItem('gemini_api_key') || '';
+            } catch { return localStorage.getItem('gemini_api_key') || ''; }
+          })()}
+        />
+      )}
 
     </div>
   );
