@@ -70,8 +70,6 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabase';
-import { ValidationPanel } from './ValidationPanel';
-import { DeepScanPanel } from './DeepScanPanel';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
@@ -5617,7 +5615,7 @@ function SummaryView({
   onExportAll: (rows: ExtractionResult[]) => void,
   githubCreds: { token: string; username: string; repo: string } | null;
 }) {
-  const [dashTab, setDashTab] = useState<'overview' | 'weekly' | 'validate' | 'deepscan'>('overview');
+  const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
   const [isExportingWeekly, setIsExportingWeekly] = useState(false);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
 
@@ -6010,18 +6008,7 @@ function SummaryView({
             >
               <span className="flex items-center gap-1.5"><Calendar size={12} /> Báo cáo tuần</span>
             </button>
-            <button
-              onClick={() => setDashTab('validate')}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'validate' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <span className="flex items-center gap-1.5"><AlertCircle size={12} /> Kiểm tra dữ liệu</span>
-            </button>
-            <button
-              onClick={() => setDashTab('deepscan')}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'deepscan' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <span className="flex items-center gap-1.5"><Sparkles size={12} /> Rà soát AI</span>
-            </button>
+
           </div>
         </div>
       </div>
@@ -7918,36 +7905,7 @@ function SummaryView({
 
       </>}
 
-      {/* ── VALIDATE TAB ── */}
-      {dashTab === 'validate' && (
-        <ValidationPanel
-          history={history}
-          onSelectResult={(res) => { onSelectResult(res); }}
-          onEdit={onEdit}
-          apiKey={(() => {
-            try {
-              const keys = JSON.parse(localStorage.getItem('gemini_api_keys') || '[]') as string[];
-              return keys.find(k => k?.trim()) || localStorage.getItem('gemini_api_key') || '';
-            } catch { return localStorage.getItem('gemini_api_key') || ''; }
-          })()}
-        />
-      )}
 
-      {/* ── DEEP SCAN TAB ── */}
-      {dashTab === 'deepscan' && (
-        <DeepScanPanel
-          history={history}
-          apiKey={(() => {
-            try {
-              const keys = JSON.parse(localStorage.getItem('gemini_api_keys') || '[]') as string[];
-              return keys.find(k => k?.trim()) || localStorage.getItem('gemini_api_key') || '';
-            } catch { return localStorage.getItem('gemini_api_key') || ''; }
-          })()}
-          githubToken={(() => {
-            try { return localStorage.getItem('github_token') || undefined; } catch { return undefined; }
-          })()}
-        />
-      )}
 
     </div>
   );
