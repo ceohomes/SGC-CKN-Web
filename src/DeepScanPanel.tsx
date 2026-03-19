@@ -335,19 +335,11 @@ function FieldRow({ field }: { field: FieldCheck }) {
 }
 
 // ─────────────────────────────────────────
-// ScanReportView — show results split screen
+// ScanReportView — full-width table layout
 // ─────────────────────────────────────────
 function ScanReportView({ report }: { report: ScanReport }) {
-  const [expandedLayers, setExpandedLayers] = useState<Set<number>>(new Set([0]));
   const [showOnlyIssues, setShowOnlyIssues] = useState(false);
-
-  const toggleLayer = (i: number) => {
-    setExpandedLayers(prev => {
-      const s = new Set(prev);
-      s.has(i) ? s.delete(i) : s.add(i);
-      return s;
-    });
-  };
+  const [imageExpanded, setImageExpanded] = useState(false);
 
   const accuracy = report.totalFields > 0
     ? Math.round((report.matchedFields / report.totalFields) * 100)
@@ -360,165 +352,176 @@ function ScanReportView({ report }: { report: ScanReport }) {
   const accuracyBg = accuracy >= 95 ? 'bg-emerald-50 border-emerald-200' : accuracy >= 80 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
 
   return (
-    <div className="flex gap-4 h-full min-h-0">
+    <div className="flex flex-col gap-4 w-full">
 
-      {/* LEFT: Image */}
-      <div className="w-[45%] flex-shrink-0 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-5 bg-blue-500 rounded-full" />
-          <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Ảnh gốc biên bản</span>
+      {/* ── Errors ── */}
+      {fetchError && (
+        <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs">
+          <p className="font-black text-red-800 mb-1 flex items-center gap-2"><XCircle size={13}/>Không tải được ảnh:</p>
+          <p className="text-red-700">{fetchError}</p>
         </div>
-        <div className="flex-1 rounded-xl overflow-hidden border border-slate-200 bg-slate-900 min-h-[400px] flex items-center justify-center">
+      )}
+      {rawResponse && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs">
+          <p className="font-black text-amber-800 mb-1 flex items-center gap-2"><AlertTriangle size={13}/>AI trả về không phải JSON:</p>
+          <pre className="text-amber-700 font-mono text-[10px] max-h-32 overflow-y-auto bg-amber-100 rounded p-2 whitespace-pre-wrap break-all">{rawResponse}</pre>
+        </div>
+      )}
+
+      {/* ── Top: Image thumbnail + Summary side by side ── */}
+      <div className="flex gap-4 items-start">
+        {/* Image — thumbnail, click to expand */}
+        <div
+          className="flex-shrink-0 cursor-pointer rounded-xl overflow-hidden border border-slate-200 bg-slate-900"
+          style={{ width: imageExpanded ? '100%' : 180, transition: 'width 0.3s' }}
+          onClick={() => setImageExpanded(v => !v)}
+        >
           {report.imageBase64 ? (
-            <img
-              src={`data:image/jpeg;base64,${report.imageBase64}`}
-              alt="Biên bản gốc"
-              className="w-full h-full object-contain"
-              style={{ maxHeight: '70vh' }}
-            />
+            <img src={`data:image/jpeg;base64,${report.imageBase64}`} alt="Biên bản" className="w-full object-contain" style={{ maxHeight: imageExpanded ? '80vh' : 240 }} />
           ) : report.fileUrl ? (
-            <img
-              src={report.fileUrl}
-              alt="Biên bản gốc"
-              className="w-full h-full object-contain"
-              crossOrigin="anonymous"
-              style={{ maxHeight: '70vh' }}
-            />
+            <img src={report.fileUrl} alt="Biên bản" className="w-full object-contain" crossOrigin="anonymous" style={{ maxHeight: imageExpanded ? '80vh' : 240 }} />
           ) : (
-            <div className="flex flex-col items-center gap-3 text-slate-500 p-8">
-              <ImageOff size={32} />
-              <p className="text-xs text-center">Không tải được ảnh gốc.<br />Kết quả AI vẫn hợp lệ.</p>
-            </div>
+            <div className="flex items-center justify-center p-4 text-slate-500 h-24"><ImageOff size={20}/></div>
           )}
+          <div className="text-center text-[10px] text-slate-400 py-1">{imageExpanded ? 'Thu nhỏ' : 'Phóng to'}</div>
         </div>
+
+        {!imageExpanded && (
+          <div className="flex-1 flex flex-col gap-3">
+            {/* Accuracy */}
+            <div className={`rounded-xl border p-4 ${accuracyBg}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-4xl font-black ${accuracyColor}`}>{accuracy}%</span>
+                  <span className="text-sm text-slate-500 font-medium">độ khớp</span>
+                </div>
+                <div className="flex gap-4 text-sm font-bold">
+                  <span className="text-emerald-700 flex items-center gap-1"><CheckCircle2 size={14}/>{report.matchedFields} khớp</span>
+                  <span className="text-red-700 flex items-center gap-1"><XCircle size={14}/>{report.mismatchedFields} sai</span>
+                  {report.unreadableFields > 0 && <span className="text-amber-700 flex items-center gap-1"><AlertTriangle size={14}/>{report.unreadableFields} mờ</span>}
+                </div>
+              </div>
+              <div className="h-3 bg-white/60 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${accuracy >= 95 ? 'bg-emerald-500' : accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${accuracy}%` }}/>
+              </div>
+            </div>
+
+            {/* Header fields table */}
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Thông tin biên bản</span>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="text-left px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase w-28">Trường</th>
+                    <th className="text-left px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase">Database</th>
+                    <th className="text-left px-3 py-1.5 text-[10px] font-black text-slate-400 uppercase">Ảnh gốc</th>
+                    <th className="text-center px-2 py-1.5 text-[10px] font-black text-slate-400 uppercase w-12">Tin cậy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {report.headerFields.filter(f => !showOnlyIssues || f.status !== 'match').map((f, i) => (
+                    <tr key={i} className={f.status === 'mismatch' ? 'bg-red-50' : f.status === 'unreadable' ? 'bg-amber-50' : ''}>
+                      <td className="px-3 py-2 font-bold text-slate-600">{f.label}</td>
+                      <td className="px-3 py-2 font-mono text-slate-700">{f.dbValue || '—'}</td>
+                      <td className={`px-3 py-2 font-mono font-bold ${f.status === 'mismatch' ? 'text-red-700' : f.status === 'unreadable' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {f.status === 'match' ? <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500"/>{f.imageValue || f.dbValue}</span>
+                        : f.status === 'mismatch' ? <span className="flex items-center gap-1"><XCircle size={11} className="text-red-500"/>{f.imageValue}</span>
+                        : <span className="flex items-center gap-1 text-amber-600"><AlertTriangle size={11}/>Không rõ</span>}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${f.confidence >= 90 ? 'bg-emerald-100 text-emerald-700' : f.confidence >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{f.confidence}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* RIGHT: Results */}
-      <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '75vh' }}>
-
-        {/* Summary bar */}
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-5 bg-purple-500 rounded-full" />
-          <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Kết quả kiểm tra</span>
-        </div>
-
-        {/* Fetch error */}
-        {fetchError && (
-          <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs">
-            <p className="font-black text-red-800 mb-1 flex items-center gap-1">
-              <XCircle size={13} /> Không tải được ảnh gốc:
-            </p>
-            <p className="text-red-700">{fetchError}</p>
-            <p className="text-red-500 mt-1 text-[10px]">Tip: Vào Cài đặt kiểm tra GitHub Token, hoặc upload lại file này.</p>
-          </div>
-        )}
-
-        {/* Debug: show raw AI response if parsing failed */}
-        {rawResponse && (
-          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs">
-            <p className="font-black text-amber-800 mb-2 flex items-center gap-1">
-              <AlertTriangle size={13} /> AI trả về không phải JSON — nội dung thô:
-            </p>
-            <pre className="text-amber-700 whitespace-pre-wrap break-all font-mono text-[10px] max-h-48 overflow-y-auto bg-amber-100 rounded p-2">
-              {rawResponse}
-            </pre>
-          </div>
-        )}
-        <div className={`rounded-xl border p-4 ${accuracyBg}`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className={`text-3xl font-black ${accuracyColor}`}>{accuracy}%</span>
-              <span className="text-xs text-slate-500 ml-2 font-medium">độ khớp</span>
-            </div>
-            <div className="flex gap-3 text-xs">
-              <span className="flex items-center gap-1 font-bold text-emerald-700"><CheckCircle2 size={12} />{report.matchedFields} khớp</span>
-              <span className="flex items-center gap-1 font-bold text-red-700"><XCircle size={12} />{report.mismatchedFields} sai</span>
-              <span className="flex items-center gap-1 font-bold text-amber-700"><AlertTriangle size={12} />{report.unreadableFields} không đọc được</span>
-            </div>
-          </div>
-          {/* Progress bar */}
-          <div className="mt-3 h-2 bg-white/60 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${accuracy >= 95 ? 'bg-emerald-500' : accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'}`}
-              style={{ width: `${accuracy}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Filter toggle */}
-        {report.mismatchedFields > 0 && (
-          <button
-            onClick={() => setShowOnlyIssues(v => !v)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all self-start ${
-              showOnlyIssues ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            <AlertTriangle size={12} />
-            {showOnlyIssues ? 'Hiện tất cả' : `Chỉ xem lỗi (${report.mismatchedFields + report.unreadableFields})`}
+      {/* ── Filter ── */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Các lớp địa chất ({report.layers.length} lớp)</span>
+        <div className="flex-1" />
+        {[{k:'all',l:'Tất cả'},{k:'issues',l:`Chỉ lỗi (${report.mismatchedFields})`}].map(b => (
+          <button key={b.k} onClick={() => setShowOnlyIssues(b.k === 'issues')}
+            className={`px-3 py-1 rounded-lg text-[11px] font-black transition-all ${(b.k==='issues') === showOnlyIssues ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+            {b.l}
           </button>
+        ))}
+      </div>
+
+      {/* ── Layers table ── */}
+      <div className="rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-800 text-white">
+              <th className="text-left px-3 py-2.5 font-black text-[10px] uppercase tracking-wide w-10">Lớp</th>
+              <th className="text-left px-3 py-2.5 font-black text-[10px] uppercase tracking-wide w-20">Trường</th>
+              <th className="text-left px-3 py-2.5 font-black text-[10px] uppercase tracking-wide">Database</th>
+              <th className="text-left px-3 py-2.5 font-black text-[10px] uppercase tracking-wide">Ảnh gốc</th>
+              <th className="text-center px-2 py-2.5 font-black text-[10px] uppercase tracking-wide w-16">Kết quả</th>
+              <th className="text-center px-2 py-2.5 font-black text-[10px] uppercase tracking-wide w-14">Tin cậy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.layers.flatMap((layer, li) => {
+              const layerFields = layer.fields.filter(f => !showOnlyIssues || f.status !== 'match');
+              if (layerFields.length === 0) return [];
+              const hasIssue = layer.fields.some(f => f.status !== 'match');
+              return layerFields.map((f, fi) => (
+                <tr key={`${li}-${fi}`} className={`border-b border-slate-100 ${
+                  f.status === 'mismatch' ? 'bg-red-50' :
+                  f.status === 'unreadable' ? 'bg-amber-50' :
+                  li % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                }`}>
+                  {/* Layer number — only show on first field of layer */}
+                  {fi === 0 ? (
+                    <td className={`px-3 py-2 font-black text-center align-top border-r border-slate-200 ${hasIssue ? 'text-red-700 bg-red-100' : 'text-emerald-700 bg-emerald-50'}`}
+                        rowSpan={layerFields.length}>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-sm">{li + 1}</span>
+                        {hasIssue ? <XCircle size={11} className="text-red-500"/> : <CheckCircle2 size={11} className="text-emerald-500"/>}
+                      </div>
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-2 font-bold text-slate-600 whitespace-nowrap">{f.label}</td>
+                  <td className="px-3 py-2 font-mono text-slate-700">{f.dbValue !== undefined && f.dbValue !== '' ? f.dbValue : '—'}</td>
+                  <td className={`px-3 py-2 font-mono font-bold ${
+                    f.status === 'mismatch' ? 'text-red-700' :
+                    f.status === 'unreadable' ? 'text-amber-700' :
+                    'text-emerald-700'
+                  }`}>
+                    {f.status === 'match' ? f.imageValue || f.dbValue :
+                     f.status === 'mismatch' ? f.imageValue :
+                     'Không rõ'}
+                    {f.note && f.status !== 'match' && <span className="ml-1 text-[10px] text-slate-400 font-normal italic">({f.note})</span>}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    {f.status === 'match'
+                      ? <CheckCircle2 size={14} className="text-emerald-500 mx-auto"/>
+                      : f.status === 'mismatch'
+                      ? <XCircle size={14} className="text-red-500 mx-auto"/>
+                      : <AlertTriangle size={14} className="text-amber-500 mx-auto"/>}
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                      f.confidence >= 90 ? 'bg-emerald-100 text-emerald-700' :
+                      f.confidence >= 70 ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>{f.confidence}%</span>
+                  </td>
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+        {report.layers.length === 0 && (
+          <div className="py-8 text-center text-slate-400 text-sm">Không có dữ liệu lớp địa chất</div>
         )}
-
-        {/* Header fields */}
-        <div className="space-y-1">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
-            <Info size={10} /> Thông tin biên bản
-          </p>
-          {report.headerFields
-            .filter(f => !showOnlyIssues || f.status !== 'match')
-            .map((f, i) => <FieldRow key={i} field={f} />)}
-          {report.headerFields.length === 0 && (
-            <p className="text-xs text-slate-400 italic px-2">Không có dữ liệu header</p>
-          )}
-        </div>
-
-        {/* Signature — hidden per user request */}
-
-
-        {/* Layers */}
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1 mt-1">
-          <Layers size={10} /> Các lớp địa chất ({report.layers.length} lớp)
-        </p>
-        {report.layers.map((layer, i) => {
-          const layerIssues = layer.fields.filter(f => f.status !== 'match');
-          const hasIssues = layerIssues.length > 0;
-          if (showOnlyIssues && !hasIssues) return null;
-          const isExpanded = expandedLayers.has(i);
-
-          return (
-            <div key={i} className={`rounded-xl border overflow-hidden ${
-              hasIssues ? 'border-red-200' : 'border-emerald-200'
-            }`}>
-              <button
-                onClick={() => toggleLayer(i)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 text-xs font-black transition-colors ${
-                  hasIssues
-                    ? 'bg-red-50 hover:bg-red-100 text-red-800'
-                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  {hasIssues
-                    ? <XCircle size={13} className="text-red-500" />
-                    : <CheckCircle2 size={13} className="text-emerald-500" />}
-                  Lớp {i + 1}
-                  {hasIssues && (
-                    <span className="bg-red-200 text-red-800 px-1.5 py-0.5 rounded-full text-[10px]">
-                      {layerIssues.length} vấn đề
-                    </span>
-                  )}
-                </span>
-                {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              </button>
-              {isExpanded && (
-                <div className="p-2 space-y-1 bg-white">
-                  {layer.fields
-                    .filter(f => !showOnlyIssues || f.status !== 'match')
-                    .map((f, j) => <FieldRow key={j} field={f} />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );
