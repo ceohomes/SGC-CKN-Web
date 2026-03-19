@@ -405,7 +405,7 @@ function ValidationRow({
   report?: ValidationReport;
   isRunningAi: boolean;
   onRunAi: () => void;
-  onViewResult: () => void;
+  onViewResult: () => void; // mở edit modal
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -566,10 +566,12 @@ function ValidationRow({
 export function ValidationPanel({
   history,
   onSelectResult,
+  onEdit,
   apiKey,
 }: {
   history: ExtractionResult[];
   onSelectResult: (res: ExtractionResult) => void;
+  onEdit: (res: ExtractionResult) => void;
   apiKey: string;
 }) {
   const [reports, setReports] = useState<Record<string, ValidationReport>>({});
@@ -794,7 +796,7 @@ export function ValidationPanel({
             report={reports[result.id]}
             isRunningAi={runningAiIds.has(result.id)}
             onRunAi={() => runAiCheck(result)}
-            onViewResult={() => onSelectResult(result)}
+            onViewResult={() => onEdit(result)}
           />
         ))}
       </div>
