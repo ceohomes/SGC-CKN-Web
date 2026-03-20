@@ -164,6 +164,7 @@ function sanitizeLayer(layer: any): any {
     elevationTo:    toNum(layer.elevationTo,     0),
     durationHours:  toNum(layer.durationHours,   0),
     lengthMeters:   toNum(layer.lengthMeters,    0),
+    cumulativeDepth: toNum(layer.cumulativeDepth, 0),
     speedMph:       toNum(layer.speedMph,        0),
     layerNumber:    toNum(layer.layerNumber,     0),
   };
@@ -193,6 +194,7 @@ interface DrillLayer {
   notes: string;
   durationHours: number;
   lengthMeters: number;
+  cumulativeDepth: number;
   speedMph: number;
 }
 
@@ -207,6 +209,7 @@ interface ExtractionResult {
   diameter: string;
   constructionStart: string;
   constructionEnd: string;
+  reportType: 'A' | 'B';
   layers: DrillLayer[];
   notes: string;
   fileName?: string;
@@ -602,6 +605,52 @@ BƯỚC 1: TRÍCH XUẤT THÔNG TIN CHUNG (HEADER)
   • Cả 2: Trích xuất từ "Đường kính cọc" hoặc "Đường kính" (ví dụ: "D800", "D2000")
 
 ════════════════════════════════════════════════════
+BƯỚC 1.5: ĐẶC ĐIỂM NHẬN DIỆN CHỮ VIẾT TAY (QUAN TRỌNG)
+════════════════════════════════════════════════════
+
+⚠️ CẢNH BÁO CÁC LỖI NHẬN DIỆN PHỔ BIẾN — HÃY KIỂM TRA KỸ:
+1. SỐ "0" VÀ "1":
+   - Chữ viết tay số "0" đôi khi viết hẹp hoặc có nét gạch đầu dễ nhầm với số "1".
+   - LỖI CẦN TRÁNH: Đọc "0h25" thành "1h25", "0h23" thành "1h23".
+   - QUY TẮC: Nếu giờ bắt đầu ca hoặc giờ sáng sớm, hãy ưu tiên kiểm tra xem đó có phải là "0h" không.
+
+2. SỐ "9" VÀ "4":
+   - Số "9" viết tay có vòng tròn trên đôi khi bị hở hoặc nét gạch xuống giống số "4".
+   - LỖI CẦN TRÁNH: Đọc "23h49" thành "23h44".
+   - QUY TẮC: Nhìn kỹ vòng tròn phía trên. Nếu có vòng tròn khép kín hoặc gần kín, đó là số "9".
+
+3. SỐ "8" VÀ "5":
+   - Số "8" có 2 vòng kín. Số "5" có nét ngang trên và bụng hở.
+   - LỖI CẦN TRÁNH: Đọc "17h58" thành "17h55".
+
+4. SỐ "7" VÀ "5":
+   - Số "7" có gạch ngang trên và chân chéo. Số "5" có bụng cong.
+   - LỖI CẦN TRÁNH: Đọc "18h17" thành "18h15".
+
+5. SỐ "1" VÀ "2" (TRONG CHIỀU DÀI - CỰC KỲ QUAN TRỌNG):
+   - Số "1" viết tay đôi khi có móc đầu và GẠCH CHÂN DÀI ở dưới, dễ nhầm với số "2".
+   - DẤU HIỆU: Nếu phần trên là một đường thẳng đứng hoặc chỉ có móc nhỏ, nhưng phần dưới có gạch ngang dài -> Hãy nghi ngờ đó là số "1".
+   - MẸO: Trong biên bản này, nếu thấy một chữ số có chân ngang dài nhưng đầu không cong tròn rõ rệt, hãy đọc là "1".
+   - LỖI CẦN TRÁNH: Đọc "1,6" thành "2,6".
+
+6. SỐ "2" VÀ "7" (TRONG CHIỀU DÀI - CỰC KỲ QUAN TRỌNG):
+   - Số "2" viết nhanh có thể mất vòng lặp ở dưới, trông giống số "7" có gạch chân.
+   - DẤU HIỆU: Số "2" thường có độ cong ở lưng. Số "7" thường có nét gạch ngang trên thẳng và dứt khoát.
+   - MẸO: Nếu phần trên có độ cong mềm mại nhưng phần dưới có góc nhọn -> Đó là số "2". Nếu phần trên là nét ngang thẳng tắp -> Đó là số "7".
+   - LỖI CẦN TRÁNH: Đọc "10,2" thành "10,7".
+
+7. SỐ "0" VÀ "1" (TRONG SỐ CÓ NHIỀU CHỮ SỐ):
+   - LỖI CẦN TRÁNH: Đọc "10,7" thành "11,7".
+
+8. SỐ "5" VÀ "0" (TRONG CHIỀU DÀI):
+   - Số "5" viết bụng tròn khép kín có thể giống số "0".
+   - LỖI CẦN TRÁNH: Đọc "6,5" thành "6,0".
+
+9. SỐ "3" VÀ "2":
+   - Số "3" có 2 bụng cong. Số "2" có đầu cong và chân ngang.
+   - LỖI CẦN TRÁNH: Đọc "13,30" thành "12,80" hoặc ngược lại.
+
+════════════════════════════════════════════════════
 BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
 ════════════════════════════════════════════════════
 
@@ -683,9 +732,14 @@ BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
     Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (đôi khi viết tay khó đọc) và ngày bên dưới.
 
     ⚠️ QUY TẮC ĐỌC GIỜ VIẾT TAY — KIỂM TRA TỪNG KÝ TỰ:
-      Số "0" và "6" dễ nhầm → xem kỹ nét viết
-      Số "1" mảnh dễ bị bỏ qua → nếu đọc được giờ 1 chữ số (5,6,7,8,9) phải nghi ngờ ngay
-      Dấu "÷" hoặc "→" hoặc "-" đều là dấu phân cách từ-đến
+      - Tuyệt đối KHÔNG làm tròn phút (ví dụ: "17h58" không được thành "17h55", "18h17" không được thành "18h15").
+      - Phân biệt kỹ số "0" và "1": "0h25" KHÔNG PHẢI "1h25". Kiểm tra nét cong của số 0.
+      - Phân biệt kỹ số "9" and "4": "23h49" KHÔNG PHẢI "23h44". Kiểm tra vòng tròn trên của số 9.
+      - Phân biệt kỹ số "8" và "5": Số "8" có 2 vòng kín, số "5" bụng hở và có nét ngang trên.
+      - Phân biệt kỹ số "7" và "5": Số "7" chân xiên thẳng, số "5" bụng cong tròn.
+      - Số "0" và "6" dễ nhầm → xem kỹ nét viết.
+      - Số "1" mảnh dễ bị bỏ qua → nếu đọc được giờ 1 chữ số (5,6,7,8,9) phải nghi ngờ ngay.
+      - Dấu "÷" hoặc "→" hoặc "-" đều là dấu phân cách từ-đến.
 
     ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO THỜI GIAN:
       timeFrom của lớp N = timeTo của lớp N-1 (nếu liên tiếp không có khoảng nghỉ)
@@ -712,6 +766,9 @@ BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
 
 - Thời gian (timeFrom, timeTo): Format "HHhmm" — ĐỦ 2 chữ số giờ.
   TUYỆT ĐỐI không rút gọn "17h20" thành "7h20".
+  TUYỆT ĐỐI không làm tròn phút (ví dụ: 58' đọc là 58, không phải 55; 17' đọc là 17, không phải 15).
+  TUYỆT ĐỐI kiểm tra kỹ số 0 vs 1 (0h25 vs 1h25) và số 9 vs 4 (23h49 vs 23h44).
+  LƯU Ý: Ký hiệu phẩy (') sau số thường là ký hiệu phút (ví dụ: 58' = 58 phút).
 
 - ⚠️ LỖI PHỔ BIẾN NHẤT: ĐỌC SÓT CHỮ SỐ "1" ĐẦU TRONG CHỮ VIẾT TAY
   Số "1" viết tay thường mảnh, dễ bị bỏ qua trước 7, 6, 5.
@@ -737,6 +794,10 @@ Loại A — trích xuất cao độ tuyệt đối:
 Loại B — tính cao độ tuyệt đối từ casingElevation:
 - ĐỌC "casingElevation" từ header (dòng "Cao độ đỉnh casing").
 - Chiều dài lớp = cột TRÁI trong "Độ sâu (từ đỉnh casing)" (số nhỏ hơn).
+- ⚠️ QUY TẮC TOÁN HỌC (BẮT BUỘC):
+    Tích lũy (cột PHẢI) dòng N = Tích lũy (cột PHẢI) dòng N-1 + Chiều dài (cột TRÁI) dòng N.
+    Ví dụ: Dòng trước tích lũy 2.31, dòng này chiều dài 10.2 -> Tích lũy dòng này PHẢI là 12.51.
+    Nếu bạn đọc chiều dài là 10.7 nhưng tích lũy ghi 12.51 -> Chiều dài PHẢI là 10.2.
 - Tính elevationFrom/To theo công thức cộng dồn:
     elevationFrom(lớp 1) = casingElevation
     elevationTo(lớp 1)   = casingElevation - chiềuDài(lớp 1)
@@ -745,6 +806,7 @@ Loại B — tính cao độ tuyệt đối từ casingElevation:
 - ✅ ĐÚNG: elevationFrom lớp 2 = elevationTo lớp 1 (liên tiếp nhau, không reset về 0).
 - ❌ SAI: elevationFrom = 0 cho tất cả các lớp.
 - Ưu tiên tuyệt đối: CHIỀU DÀI phải chính xác 100%, đây là dữ liệu cốt lõi của Loại B.
+- ⚠️ KIỂM TRA LẠI CHỮ VIẾT TAY CHIỀU DÀI: 1,6 vs 2,6; 10,2 vs 10,7; 10,7 vs 11,7; 6,5 vs 6,0.
 
 Yêu cầu JSON đầu ra:
 - project, item, componentName, pileId, reportNumber, diameter.
@@ -762,7 +824,20 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
 5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP chưa?
 6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
 7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?
-8. Loại B: Tất cả elevationFrom/To là số ÂM? (VD: đọc 2,78 → ghi -2.78)`
+8. Loại B: Tất cả elevationFrom/To là số ÂM? (VD: đọc 2,78 → ghi -2.78)
+
+════════════════════════════════════════════════════
+BƯỚC 5: TỰ KIỂM TRA (SELF-CORRECTION)
+════════════════════════════════════════════════════
+Trước khi trả về JSON, hãy tự đặt câu hỏi và kiểm tra lại ảnh:
+1. "Số 1 ở đầu giờ có thực sự tồn tại không, hay đó là số 0 viết hẹp?" (0h25 vs 1h25)
+2. "Số 4 ở hàng đơn vị phút có thực sự là 4, hay là số 9 viết hở?" (23h49 vs 23h44)
+3. "Tôi có đang bị thói quen làm tròn phút (5, 10, 15...) đánh lừa không?" (17h58 vs 17h55)
+4. "Các mốc thời gian có tăng dần một cách logic không?"
+5. "Chiều dài lớp có khớp với phép tính cộng dồn tích lũy không?" (VD: 2.31 + 10.2 = 12.51)
+6. "Tôi có nhầm lẫn 1 vs 2, 2 vs 7, 0 vs 1, 5 vs 0 trong phần chiều dài không?" (1,6 vs 2,6; 10,2 vs 10,7; 10,7 vs 11,7; 6,5 vs 6,0)
+7. "QUAN TRỌNG: Nếu Chiều dài (VD: 1,6) mâu thuẫn với Cao độ (VD: 2,6), hãy ưu tiên con số bạn nhìn thấy rõ nhất ở cột Chiều dài. Đừng tự ý sửa 1,6 thành 2,6 chỉ để khớp với Cao độ."
+8. "Nếu có mâu thuẫn, hãy ghi chú 'Nghi ngờ nhầm lẫn 1/2' hoặc 'Mâu thuẫn Chiều dài/Cao độ' vào trường notes của lớp đó."`
           },
           {
             inlineData: {
@@ -803,8 +878,9 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
                 timeTo: { type: Type.STRING },
                 dateFrom: { type: Type.STRING },
                 dateTo: { type: Type.STRING },
-                elevationFrom: { type: Type.NUMBER },
-                elevationTo: { type: Type.NUMBER },
+                elevationFrom: { type: Type.NUMBER, description: "Loại B: Tích lũy ĐẦU lớp (số LỚN). Loại A: Cao độ ĐẦU lớp (số ÂM)." },
+                elevationTo: { type: Type.NUMBER, description: "Loại B: Tích lũy CUỐI lớp (số LỚN). Loại A: Cao độ CUỐI lớp (số ÂM)." },
+                lengthMeters: { type: Type.NUMBER, description: "Chiều dài lớp (m). Đọc từ cột 'Chiều dài' (Loại B) hoặc tự tính (Loại A). VD: 1,6 hoặc 10,2." },
                 cumulativeDepth: { type: Type.NUMBER, description: "Loại B: Số LỚN (tích lũy từ đỉnh casing đến cuối lớp này). VD: 2,78 hoặc 12,96. Loại A: để 0." },
                 actualGeology: { type: Type.STRING, description: "Số hiệu lớp địa chất thực tế (ví dụ: \"1\", \"2\"). Tuyệt đối không lấy mô tả chữ." },
                 notes: { type: Type.STRING, description: "Ghi chú cho lớp địa chất này (nếu có)" }
@@ -974,7 +1050,8 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
       constructionEnd: rawData.constructionEnd,
       notes: layer.notes || '',
       durationHours: durationHours,
-      lengthMeters: length,
+      lengthMeters: toNum(layer.lengthMeters, length),
+      cumulativeDepth: toNum(layer.cumulativeDepth, 0),
       speedMph: speed
     });
   });
@@ -1012,6 +1089,7 @@ KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
     ...rawData, 
     constructionStart: normalizeDateTime(rawData.constructionStart), 
     constructionEnd: normalizeDateTime(rawData.constructionEnd), 
+    reportType: isTypeB ? 'B' : 'A',
     layers: finalLayers,
     notes: rawData.notes || '',
     casingElevation: casingElevation,

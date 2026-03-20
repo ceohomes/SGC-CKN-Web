@@ -15,6 +15,7 @@ interface DrillLayer {
   dateTo: string;
   elevationFrom: number;
   elevationTo: number;
+  cumulativeDepth: number;
   actualGeology: string;
   notes: string;
   durationHours: number;
@@ -33,6 +34,7 @@ interface ExtractionResult {
   diameter: string;
   constructionStart: string;
   constructionEnd: string;
+  reportType: 'A' | 'B';
   layers: DrillLayer[];
   notes: string;
   fileName?: string;
@@ -233,6 +235,106 @@ function runRuleEngine(result: ExtractionResult): ValidationIssue[] {
             expected: `Liền tiếp với ${prevLayer.timeTo}`,
             actual: layer.timeFrom,
           });
+        }
+      }
+    }
+
+    // ── 7. Phát hiện lỗi nhận dạng chữ viết tay phổ biến (Heuristics) ──
+    // Lỗi 0 vs 1: "0h" bị đọc thành "1h"
+    if (layer.timeFrom.startsWith('1h') || layer.timeTo.startsWith('1h')) {
+      issues.push({
+        layerIndex: idx,
+        field: 'GIỜ (H)',
+        severity: 'info',
+        type: 'ai_flag',
+        message: `Phát hiện giờ "1h" — hãy kiểm tra kỹ ảnh gốc xem có phải là "0h" viết tay không (lỗi phổ biến).`,
+      });
+    }
+
+    // Lỗi 9 vs 4: Phút có số 4 (VD: 23h44) có thể là số 9 (23h49)
+    if (layer.timeFrom.endsWith('4') || layer.timeTo.endsWith('4')) {
+      issues.push({
+        layerIndex: idx,
+        field: 'PHÚT',
+        severity: 'info',
+        type: 'ai_flag',
+        message: `Phút kết thúc bằng "4" — hãy kiểm tra xem có phải là số "9" viết hở không (VD: 23h49 vs 23h44).`,
+      });
+    }
+
+    // Lỗi nhận diện số trong Chiều dài (1 vs 2, 2 vs 7, 0 vs 1, 5 vs 0)
+    const lenStr = String(layer.lengthMeters);
+    if (lenStr === '2.6' || lenStr === '2.60') {
+       issues.push({
+         layerIndex: idx,
+         field: 'DÀI (m)',
+         severity: 'warning',
+         type: 'ai_flag',
+         message: `Giá trị "2.6" rất hay bị nhầm với "1.6" (số 1 có gạch chân). Hãy kiểm tra kỹ ảnh gốc.`,
+         expected: '1.6 ?',
+         actual: '2.6',
+       });
+    } else if (lenStr === '10.7' || lenStr === '10.70') {
+       issues.push({
+         layerIndex: idx,
+         field: 'DÀI (m)',
+         severity: 'warning',
+         type: 'ai_flag',
+         message: `Giá trị "10.7" rất hay bị nhầm với "10.2" (số 2 viết nhọn). Hãy kiểm tra kỹ ảnh gốc.`,
+         expected: '10.2 ?',
+         actual: '10.7',
+       });
+    } else if (lenStr === '11.7' || lenStr === '11.70') {
+       issues.push({
+         layerIndex: idx,
+         field: 'DÀI (m)',
+         severity: 'warning',
+         type: 'ai_flag',
+         message: `Giá trị "11.7" có thể là "10.7" hoặc "10.2". Hãy kiểm tra kỹ ảnh gốc.`,
+         expected: '10.7 / 10.2 ?',
+         actual: '11.7',
+       });
+    } else if (lenStr.endsWith('.0') || lenStr.endsWith('.00')) {
+       issues.push({
+         layerIndex: idx,
+         field: 'DÀI (m)',
+         severity: 'info',
+         type: 'ai_flag',
+         message: `Chiều dài kết thúc bằng ".0" — hãy kiểm tra xem có phải là số "5" viết bụng tròn không (VD: 6.5 vs 6.0).`,
+       });
+    }
+
+    // ── 8. Kiểm tra Tích lũy (Type B) ──
+    if (result.reportType === 'B') {
+      const curLen = toN(layer.lengthMeters);
+      const curCum = toN(layer.cumulativeDepth);
+      if (i > 0) {
+        const prevCum = toN(layers[i - 1].cumulativeDepth);
+        if (!isNaN(prevCum) && !isNaN(curLen) && !isNaN(curCum)) {
+          const expectedCum = round2(prevCum + curLen);
+          if (Math.abs(expectedCum - curCum) > 0.05) {
+            issues.push({
+              layerIndex: idx,
+              field: 'TÍCH LŨY (m)',
+              severity: 'error',
+              type: 'math',
+              message: `Tích lũy không khớp (Trước: ${fmt(prevCum)} + Dài: ${fmt(curLen)} = ${fmt(expectedCum)})`,
+              expected: `${fmt(expectedCum)} m`,
+              actual: `${fmt(curCum)} m`,
+            });
+          }
+        }
+      } else {
+        // Lớp đầu tiên
+        if (!isNaN(curLen) && !isNaN(curCum) && Math.abs(curLen - curCum) > 0.5) {
+           // Có thể có tích lũy từ trước đó, nhưng nếu lệch quá nhiều thì cảnh báo
+           issues.push({
+             layerIndex: idx,
+             field: 'TÍCH LŨY (m)',
+             severity: 'info',
+             type: 'math',
+             message: `Kiểm tra tích lũy lớp đầu tiên: ${fmt(curCum)} m (Chiều dài: ${fmt(curLen)} m)`,
+           });
         }
       }
     }
@@ -592,7 +694,7 @@ export function ValidationPanel({
       if (filterProject !== 'all' && r.project !== filterProject) return false;
       if (filterSeverity === 'all') return true;
       const report = reports[r.id];
-      if (!report) return filterSeverity === 'all';
+      if (!report) return false;
       const errors = report.issues.filter(i => i.severity === 'error').length;
       const warns = report.issues.filter(i => i.severity === 'warning').length;
       if (filterSeverity === 'error') return errors > 0;
