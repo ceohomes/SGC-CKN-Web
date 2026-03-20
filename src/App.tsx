@@ -80,12 +80,11 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version || '4.4.168'}/build/pdf.worker.min.mjs`;
 
-// Helper: Chuyển đổi PDF sang ảnh (JPEG) để nhúng vào Excel
-const convertPdfToImage = async (data: ArrayBuffer | Blob | File | string): Promise<string> => {
+// Helper: Chuyển đổi PDF sang mảng ảnh (JPEG) để trích xuất dữ liệu đa trang
+const convertPdfToImages = async (data: ArrayBuffer | Blob | File | string): Promise<string[]> => {
   try {
     let arrayBuffer: ArrayBuffer;
     if (typeof data === 'string') {
-      // Hỗ trợ cả data URL và base64 thô
       const base64 = data.includes(',') ? data.split(',')[1] : data;
       const binaryString = atob(base64);
       const bytes = new Uint8Array(binaryString.length);
@@ -101,23 +100,36 @@ const convertPdfToImage = async (data: ArrayBuffer | Blob | File | string): Prom
 
     const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const numPages = pdf.numPages;
+    const images: string[] = [];
 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2.0 });
 
-    if (context) {
-      await (page as any).render({ canvasContext: context, viewport }).promise;
-      return canvas.toDataURL('image/jpeg', 0.8);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      if (context) {
+        await (page as any).render({ canvasContext: context, viewport }).promise;
+        images.push(canvas.toDataURL('image/jpeg', 0.8));
+      }
     }
-    throw new Error("Không thể tạo context canvas");
+    
+    if (images.length === 0) throw new Error("Không thể trích xuất ảnh từ PDF");
+    return images;
   } catch (err) {
     console.error("PDF to Image conversion error:", err);
     throw err;
   }
+};
+
+// Helper: Chuyển đổi PDF sang ảnh (JPEG) - chỉ lấy trang đầu tiên (cho Excel/Preview)
+const convertPdfToImage = async (data: ArrayBuffer | Blob | File | string): Promise<string> => {
+  const images = await convertPdfToImages(data);
+  return images[0];
 };
 
 function cn(...inputs: ClassValue[]) {
@@ -240,7 +252,7 @@ const loadExcelJS = (): Promise<any> => new Promise((resolve, reject) => {
   document.head.appendChild(s);
 });
 
-const prepareFile = async (file: File): Promise<{ base64: string; mimeType: string; fileName: string }> => {
+const prepareFile = async (file: File): Promise<{ images: { base64: string; mimeType: string }[]; fileName: string }> => {
   const getBase64 = (f: File): Promise<string> => new Promise((res, rej) => {
     const r = new FileReader(); r.readAsDataURL(f);
     r.onload = () => res(r.result as string); r.onerror = rej;
@@ -284,13 +296,22 @@ const prepareFile = async (file: File): Promise<{ base64: string; mimeType: stri
 
   if (file.type === 'application/pdf') {
     try {
-      const b = await convertPdfToImage(file);
-      return { base64: b, mimeType: 'image/jpeg', fileName: file.name.replace(/\.[^/.]+$/, '') + '.jpg' };
+      const images = await convertPdfToImages(file);
+      return { 
+        images: images.map(b => ({ base64: b, mimeType: 'image/jpeg' })), 
+        fileName: file.name.replace(/\.[^/.]+$/, '') + '.jpg' 
+      };
     } catch {
-      return { base64: await getBase64(file), mimeType: 'application/pdf', fileName: file.name };
+      return { 
+        images: [{ base64: await getBase64(file), mimeType: 'application/pdf' }], 
+        fileName: file.name 
+      };
     }
   } else if (file.type.startsWith('image/')) {
-    return { base64: await compressImage(file), mimeType: 'image/jpeg', fileName: file.name };
+    return { 
+      images: [{ base64: await compressImage(file), mimeType: 'image/jpeg' }], 
+      fileName: file.name 
+    };
   }
   throw new Error('Định dạng tệp không được hỗ trợ. Vui lòng sử dụng ảnh hoặc PDF.');
 };
@@ -537,7 +558,7 @@ const isQuotaError = (err: any): boolean => {
   );
 };
 
-const extractDataFromFile = async (base64Data: string, mimeType: string, userApiKey?: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
+const extractDataFromFile = async (images: { base64: string; mimeType: string }[], userApiKey?: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
   
@@ -547,13 +568,28 @@ const extractDataFromFile = async (base64Data: string, mimeType: string, userApi
   const currentYear = currentDate.getFullYear();
   const currentFormattedDate = `${currentDate.getDate().toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}/${currentYear}`;
 
+  const imageParts = images.map(img => {
+    const data = img.base64.split(',')[1];
+    return {
+      inlineData: {
+        data,
+        mimeType: img.mimeType
+      }
+    };
+  });
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [
       {
         parts: [
+          ...imageParts,
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ hình ảnh/PDF biên bản khoan cọc nhồi với độ chính xác tuyệt đối 100%.
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ các hình ảnh/trang PDF biên bản khoan cọc nhồi với độ chính xác tuyệt đối 100%.
+            
+LƯU Ý QUAN TRỌNG:
+- Bạn nhận được ${images.length} hình ảnh, đây có thể là các trang khác nhau của cùng một biên bản. Hãy tổng hợp dữ liệu từ TẤT CẢ các trang để có kết quả đầy đủ nhất.
+- Nếu thông tin bị chia cắt giữa các trang (ví dụ: bảng địa chất kéo dài qua 2 trang), hãy nối chúng lại một cách logic.
 
 THÔNG TIN NGỮ CẢNH:
 - Ngày hiện tại: ${currentFormattedDate}
@@ -839,12 +875,6 @@ Trước khi trả về JSON, hãy tự đặt câu hỏi và kiểm tra lại �
 7. "QUAN TRỌNG: Nếu Chiều dài (VD: 1,6) mâu thuẫn với Cao độ (VD: 2,6), hãy ưu tiên con số bạn nhìn thấy rõ nhất ở cột Chiều dài. Đừng tự ý sửa 1,6 thành 2,6 chỉ để khớp với Cao độ."
 8. "Nếu có mâu thuẫn, hãy ghi chú 'Nghi ngờ nhầm lẫn 1/2' hoặc 'Mâu thuẫn Chiều dài/Cao độ' vào trường notes của lớp đó."`
           },
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Data.includes(',') ? base64Data.split(',')[1] : base64Data
-            }
-          }
         ]
       }
     ],
@@ -1722,7 +1752,7 @@ export default function App() {
   };
 
   // ── Gọi AI với auto-rotate key khi hết quota ──
-  const callExtractWithRotation = async (base64Data: string, mimeType: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
+  const callExtractWithRotation = async (images: { base64: string; mimeType: string }[]): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
     const validKeys = geminiApiKeys.filter(k => k.trim());
     if (validKeys.length === 0) {
       throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
@@ -1748,7 +1778,7 @@ export default function App() {
 
       try {
         console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1}`);
-        const result = await extractDataFromFile(base64Data, mimeType, key);
+        const result = await extractDataFromFile(images, key);
         // Thành công — cập nhật activeKeyIndex
         if (idx !== activeKeyIndex) {
           setActiveKeyIndex(idx);
@@ -1892,11 +1922,11 @@ export default function App() {
           setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
           try {
             // Bước 1: chuẩn bị (nén/convert) — 10→40%
-            const { base64, mimeType, fileName } = await prepareFile(file);
+            const { images, fileName } = await prepareFile(file);
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40 } : f));
 
             // Bước 2: gọi AI — 40→90%
-            const rawResult = await callExtractWithRotation(base64, mimeType);
+            const rawResult = await callExtractWithRotation(images);
             setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
 
             // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
@@ -1923,8 +1953,8 @@ export default function App() {
               id: crypto.randomUUID(),
               timestamp: Date.now(),
               fileName,
-              _base64: base64,
-              _mimeType: mimeType,
+              _base64: images[0]?.base64,
+              _mimeType: images[0]?.mimeType,
             };
 
             collectedResults.push(result);
@@ -8028,7 +8058,7 @@ function EditSplitView({
   embedded?: boolean;
   githubCreds?: { token: string; username: string; repo: string } | null;
   userApiKey?: string;
-  onExtract?: (base64: string, mime: string) => Promise<Omit<ExtractionResult, 'id' | 'timestamp'>>;
+  onExtract?: (images: { base64: string; mimeType: string }[]) => Promise<Omit<ExtractionResult, 'id' | 'timestamp'>>;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
@@ -8221,8 +8251,8 @@ function EditSplitView({
           });
 
           const rawResult = onExtract
-            ? await onExtract(normalized.base64, normalized.mime)
-            : await extractDataFromFile(normalized.base64, normalized.mime, userApiKey);
+            ? await onExtract([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }])
+            : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey);
           const map = rawResult.designLayerMap || {};
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
             const geoCode = (layer.actualGeology || '').trim();
@@ -8323,8 +8353,8 @@ function EditSplitView({
 
       // Bước 3: Gọi AI trích xuất lại với ảnh đã chuẩn hóa
       const rawResult = onExtract
-        ? await onExtract(normalized.base64, normalized.mime)
-        : await extractDataFromFile(normalized.base64, normalized.mime, apiKey);
+        ? await onExtract([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }])
+        : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], apiKey);
 
       // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
       const map = rawResult.designLayerMap || {};
