@@ -6443,6 +6443,51 @@ function SummaryView({
   const [isExportingWeekly, setIsExportingWeekly] = useState(false);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
   const [soilDrillDown, setSoilDrillDown] = useState<{ diameter: string; soilClass: string; piles: ExtractionResult[] } | null>(null);
+  const [isExportingSoil, setIsExportingSoil] = useState(false);
+
+  const exportSoilStatsToExcel = async (stats: typeof soilClassStats) => {
+    setIsExportingSoil(true);
+    try {
+      const ExcelJS = await loadExcelJS();
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Thống kê theo Cấp đất đá');
+      const hdrs = ['STT', 'Cấp đất đá', 'Đường kính', 'Số cọc', 'Số mẫu', 'Tổng dài (m)', 'T.Gian (h)', 'V.Min (m/h)', 'V.Max (m/h)', 'V.TB (m/h)'];
+      const hdrRow = ws.addRow(hdrs);
+      hdrRow.eachCell(cell => {
+        cell.font = { bold: true, color: { argb: 'FF1A3A6B' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3E0' } };
+        cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      stats.forEach((stat, i) => {
+        const avg = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
+        const row = ws.addRow([
+          i + 1, stat.layerDesign, stat.diameter,
+          stat.pileIds.size, stat.segments,
+          parseFloat(stat.totalLength.toFixed(2)),
+          parseFloat(stat.totalDuration.toFixed(2)),
+          stat.minSpeed === Infinity ? null : parseFloat(stat.minSpeed.toFixed(2)),
+          stat.maxSpeed === -Infinity ? null : parseFloat(stat.maxSpeed.toFixed(2)),
+          parseFloat(avg.toFixed(2)),
+        ]);
+        row.eachCell(cell => {
+          cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+        (row.getCell(2) as any).alignment = { horizontal: 'left', vertical: 'middle' };
+      });
+      ws.columns = [{ width: 6 }, { width: 22 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }];
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'Thong_ke_cap_dat_da.xlsx'; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert('Lỗi xuất Excel: ' + e.message);
+    } finally {
+      setIsExportingSoil(false);
+    }
+  };
 
   // Năm mặc định = năm có dữ liệu mới nhất (không phải năm hiện tại)
   const defaultYear = React.useMemo(() => {
@@ -8620,7 +8665,7 @@ function SummaryView({
 
       {/* ── Bảng Tổng hợp thống kê theo Cấp đất đá ── */}
       <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
-        <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+        <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
           <div className="flex items-center gap-2">
             <BarChart3 size={18} className="text-blue-300" />
             <h4 className="text-[12px] font-black text-white uppercase tracking-widest">
@@ -8650,32 +8695,47 @@ function SummaryView({
                 </select>
               ) : null;
             })()}
+            <button
+              onClick={() => !isExportingSoil && exportSoilStatsToExcel(soilClassStats)}
+              disabled={isExportingSoil}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-sm hover:shadow-md",
+                isExportingSoil ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-500 hover:bg-emerald-400"
+              )}
+            >
+              {isExportingSoil ? (
+                <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>Đang xuất...</>
+              ) : (
+                <><FileDown size={14} />Xuất Excel</>
+              )}
+            </button>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr style={{ background: '#e0f2f1' }}>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-10">STT</th>
-                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-teal-200">Cấp đất đá</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">Đường kính</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số cọc</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số mẫu</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-28">Tổng dài (m)</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-28">T.Gian (h)</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.Min</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.Max</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.TB (m/h)</th>
+              <tr style={{ background: '#fff3e0' }}>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-10">STT</th>
+                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-orange-200">Cấp đất đá</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">Đường kính</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Số cọc</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Số mẫu</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-28">Tổng dài (m)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-28">T.Gian (h)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.Min</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.Max</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">V.TB (m/h)</th>
               </tr>
             </thead>
             <tbody>
               {soilClassStats.map((stat, i) => {
                 const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
-                const rowBg = i % 2 === 0 ? '#ffffff' : '#f0fdfa';
+                const isSlow = avgSpd > 0 && avgSpd <= 1;
+                const isFast = avgSpd >= 5;
+                const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
                 return (
-                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-200 hover:bg-teal-50/50 transition-colors cursor-pointer"
+                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors cursor-pointer"
                     onClick={() => {
-                      // Lọc các biên bản thuộc nhóm này
                       const piles = history.filter(res =>
                         (res.diameter || '—').trim() === stat.diameter &&
                         (res.layers || []).some(l => {
@@ -8686,25 +8746,56 @@ function SummaryView({
                       setSoilDrillDown({ diameter: stat.diameter, soilClass: stat.layerDesign, piles });
                     }}
                   >
-                    <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-teal-200">{i + 1}</td>
-                    <td className="px-4 py-2.5 border border-teal-200">
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{i + 1}</td>
+                    <td className="px-4 py-3 text-[12px] text-slate-800 border border-slate-200 leading-snug">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `#${GROUP_COLORS[stat.colorIdx].bg}` }} />
-                        <span className="text-xs font-bold text-slate-700">{stat.layerDesign}</span>
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: `#${GROUP_COLORS[stat.colorIdx].bg}` }} />
+                        <span className="font-semibold">{stat.layerDesign}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-teal-700 border border-teal-200">{stat.diameter}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border border-teal-200">{stat.pileIds.size}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border border-teal-200">{stat.segments}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-800 border border-teal-200">{stat.totalLength.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-500 border border-teal-200">{stat.totalDuration.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border border-teal-200">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border border-teal-200">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-black text-teal-600 border border-teal-200">{avgSpd.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-800 text-center border border-slate-200">{stat.diameter}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.pileIds.size}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.segments}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-blue-600 text-center border border-slate-200">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-indigo-600 text-center border border-slate-200">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] text-slate-800 text-center border border-slate-200">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-center border border-slate-200">
+                      <span className={cn(
+                        "inline-block px-3 py-0.5 rounded-full text-[12px] font-black min-w-[52px] text-center",
+                        isSlow ? "bg-red-500 text-white shadow-sm" :
+                        isFast ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                        "bg-orange-100 text-orange-700 border border-orange-200"
+                      )}>{avgSpd.toFixed(2)}</span>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              {(() => {
+                const totalSoilLen = soilClassStats.reduce((s, g) => s + g.totalLength, 0);
+                const totalSoilDur = soilClassStats.reduce((s, g) => s + g.totalDuration, 0);
+                const totalSoilSegs = soilClassStats.reduce((s, g) => s + g.segments, 0);
+                const soilAvg = totalSoilDur > 0 ? totalSoilLen / totalSoilDur : 0;
+                const soilMin = soilClassStats.reduce((m, g) => g.minSpeed < m ? g.minSpeed : m, Infinity);
+                const soilMax = soilClassStats.reduce((m, g) => g.maxSpeed > m ? g.maxSpeed : m, -Infinity);
+                return (
+                  <tr style={{ background: '#f1f5f9', borderTop: '2px solid #94a3b8' }}>
+                    <td colSpan={3} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{allPileIdsCount}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalSoilSegs}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalSoilLen.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalSoilDur.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{soilMin === Infinity ? '—' : soilMin.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{soilMax === -Infinity ? '—' : soilMax.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-center border border-slate-300">
+                      <span className="inline-block px-4 py-1 bg-blue-700 text-white rounded-full text-[12px] font-black shadow">{soilAvg.toFixed(2)}</span>
+                    </td>
+                  </tr>
+                );
+              })()}
+            </tfoot>
           </table>
         </div>
       </div>
