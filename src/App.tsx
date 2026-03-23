@@ -3669,7 +3669,9 @@ LƯU Ý:
           (res.layers || []).forEach(layer => {
             const v = (layer.layerDesign || '').trim();
             if (!v) return;
-            const sc = layer.soilClass || 'Chưa Phân định nhóm';
+            const scRaw = (layer.soilClass || '').trim();
+            // Nếu soilClass không nằm trong danh sách chuẩn → coi là "Chưa Phân định nhóm"
+            const sc = SOIL_CLASSES.includes(scRaw) ? scRaw : 'Chưa Phân định nhóm';
             if (map.has(v)) {
               map.get(v)!.count++;
             } else {
@@ -6569,7 +6571,9 @@ function SummaryView({
   const soilStatsMap: Record<string, LayerStat> = {};
   history.forEach(res => {
     (res.layers || []).forEach(layer => {
-      const sc = (layer.soilClass || 'Chưa Phân định nhóm').trim();
+      const scRaw = (layer.soilClass || '').trim();
+      // Nếu soilClass không nằm trong danh sách chuẩn → về "Chưa Phân định nhóm"
+      const sc = SOIL_CLASSES.includes(scRaw) ? scRaw : 'Chưa Phân định nhóm';
       const dia = (res.diameter || '—').trim();
       const key = `${sc}|||${dia}`;
       
