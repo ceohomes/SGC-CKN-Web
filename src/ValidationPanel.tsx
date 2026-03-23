@@ -374,37 +374,45 @@ async function runAiCrossCheck(
     ? `\n\nCÁC LỚP CẦN ĐẶC BIỆT CHÚ Ý (rule engine phát hiện nghi ngờ): Lớp ${suspiciousLayers.map(i => i + 1).join(', ')}`
     : '';
 
-  const prompt = `Bạn là chuyên gia kiểm tra độc lập biên bản khoan cọc nhồi. Nhiệm vụ: đọc lại ảnh biên bản và so sánh với dữ liệu đã trích xuất bên dưới. CHỈ báo lỗi nếu thực sự sai — đừng bịa ra lỗi.
+  const prompt = `Bạn là chuyên gia kiểm tra độc lập biên bản khoan cọc nhồi cao cấp. 
+Nhiệm vụ của bạn là đối soát dữ liệu đã trích xuất với hình ảnh gốc để phát hiện các sai sót, đặc biệt là lỗi nhận diện chữ viết tay.
 
-DỮ LIỆU ĐÃ TRÍCH XUẤT:
+DỮ LIỆU CẦN KIỂM TRA:
 Cọc: ${result.pileId} | Dự án: ${result.project} | Đường kính: ${result.diameter}
 Thi công: ${result.constructionStart} → ${result.constructionEnd}
 
-Các lớp địa chất:
+Danh sách các lớp đã trích xuất:
 ${JSON.stringify(layersSummary, null, 2)}
 ${suspiciousSummary}
 
-NHIỆM VỤ:
-1. Đọc lại từng ô số trong ảnh cho các cột: TỪ (H), ĐẾN (H), CAO ĐỘ TỪ, CAO ĐỘ ĐẾN, DÀI (M), T.GIAN, V (M/H)
-2. So sánh với dữ liệu trích xuất ở trên
-3. Báo cáo những ô bạn đọc KHÁC với dữ liệu trích xuất
+HƯỚNG DẪN KIỂM TRA (QUAN TRỌNG):
+1. ĐỐI CHIẾU TỪNG Ô: Kiểm tra kỹ các cột: TỪ (H), ĐẾN (H), CAO ĐỘ TỪ, CAO ĐỘ ĐẾN, DÀI (M).
+2. CẢNH GIÁC CHỮ VIẾT TAY:
+   - Số "1" đầu giờ thường mảnh, dễ bị đọc sót (ví dụ: "17h20" trích xuất thành "7h20").
+   - Số "9" và "4" viết tay dễ nhầm lẫn.
+   - Số "1" và "2" trong cột Chiều dài dễ nhầm (ví dụ: "1,6" trích xuất thành "2,6").
+   - Số "2" và "7" trong cột Chiều dài dễ nhầm (ví dụ: "10,2" trích xuất thành "10,7").
+3. KIỂM TRA TÍNH LOGIC:
+   - Thời gian phải tăng dần.
+   - Cao độ phải liên tục (elevationTo lớp N = elevationFrom lớp N+1).
+   - Toán học: (Cao độ từ) - (Chiều dài) = (Cao độ đến).
 
-Trả về JSON thuần (không markdown, không giải thích thêm):
+YÊU CẦU ĐẦU RA (JSON thuần):
 {
-  "summary": "Tóm tắt 1 câu kết quả kiểm tra",
+  "summary": "Tóm tắt kết quả kiểm tra",
   "issues": [
     {
       "layer": 2,
-      "field": "V (M/H)",
-      "image_value": "0,84",
-      "extracted_value": "8,4",
+      "field": "DÀI (M)",
+      "image_value": "1,6",
+      "extracted_value": "2,6",
       "confidence": "high",
-      "note": "Có thể bị đọc sai dấu thập phân"
+      "note": "AI đọc nhầm số 1 thành số 2 do nét gạch chân dài"
     }
   ]
 }
 
-Nếu không phát hiện lỗi nào: { "summary": "Dữ liệu trích xuất khớp với ảnh gốc", "issues": [] }`;
+CHỈ báo lỗi nếu bạn CHẮC CHẮN dữ liệu trích xuất sai so với ảnh. Nếu khớp, trả về issues: [].`;
 
   let base64Data = result._base64;
   let mimeType = (result._mimeType || 'image/jpeg') as string;

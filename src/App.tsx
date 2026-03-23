@@ -585,295 +585,83 @@ const extractDataFromFile = async (images: { base64: string; mimeType: string }[
         parts: [
           ...imageParts,
           {
-            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp. Hãy trích xuất dữ liệu từ các hình ảnh/trang PDF biên bản khoan cọc nhồi với độ chính xác tuyệt đối 100%.
-            
-LƯU Ý QUAN TRỌNG:
-- Bạn nhận được ${images.length} hình ảnh, đây có thể là các trang khác nhau của cùng một biên bản. Hãy tổng hợp dữ liệu từ TẤT CẢ các trang để có kết quả đầy đủ nhất.
-- Nếu thông tin bị chia cắt giữa các trang (ví dụ: bảng địa chất kéo dài qua 2 trang), hãy nối chúng lại một cách logic.
-
-THÔNG TIN NGỮ CẢNH:
-- Ngày hiện tại: ${currentFormattedDate}
-- Năm hiện tại: ${currentYear}
-- LƯU Ý QUAN TRỌNG: Nếu năm trong văn bản trông giống "2024" nhưng hiện tại là năm ${currentYear}, hãy kiểm tra kỹ xem có phải đó là số "${currentYear.toString().slice(-1)}" viết tay không. Ưu tiên tính logic của thời gian thực tế.
+            text: `Bạn là một chuyên gia phân tích dữ liệu xây dựng cao cấp, chuyên về hồ sơ địa chất và khoan cọc nhồi. 
+Nhiệm vụ của bạn là trích xuất dữ liệu từ ${images.length} hình ảnh/trang PDF biên bản khoan cọc nhồi với độ chính xác tuyệt đối 100%.
 
 ════════════════════════════════════════════════════
-BƯỚC 0: XÁC ĐỊNH LOẠI BIÊN BẢN (BẮT BUỘC ĐẦU TIÊN)
-════════════════════════════════════════════════════
-
-Nhìn vào tiêu đề và cấu trúc biên bản để xác định LOẠI BIÊN BẢN:
-
-▶ LOẠI A — "Biên bản theo dõi địa chất / Chi tiết các lớp địa chất"
-  Dấu hiệu nhận biết:
-  • Có bảng tra cứu "Căn cứ Hồ sơ BVBPCT" ở phía trên (liệt kê lớp số 1, 2, 3... kèm mô tả)
-  • Cột "Địa chất thực tế" chứa SỐ (1, 2, 3...)
-  • Có trường "Tên bộ phận", "Biên bản số", "Cọc số"
-
-▶ LOẠI B — "Biên bản kiểm tra công tác khoan tạo lỗ cọc khoan nhồi đại trà"
-  Dấu hiệu nhận biết:
-  • Tiêu đề có chữ "KIỂM TRA CÔNG TÁC KHOAN TẠO LỖ" hoặc "ĐẠI TRÀ"
-  • KHÔNG có bảng tra cứu địa chất số hiệu
-  • Cột "Địa chất thực tế" chứa MÔ TẢ BẰNG CHỮ (ví dụ: "Đất san lấp", "Sét lẫn hữu cơ...")
-  • Có cột "Chiều cao lớp" hoặc số (m) cộng dần bên cạnh mô tả địa chất
-  • Bảng gồm các cột: Khoan | Ko đến | Chờ | Hư hỏng Sửa chữa | Thời gian | Ghi chú | Độ sâu (từ đỉnh casing) | Địa chất thực tế | XÁC NHẬN
-  • Trường thông tin: Công trình, Hạng mục, Địa điểm, Máy khoan, Đường kính cọc, Độ sâu kiểm tra, Cao độ đỉnh casing, Cọc số
+QUY TẮC TỔNG QUÁT:
+1. TỔNG HỢP ĐA TRANG: Kết hợp dữ liệu từ TẤT CẢ các trang. Nếu bảng kéo dài qua nhiều trang, hãy nối các dòng lại theo đúng thứ tự thời gian và độ sâu.
+2. KHÔNG HỎI LẠI: Trả về kết quả dưới dạng JSON duy nhất, không có văn bản giải thích bên ngoài.
+3. XỬ LÝ CHỮ VIẾT TAY: Đây là dữ liệu viết tay, hãy cực kỳ cẩn thận với các con số dễ nhầm lẫn (0/1, 1/7, 4/9, 5/8, 2/7).
+4. TÍNH LOGIC: Dữ liệu phải tăng dần về thời gian và độ sâu. Nếu có mâu thuẫn, hãy ưu tiên con số rõ nét nhất và ghi chú vào trường "notes".
 
 ════════════════════════════════════════════════════
-BƯỚC 1: TRÍCH XUẤT THÔNG TIN CHUNG (HEADER)
+BƯỚC 0: PHÂN LOẠI BIÊN BẢN (CỰC KỲ QUAN TRỌNG)
 ════════════════════════════════════════════════════
+Dựa vào tiêu đề và cấu trúc để xác định loại:
 
-ÁP DỤNG CHO CẢ 2 LOẠI:
-- "project" (Dự án/Công trình):
-  • Loại A: Dòng "Dự án: ..."
-  • Loại B: Dòng "Công trình: ..." (ví dụ: "Dự án số 1 khu đô thị trung tâm thành phố Thanh Hóa (Vinhomes Star City)")
-- "item" (Hạng mục):
-  • Cả 2: Dòng "Hạng mục: ..." — PHẢI lấy đúng dòng Hạng mục, KHÔNG nhầm với Công trình/Dự án
-  • Loại B ví dụ: "Thi công cọc khoan nhồi đại trà_lô đất ký hiệu CT-02"
-- "componentName" (Tên bộ phận / Địa điểm):
-  • Loại A: Dòng "Tên bộ phận: ..."
-  • Loại B: Dòng "Địa điểm: ..." (ví dụ: "Phường Hạc Thành, tỉnh Thanh Hoá")
-- "pileId" (Số hiệu cọc):
-  • Loại A: Dòng "Cọc: ..." (ví dụ: "C9")
-  • Loại B: Dòng "Cọc số ..." — viết tay (ví dụ: "17-05")
-- "reportNumber" (Biên bản số / Máy khoan):
-  • Loại A: Dòng "Biên bản số: ..."
-  • Loại B: Dòng "Máy khoan: ..." (ví dụ: "KL-002")
-- "diameter" (Đường kính):
-  • Cả 2: Trích xuất từ "Đường kính cọc" hoặc "Đường kính" (ví dụ: "D800", "D2000")
+▶ LOẠI A (Biên bản theo dõi địa chất):
+  - Có bảng tra cứu "Căn cứ Hồ sơ BVBPCT" (liệt kê Lớp 1, 2, 3... kèm mô tả thiết kế).
+  - Cột "Địa chất thực tế" ghi SỐ (1, 2, 3...).
+  - Cột "Cao độ" ghi số ÂM (ví dụ: -15.50).
+
+▶ LOẠI B (Biên bản kiểm tra công tác khoan):
+  - Tiêu đề: "KIỂM TRA CÔNG TÁC KHOAN TẠO LỖ...".
+  - Cột "Địa chất thực tế" ghi MÔ TẢ CHỮ (ví dụ: "Sét pha xám vàng...").
+  - Cột "Độ sâu (từ đỉnh casing)" có 2 số: Số nhỏ (Chiều dài lớp) và Số lớn (Tích lũy/Cộng dồn).
+  - Có trường "Cao độ đỉnh casing" ở header.
 
 ════════════════════════════════════════════════════
-BƯỚC 1.5: ĐẶC ĐIỂM NHẬN DIỆN CHỮ VIẾT TAY (QUAN TRỌNG)
+BƯỚC 1: TRÍCH XUẤT HEADER (THÔNG TIN CHUNG)
 ════════════════════════════════════════════════════
-
-⚠️ CẢNH BÁO CÁC LỖI NHẬN DIỆN PHỔ BIẾN — HÃY KIỂM TRA KỸ:
-1. SỐ "0" VÀ "1":
-   - Chữ viết tay số "0" đôi khi viết hẹp hoặc có nét gạch đầu dễ nhầm với số "1".
-   - LỖI CẦN TRÁNH: Đọc "0h25" thành "1h25", "0h23" thành "1h23".
-   - QUY TẮC: Nếu giờ bắt đầu ca hoặc giờ sáng sớm, hãy ưu tiên kiểm tra xem đó có phải là "0h" không.
-
-2. SỐ "9" VÀ "4":
-   - Số "9" viết tay có vòng tròn trên đôi khi bị hở hoặc nét gạch xuống giống số "4".
-   - LỖI CẦN TRÁNH: Đọc "23h49" thành "23h44".
-   - QUY TẮC: Nhìn kỹ vòng tròn phía trên. Nếu có vòng tròn khép kín hoặc gần kín, đó là số "9".
-
-3. SỐ "8" VÀ "5":
-   - Số "8" có 2 vòng kín. Số "5" có nét ngang trên và bụng hở.
-   - LỖI CẦN TRÁNH: Đọc "17h58" thành "17h55".
-
-4. SỐ "7" VÀ "5":
-   - Số "7" có gạch ngang trên và chân chéo. Số "5" có bụng cong.
-   - LỖI CẦN TRÁNH: Đọc "18h17" thành "18h15".
-
-5. SỐ "1" VÀ "2" (TRONG CHIỀU DÀI - CỰC KỲ QUAN TRỌNG):
-   - Số "1" viết tay đôi khi có móc đầu và GẠCH CHÂN DÀI ở dưới, dễ nhầm với số "2".
-   - DẤU HIỆU: Nếu phần trên là một đường thẳng đứng hoặc chỉ có móc nhỏ, nhưng phần dưới có gạch ngang dài -> Hãy nghi ngờ đó là số "1".
-   - MẸO: Trong biên bản này, nếu thấy một chữ số có chân ngang dài nhưng đầu không cong tròn rõ rệt, hãy đọc là "1".
-   - LỖI CẦN TRÁNH: Đọc "1,6" thành "2,6".
-
-6. SỐ "2" VÀ "7" (TRONG CHIỀU DÀI - CỰC KỲ QUAN TRỌNG):
-   - Số "2" viết nhanh có thể mất vòng lặp ở dưới, trông giống số "7" có gạch chân.
-   - DẤU HIỆU: Số "2" thường có độ cong ở lưng. Số "7" thường có nét gạch ngang trên thẳng và dứt khoát.
-   - MẸO: Nếu phần trên có độ cong mềm mại nhưng phần dưới có góc nhọn -> Đó là số "2". Nếu phần trên là nét ngang thẳng tắp -> Đó là số "7".
-   - LỖI CẦN TRÁNH: Đọc "10,2" thành "10,7".
-
-7. SỐ "0" VÀ "1" (TRONG SỐ CÓ NHIỀU CHỮ SỐ):
-   - LỖI CẦN TRÁNH: Đọc "10,7" thành "11,7".
-
-8. SỐ "5" VÀ "0" (TRONG CHIỀU DÀI):
-   - Số "5" viết bụng tròn khép kín có thể giống số "0".
-   - LỖI CẦN TRÁNH: Đọc "6,5" thành "6,0".
-
-9. SỐ "3" VÀ "2":
-   - Số "3" có 2 bụng cong. Số "2" có đầu cong và chân ngang.
-   - LỖI CẦN TRÁNH: Đọc "13,30" thành "12,80" hoặc ngược lại.
+- project: Tên dự án/công trình.
+- item: Hạng mục (PHẢI lấy đúng dòng "Hạng mục", không lấy nhầm "Dự án").
+- pileId: Số hiệu cọc (ví dụ: "C9", "17-05").
+- reportNumber: Tên máy khoan (Drilling Machine). Ví dụ: "SANY 285", "XCMG 360", "Bauer BG28". Đọc từ header biên bản.
+- diameter: Đường kính cọc (ví dụ: "D800", "1200").
+- constructionStart / constructionEnd: Thời gian bắt đầu/kết thúc tổng thể (HH:mm DD/MM/YYYY).
+- casingElevation: Cao độ đỉnh casing (chỉ có ở Loại B). Đọc số viết tay (ví dụ: "0,71").
 
 ════════════════════════════════════════════════════
-BƯỚC 2: TRÍCH XUẤT CÁC DÒNG ĐỊA TẦNG THEO LOẠI
+BƯỚC 2: CHI TIẾT CÁC LỚP ĐỊA TẦNG
 ════════════════════════════════════════════════════
 
-━━━ XỬ LÝ LOẠI A (có bảng tra cứu số hiệu) ━━━
+--- ĐỐI VỚI LOẠI A ---
+- actualGeology: Lấy SỐ hiệu lớp (1, 2, 3...).
+- designLayerCode: Giống actualGeology.
+- layerDesign: Tra cứu mô tả từ bảng "Căn cứ Hồ sơ..." tương ứng với số hiệu.
+- elevationFrom / elevationTo: Lấy số ÂM trong bảng.
 
-  • BƯỚC A1: Tìm bảng "Căn cứ Hồ sơ BVBPCT được duyệt". Trích xuất thành "designLayerMap":
-    Ví dụ: { "1": "Sét pha màu xám đen...", "2": "Sét màu xám ghi...", "3": "Cát xám ghi..." }
-    PHẢI ĐỐI CHIẾU TỪNG DÒNG, KHÔNG ĐƯỢC NHẦM LẪN.
-  • BƯỚC A2: Với mỗi dòng trong bảng Chi tiết:
-    - "actualGeology": SỐ HIỆU từ cột "Địa chất thực tế" (ví dụ: "1", "2", "3")
-    - "layerDesign": Mô tả từ designLayerMap tương ứng (VLOOKUP logic)
-    - "designLayerCode": Giống actualGeology
-  • "elevationFrom" / "elevationTo": Số ÂM, giảm dần theo chiều sâu
-
-━━━ XỬ LÝ LOẠI B (biên bản đại trà, mô tả địa chất bằng chữ) ━━━
-
-  ⚠️ ĐÂY LÀ TRƯỜNG HỢP QUAN TRỌNG CẦN XỬ LÝ ĐẶC BIỆT:
-
-  CẤU TRÚC BẢNG LOẠI B:
-  Bảng có cột "Độ sâu (từ đỉnh casing)" gồm 2 phần:
-    • Cột trái: Chiều cao lớp địa chất (m) — đây là ĐỘ DÀY / CHIỀU DÀI thực tế của lớp (ví dụ: 1,227 hoặc 6,5)
-    • Cột phải: Số cộng dồn — chiều sâu tích lũy từ đỉnh casing
-  Cột "Địa chất thực tế" — mô tả bằng chữ
-
-  ⭐ LOẠI B — CAO ĐỘ TUYỆT ĐỐI (ĐƠN GIẢN — ĐỌC TRỰC TIẾP):
-  ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │ CỘT "Độ sâu (m) từ đỉnh casing" có 2 SỐ cho mỗi lớp:                           │
-  │   • Số TRÊN (nhỏ hơn) = độ sâu bắt đầu lớp → elevationFrom = -(số này)         │
-  │   • Số DƯỚI (lớn hơn) = độ sâu kết thúc lớp → elevationTo   = -(số này)        │
-  │                                                                                  │
-  │ VÍ DỤ từ biên bản:                                                               │
-  │   Lớp Sét pha:       số trên=0,71 | số dưới=2,78  → elevationFrom=-0,71 ; elevationTo=-2,78   │
-  │   Lớp Sét lẫn hữu cơ: số trên=2,78 | số dưới=12,96 → elevationFrom=-2,78 ; elevationTo=-12,96 │
-  │   Lớp tiếp theo:     số trên=12,96 | số dưới=18,20 → elevationFrom=-12,96 ; elevationTo=-18,20│
-  │                                                                                  │
-  │ QUY TẮC:                                                                         │
-  │   - elevationFrom = -(số TRÊN)                                                   │
-  │   - elevationTo   = -(số DƯỚI)                                                   │
-  │   - elevationFrom lớp N = elevationTo lớp N-1 (liên tiếp nhau)                  │
-  │   - Tất cả đều là số ÂM (thêm dấu - vào trước số đọc được)                      │
-  │   - lengthMeters = số DƯỚI - số TRÊN                                             │
-  └──────────────────────────────────────────────────────────────────────────────────┘
-
-  ⭐ ĐỌC "casingElevation":
-  - Tìm ô "Cao độ đỉnh casing (vết lắng lần 1):" trong header biên bản
-  - Đọc số viết tay → đây chính là số TRÊN của lớp đầu tiên
-  - VD: viết "0,71" → casingElevation = 0.71 (lưu nguyên giá trị, không cần dùng để tính)
-  - Nếu không tìm thấy → casingElevation = 0.
-
-  ⚠️ LỖI ĐỌC CHỮ VIẾT TAY PHỔ BIẾN:
-    - Nhầm số: "2,78" đọc thành "2,18" → kiểm tra lại: số DƯỚI phải = số TRÊN lớp kế tiếp
-    - Bỏ sót chữ số: "12,96" đọc thành "2,96" → số DƯỚI phải luôn LỚN HƠN số TRÊN
-    - Đọc KỸ từng chữ số, đặc biệt số có 4-5 chữ số
-
-  CÁCH LẤY "actualGeology" LOẠI B:
-    • PHẢI là MÔ TẢ ĐẦY ĐỦ bằng chữ từ cột "Địa chất thực tế"
-    • Ví dụ: "Đất san lấp", "Sét lẫn hữu cơ, xám nâu, xám đen TT dẻo chảy"
-    • "layerDesign": GIỐNG HỆT "actualGeology"
-    • "designLayerMap": {} (để trống)
-
-  ⭐ QUY TẮC ĐÁNH STT ĐỊA CHẤT LOẠI B (BẮT BUỘC):
-    Biên bản Loại B KHÔNG có số thứ tự địa chất sẵn → BẮT BUỘC tự đánh số từ 1 trở đi từ trên xuống.
-    
-    NGUYÊN TẮC ĐÁNH STT:
-    • Mỗi LỚP ĐỊA CHẤT KHÁC NHAU (tên khác nhau) = 1 số thứ tự riêng
-    • Các lớp có cùng tên (lặp lại) vẫn đánh STT riêng theo thứ tự xuất hiện
-    • "designLayerCode" = STT đánh từ "1", "2", "3"... theo thứ tự từ trên xuống dưới
-    • "layerNumber" = CŨNG là số thứ tự dòng từ 1 trở đi (trùng với designLayerCode cho Loại B)
-    
-    VÍ DỤ từ biên bản mẫu:
-      Dòng 1: "Đất san lấp"                         → designLayerCode = "1", layerNumber = 1
-      Dòng 2: "Sét lẫn hữu cơ, xám nâu..."          → designLayerCode = "2", layerNumber = 2
-      Dòng 3: "Cát pha xám ghi, xám nâu TT dẻo"     → designLayerCode = "3", layerNumber = 3
-      Dòng 4: "Sét xám trắng, xám xanh dẻo chảy"    → designLayerCode = "4", layerNumber = 4
-      Dòng 5: "Sét xám vàng, nâu vàng TT nửa cứng"  → designLayerCode = "5", layerNumber = 5
-      ... tiếp tục tăng dần
-
-  CÁCH LẤY THỜI GIAN LOẠI B (TRỌNG TÂM SỐ 2):
-    Cột "Thời gian" ghi dạng "HHhMM ÷ HHhMM" (đôi khi viết tay khó đọc) và ngày bên dưới.
-
-    ⚠️ QUY TẮC ĐỌC GIỜ VIẾT TAY — KIỂM TRA TỪNG KÝ TỰ:
-      - Tuyệt đối KHÔNG làm tròn phút (ví dụ: "17h58" không được thành "17h55", "18h17" không được thành "18h15").
-      - Phân biệt kỹ số "0" và "1": "0h25" KHÔNG PHẢI "1h25". Kiểm tra nét cong của số 0.
-      - Phân biệt kỹ số "9" and "4": "23h49" KHÔNG PHẢI "23h44". Kiểm tra vòng tròn trên của số 9.
-      - Phân biệt kỹ số "8" và "5": Số "8" có 2 vòng kín, số "5" bụng hở và có nét ngang trên.
-      - Phân biệt kỹ số "7" và "5": Số "7" chân xiên thẳng, số "5" bụng cong tròn.
-      - Số "0" và "6" dễ nhầm → xem kỹ nét viết.
-      - Số "1" mảnh dễ bị bỏ qua → nếu đọc được giờ 1 chữ số (5,6,7,8,9) phải nghi ngờ ngay.
-      - Dấu "÷" hoặc "→" hoặc "-" đều là dấu phân cách từ-đến.
-
-    ⭐ PHƯƠNG PHÁP XÁC NHẬN CHÉO THỜI GIAN:
-      timeFrom của lớp N = timeTo của lớp N-1 (nếu liên tiếp không có khoảng nghỉ)
-      Tổng thời gian tất cả lớp ≈ thời gian từ constructionStart đến constructionEnd
-      Nếu 1 lớp có thời gian âm hoặc = 0 → đọc sai, phải xem lại
-
-    ⚠️ MỘT Ô THỜI GIAN CÓ THỂ ỨNG VỚI NHIỀU LỚP ĐỊA CHẤT:
-    Nếu 1 ô thời gian ứng với N lớp địa chất liên tiếp → chia theo tỉ lệ chiều dài:
-
-    Ví dụ: 14h40 ÷ 15h45 (65 phút tổng) cho 2 lớp:
-      Lớp "Sét lẫn hữu cơ" dài 7.6m, Lớp "Cát pha" dài 1.4m → tổng 9.0m
-      → Lớp Sét: 65 × (7.6/9.0) ≈ 54.9 phút → timeFrom="14h40", timeTo="15h35"
-      → Lớp Cát: 65 × (1.4/9.0) ≈ 10.1 phút → timeFrom="15h35", timeTo="15h45"
-
-    ⚠️ LỖI ĐỌC GIỜ VIẾT TAY PHỔ BIẾN:
-      • "15h30" bị đọc thành "13h30" (nhầm 5→3)
-      • "06h30" bị đọc thành "08h30" (nhầm 6→8)
-      • "11h10" bị đọc thành "1h10" (sót chữ số 1 đầu)
-      → Luôn kiểm tra tính liên tục: giờ phải tăng dần, không được giảm đột ngột
+--- ĐỐI VỚI LOẠI B ---
+- actualGeology: Lấy MÔ TẢ CHỮ đầy đủ (ví dụ: "Sét pha xám vàng...").
+- designLayerCode: Tự đánh số 1, 2, 3... cho từng dòng từ trên xuống.
+- layerDesign: Giống actualGeology.
+- lengthMeters: Số nhỏ trong cột "Độ sâu (từ đỉnh casing)".
+- cumulativeDepth: Số lớn trong cột "Độ sâu (từ đỉnh casing)".
+- elevationFrom: -(Số tích lũy của lớp TRƯỚC). Lớp đầu tiên = -(casingElevation).
+- elevationTo: -(cumulativeDepth của lớp hiện tại).
+  *Lưu ý: Tất cả cao độ Loại B phải là số ÂM.*
 
 ════════════════════════════════════════════════════
-BƯỚC 3: TRÍCH XUẤT THỜI GIAN VÀ NGÀY THÁNG (KIỂM TRA 3 LẦN)
+BƯỚC 3: XỬ LÝ THỜI GIAN (KIỂM TRA 3 LẦN)
 ════════════════════════════════════════════════════
-
-- Thời gian (timeFrom, timeTo): Format "HHhmm" — ĐỦ 2 chữ số giờ.
-  TUYỆT ĐỐI không rút gọn "17h20" thành "7h20".
-  TUYỆT ĐỐI không làm tròn phút (ví dụ: 58' đọc là 58, không phải 55; 17' đọc là 17, không phải 15).
-  TUYỆT ĐỐI kiểm tra kỹ số 0 vs 1 (0h25 vs 1h25) và số 9 vs 4 (23h49 vs 23h44).
-  LƯU Ý: Ký hiệu phẩy (') sau số thường là ký hiệu phút (ví dụ: 58' = 58 phút).
-
-- ⚠️ LỖI PHỔ BIẾN NHẤT: ĐỌC SÓT CHỮ SỐ "1" ĐẦU TRONG CHỮ VIẾT TAY
-  Số "1" viết tay thường mảnh, dễ bị bỏ qua trước 7, 6, 5.
-  Ví dụ lỗi: "17h20"→"7h20", "16h33"→"6h33", "13h58"→"3h58"
-  QUY TẮC: Nếu trích xuất giờ từ 0-9, nhìn lại kỹ xem có "1" đứng trước không.
-  Ca thi công thường 06h00–23h59. Thời gian phải TĂNG DẦN theo thứ tự các lớp.
-
-- ⚠️ KIỂM TRA LIÊN TỤC: Nếu dòng trước kết thúc 16h57 mà dòng sau bắt đầu 7h20 → phải là 17h20.
-
-- Ngày tháng: Đối chiếu với năm hiện tại (${currentYear}). Văn bản ghi "2026" → trích xuất "2026".
-- constructionStart / constructionEnd: lấy từ "Bắt đầu" / "Kết thúc" ở header biên bản. Đây là nguồn tin cậy nhất cho NGÀY và NĂM.
-- ⚠️ QUY TẮC ĐỒNG BỘ NGÀY: Ngày (dateFrom, dateTo) trong bảng "Chi tiết các lớp địa chất" PHẢI khớp với ngày trong "constructionStart" trừ khi có sự chuyển ngày rõ rệt (qua 24h00). Nếu văn bản bảng địa chất chỉ ghi giờ hoặc ngày tháng bị mờ/sai năm, hãy ưu tiên lấy ngày/năm từ constructionStart.
+- Định dạng: HH:mm (ví dụ: 17:20).
+- ⚠️ CẢNH BÁO: Chữ viết tay số "1" đầu giờ thường rất mảnh, dễ bị đọc sót (ví dụ: "17h20" đọc thành "7h20"). 
+- QUY TẮC: Nếu giờ trích xuất là 0-9h, hãy nhìn kỹ xem có nét gạch dọc của số "1" phía trước không.
+- Thời gian phải TĂNG DẦN. Nếu dòng trước kết thúc 16:57, dòng sau bắt đầu 7:20 -> Chắc chắn là 17:20.
 
 ════════════════════════════════════════════════════
-BƯỚC 4: TRÍCH XUẤT CAO ĐỘ VÀ CHIỀU DÀI
+BƯỚC 4: TỰ KIỂM TRA & XÁC THỰC (SELF-VALIDATION)
 ════════════════════════════════════════════════════
+Trước khi xuất JSON, hãy tự kiểm tra các điều kiện sau:
+1. [Toán học Loại B]: (Tích lũy dòng trước) + (Chiều dài dòng này) = (Tích lũy dòng này)? 
+   Nếu sai lệch > 0.05m, hãy xem lại ảnh để tìm chữ số bị đọc nhầm (thường là nhầm 1/2 hoặc 2/7).
+2. [Thời gian]: Có dòng nào thời gian bị lùi lại không? (Ví dụ: 15:00 -> 14:30). Nếu có, hãy kiểm tra lại số "1" bị sót hoặc nhầm 3/5.
+3. [Cao độ]: Các lớp có liên tục không? (elevationTo lớp N = elevationFrom lớp N+1).
+4. [Chữ viết tay]: Tôi có đang nhầm "0,71" thành "-0,71" ở header không? (Chỉ lấy số dương nếu văn bản ghi dương).
+5. [Địa chất]: Tôi có đang lấy nhầm "Địa chất thiết kế" vào cột "Địa chất thực tế" không?
 
-Loại A — trích xuất cao độ tuyệt đối:
-- Tất cả cao độ là số ÂM, giảm dần theo chiều sâu.
-- "elevationFrom" dòng N = "elevationTo" dòng N-1 (phải khớp).
-- ⚠️ ĐỌC SÓT CHỮ SỐ: "-35.08" có thể bị đọc thành "-3.08". Kiểm tra tính liên tục.
-
-Loại B — tính cao độ tuyệt đối từ casingElevation:
-- ĐỌC "casingElevation" từ header (dòng "Cao độ đỉnh casing").
-- Chiều dài lớp = cột TRÁI trong "Độ sâu (từ đỉnh casing)" (số nhỏ hơn).
-- ⚠️ QUY TẮC TOÁN HỌC (BẮT BUỘC):
-    Tích lũy (cột PHẢI) dòng N = Tích lũy (cột PHẢI) dòng N-1 + Chiều dài (cột TRÁI) dòng N.
-    Ví dụ: Dòng trước tích lũy 2.31, dòng này chiều dài 10.2 -> Tích lũy dòng này PHẢI là 12.51.
-    Nếu bạn đọc chiều dài là 10.7 nhưng tích lũy ghi 12.51 -> Chiều dài PHẢI là 10.2.
-- Tính elevationFrom/To theo công thức cộng dồn:
-    elevationFrom(lớp 1) = casingElevation
-    elevationTo(lớp 1)   = casingElevation - chiềuDài(lớp 1)
-    elevationFrom(lớp N) = elevationTo(lớp N-1)
-    elevationTo(lớp N)   = elevationFrom(lớp N) - chiềuDài(lớp N)
-- ✅ ĐÚNG: elevationFrom lớp 2 = elevationTo lớp 1 (liên tiếp nhau, không reset về 0).
-- ❌ SAI: elevationFrom = 0 cho tất cả các lớp.
-- Ưu tiên tuyệt đối: CHIỀU DÀI phải chính xác 100%, đây là dữ liệu cốt lõi của Loại B.
-- ⚠️ KIỂM TRA LẠI CHỮ VIẾT TAY CHIỀU DÀI: 1,6 vs 2,6; 10,2 vs 10,7; 10,7 vs 11,7; 6,5 vs 6,0.
-
-Yêu cầu JSON đầu ra:
-- project, item, componentName, pileId, reportNumber, diameter.
-- constructionStart, constructionEnd (HH:mm DD/MM/YYYY).
-- casingElevation: Cao độ đỉnh casing (m). Loại A: để null. Loại B: đọc NGUYÊN GIÁ TRỊ từ ô "Cao độ đỉnh casing (vết lắng lần 1)" trong header. VD: viết "0,71" → 0.71; viết "-1,5" → -1.5. KHÔNG tự thêm dấu âm.
-- layers: [{ designLayerCode, actualGeology, layerNumber, layerDesign, timeFrom, timeTo, dateFrom, dateTo, elevationFrom, elevationTo, notes }]
-- designLayerMap: { "1": "mô tả 1", ... } (để {} cho Loại B)
-- notes: Ghi chú tổng hợp (nếu có).
-
-KIỂM TRA CUỐI CÙNG TRƯỚC KHI TRẢ VỀ:
-1. Đã xác định đúng loại biên bản chưa?
-2. "item" có lấy từ dòng "Hạng mục" không?
-3. Loại B: "actualGeology" là MÔ TẢ CHỮ?
-4. Loại B: Số nhỏ (chiều dài) cộng dồn = số lớn tích lũy? (XÁC NHẬN CHÉO)
-5. Loại A: "actualGeology" là SỐ? "layerDesign" đã VLOOKUP chưa?
-6. Tất cả giờ có ĐỦ 2 chữ số không? (17h20 không phải 7h20)
-7. Loại B: Thời gian đã chia đúng tỉ lệ khi 1 ô ứng với nhiều lớp chưa?
-8. Loại B: Tất cả elevationFrom/To là số ÂM? (VD: đọc 2,78 → ghi -2.78)
-
-════════════════════════════════════════════════════
-BƯỚC 5: TỰ KIỂM TRA (SELF-CORRECTION)
-════════════════════════════════════════════════════
-Trước khi trả về JSON, hãy tự đặt câu hỏi và kiểm tra lại ảnh:
-1. "Số 1 ở đầu giờ có thực sự tồn tại không, hay đó là số 0 viết hẹp?" (0h25 vs 1h25)
-2. "Số 4 ở hàng đơn vị phút có thực sự là 4, hay là số 9 viết hở?" (23h49 vs 23h44)
-3. "Tôi có đang bị thói quen làm tròn phút (5, 10, 15...) đánh lừa không?" (17h58 vs 17h55)
-4. "Các mốc thời gian có tăng dần một cách logic không?"
-5. "Chiều dài lớp có khớp với phép tính cộng dồn tích lũy không?" (VD: 2.31 + 10.2 = 12.51)
-6. "Tôi có nhầm lẫn 1 vs 2, 2 vs 7, 0 vs 1, 5 vs 0 trong phần chiều dài không?" (1,6 vs 2,6; 10,2 vs 10,7; 10,7 vs 11,7; 6,5 vs 6,0)
-7. "QUAN TRỌNG: Nếu Chiều dài (VD: 1,6) mâu thuẫn với Cao độ (VD: 2,6), hãy ưu tiên con số bạn nhìn thấy rõ nhất ở cột Chiều dài. Đừng tự ý sửa 1,6 thành 2,6 chỉ để khớp với Cao độ."
-8. "Nếu có mâu thuẫn, hãy ghi chú 'Nghi ngờ nhầm lẫn 1/2' hoặc 'Mâu thuẫn Chiều dài/Cao độ' vào trường notes của lớp đó."`
+Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi tiết vào trường "notes" của lớp đó.`
           },
         ]
       }
@@ -888,7 +676,7 @@ Trước khi trả về JSON, hãy tự đặt câu hỏi và kiểm tra lại �
           item: { type: Type.STRING },
           componentName: { type: Type.STRING },
           pileId: { type: Type.STRING },
-          reportNumber: { type: Type.STRING },
+          reportNumber: { type: Type.STRING, description: "Tên máy khoan (Drilling Machine)" },
           diameter: { type: Type.STRING },
           constructionStart: { type: Type.STRING },
           constructionEnd: { type: Type.STRING },
@@ -2128,7 +1916,7 @@ export default function App() {
       const infoItems = [
         ['Dự án', result.project],['Hạng mục', result.item],
         ['Tên bộ phận', result.componentName],['Số hiệu cọc', result.pileId],
-        ['Biên bản số', result.reportNumber],['Đường kính', result.diameter],
+        ['Tên Máy khoan', result.reportNumber],['Đường kính', result.diameter],
         ['Bắt đầu thi công', result.constructionStart],['Kết thúc thi công', result.constructionEnd],
       ];
       infoItems.forEach(([k, v]) => {
@@ -2784,7 +2572,7 @@ export default function App() {
       const infoItems = [
         ['Dự án', item.project], ['Hạng mục', item.item],
         ['Tên bộ phận', item.componentName], ['Số hiệu cọc', item.pileId],
-        ['Biên bản số', item.reportNumber], ['Đường kính', item.diameter],
+        ['Tên Máy khoan', item.reportNumber], ['Đường kính', item.diameter],
         ['Bắt đầu thi công', item.constructionStart], ['Kết thúc thi công', item.constructionEnd],
       ];
       infoItems.forEach(([k, v]) => {
@@ -2951,7 +2739,7 @@ export default function App() {
       r0_1.height = 30;
       cell(r0_1.getCell(1), r0_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
       ws0.mergeCells(r0_1.number, 1, r0_1.number, 13);
-      const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'Sheet ảnh'];
+      const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'Sheet ảnh'];
       const r0_2 = ws0.addRow(HDRS0);
       r0_2.height = 25;
       HDRS0.forEach((h, ci) => cell(r0_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
@@ -2991,7 +2779,7 @@ export default function App() {
       r1_1.height = 30;
       cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
       ws1.mergeCells(r1_1.number, 1, r1_1.number, 17);
-      const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
       const r2_1 = ws1.addRow(HDRS1);
       r2_1.height = 25;
       HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
@@ -3030,7 +2818,7 @@ export default function App() {
       r1_2.height = 30;
       cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
       ws2.mergeCells(r1_2.number, 1, r1_2.number, 13);
-      const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Biên bản số', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
+      const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
       const r2_2 = ws2.addRow(HDRS2);
       r2_2.height = 25;
       HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
@@ -3191,7 +2979,7 @@ export default function App() {
         const infoItems = [
           ['Dự án', res.project], ['Hạng mục', res.item],
           ['Tên bộ phận', res.componentName], ['Số hiệu cọc', res.pileId],
-          ['Biên bản số', res.reportNumber], ['Đường kính', res.diameter],
+          ['Tên Máy khoan', res.reportNumber], ['Đường kính', res.diameter],
           ['Bắt đầu thi công', res.constructionStart], ['Kết thúc thi công', res.constructionEnd],
         ];
         infoItems.forEach(([k, v]) => {
@@ -3374,9 +3162,42 @@ export default function App() {
   };
 
   // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
-  const GeologyView = () => {
-    type DataTab = 'geology' | 'project' | 'diameter';
-    const [activeTab, setActiveTab] = React.useState<DataTab>('geology');
+    const GeologyView = () => {
+      type DataTab = 'geology' | 'project' | 'diameter';
+      const [activeTab, setActiveTab] = React.useState<DataTab>('geology');
+
+      const [isAiNormalizing, setIsAiNormalizing] = React.useState(false);
+      const [aiSuggestions, setAiSuggestions] = React.useState<{ standardName: string; originalNames: string[] }[] | null>(null);
+      const [showAiModal, setShowAiModal] = React.useState(false);
+      const [selectedGroups, setSelectedGroups] = React.useState<number[]>([]);
+
+      const updateAiSuggestionName = (idx: number, newName: string) => {
+        if (!aiSuggestions) return;
+        const next = [...aiSuggestions];
+        next[idx].standardName = newName;
+        setAiSuggestions(next);
+      };
+
+      const removeAiSuggestionGroup = (idx: number) => {
+        if (!aiSuggestions) return;
+        const next = aiSuggestions.filter((_, i) => i !== idx);
+        setAiSuggestions(next);
+        setSelectedGroups(prev => prev.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
+      };
+
+      const removeOriginalNameFromGroup = (groupIdx: number, nameIdx: number) => {
+        if (!aiSuggestions) return;
+        const next = [...aiSuggestions];
+        const group = { ...next[groupIdx] };
+        group.originalNames = group.originalNames.filter((_, i) => i !== nameIdx);
+        
+        if (group.originalNames.length === 0) {
+          removeAiSuggestionGroup(groupIdx);
+        } else {
+          next[groupIdx] = group;
+          setAiSuggestions(next);
+        }
+      };
 
     // ── Generic editable-list hook ──
     const useEditableList = <T extends { value: string; count: number }>(
@@ -3397,8 +3218,8 @@ export default function App() {
       const startEdit = (key: string) => { setEditingKey(key); setEditValue(key); };
       const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
 
-      const commitEdit = async (oldVal: string) => {
-        const newVal = stripLayerPrefix(editValue.trim());
+      const commitEdit = async (oldVal: string, providedNewVal?: string) => {
+        const newVal = stripLayerPrefix((providedNewVal || editValue).trim());
         if (!newVal || newVal === oldVal) { cancelEdit(); return; }
 
         type ToUpdate = { result: ExtractionResult; newLayers?: DrillLayer[]; newRes?: Partial<ExtractionResult> };
@@ -3490,7 +3311,194 @@ export default function App() {
         }
       };
 
-      return { items, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit };
+      const bulkCommitEdit = async (mappings: { oldVal: string; newVal: string }[]) => {
+        if (mappings.length === 0) return;
+        
+        type ToUpdate = { result: ExtractionResult; newLayers?: DrillLayer[]; newRes?: Partial<ExtractionResult> };
+        const toUpdateMap = new Map<string, ToUpdate>();
+
+        mappings.forEach(({ oldVal, newVal }) => {
+          const targetNewVal = stripLayerPrefix(newVal.trim());
+          history.forEach(res => {
+            let currentUpdate = toUpdateMap.get(res.id);
+            let currentLayers = currentUpdate?.newLayers || res.layers;
+            let currentRes = currentUpdate?.newRes || {};
+
+            let changed = false;
+            
+            if (setResField && getResField) {
+              const resVal = (getResField(res) || '').trim();
+              if (resVal === oldVal) {
+                currentRes = setResField(res, targetNewVal);
+                changed = true;
+              }
+            }
+
+            const newLayers = currentLayers.map(l => {
+              const layerVal = (getField(l, res) || '').trim();
+              if (layerVal === oldVal) {
+                changed = true;
+                return setField(l, targetNewVal);
+              }
+              return l;
+            });
+
+            if (changed) {
+              toUpdateMap.set(res.id, { result: res, newLayers, newRes: currentRes });
+            }
+          });
+        });
+
+        const toUpdateList = Array.from(toUpdateMap.values());
+        if (toUpdateList.length === 0) return;
+
+        // Optimistic UI update
+        setHistory(prev => prev.map(res => {
+          const found = toUpdateList.find(u => u.result.id === res.id);
+          if (!found) return res;
+          return {
+            ...res,
+            ...(found.newRes || {}),
+            ...(found.newLayers ? { layers: found.newLayers } : {}),
+          };
+        }));
+
+        setSyncStatus('syncing');
+        setSyncCount(toUpdateList.length);
+        let errorCount = 0;
+        try {
+          if (supabase) {
+            await Promise.all(toUpdateList.map(async ({ result, newLayers, newRes }) => {
+              try {
+                const updatePayload: any = {};
+                if (newLayers) updatePayload.layers = newLayers;
+                if (newRes) Object.assign(updatePayload, newRes);
+                const { error } = await supabase.from('drill_extractions').update(updatePayload).eq('id', result.id);
+                if (error) errorCount++;
+              } catch { errorCount++; }
+            }));
+            // Sync localStorage
+            try {
+              const saved = localStorage.getItem('pile_drill_history');
+              if (saved) {
+                const arr = JSON.parse(saved);
+                const updMap = new Map(toUpdateList.map(u => [u.result.id, u]));
+                localStorage.setItem('pile_drill_history', JSON.stringify(
+                  arr.map((r: any) => {
+                    const found = updMap.get(r.id);
+                    if (!found) return r;
+                    return { ...r, ...(found.newRes || {}), ...(found.newLayers ? { layers: found.newLayers } : {}) };
+                  })
+                ));
+              }
+            } catch {}
+            if (errorCount === 0) {
+              setSyncStatus('done');
+              showToast(`✅ Đã chuẩn hóa ${mappings.length} nhóm trong ${toUpdateList.length} biên bản!`, 'success', 3000);
+            } else {
+              setSyncStatus('error');
+              showToast(`⚠️ Lỗi ${errorCount}/${toUpdateList.length} biên bản`, 'error', 4000);
+            }
+          } else {
+            setSyncStatus('error');
+            showToast('⚠️ Chưa kết nối Supabase', 'error', 3000);
+          }
+        } catch (e: any) {
+          setSyncStatus('error');
+          showToast(`⚠️ Lỗi: ${e?.message}`, 'error', 4000);
+        } finally {
+          setTimeout(() => setSyncStatus('idle'), 3500);
+        }
+      };
+
+      return { items, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit, bulkCommitEdit };
+    };
+
+    const handleAiNormalizeGeology = async () => {
+      if (geoList.items.length === 0) return;
+      setIsAiNormalizing(true);
+      try {
+        const apiKey = geminiApiKeys[activeKeyIndex] || userApiKey || (process.env.GEMINI_API_KEY as string);
+        if (!apiKey) {
+          showToast("Vui lòng cấu hình API Key trong phần Cài đặt.", "error");
+          return;
+        }
+        
+        const aiInstance = new GoogleGenAI({ apiKey });
+
+        const layerNames = geoList.items.map(it => it.value);
+        
+        const prompt = `Bạn là một chuyên gia về địa chất công trình. 
+Dưới đây là danh sách các mô tả lớp địa chất được trích xuất từ các biên bản khoan. 
+Nhiều mô tả thực chất là cùng một loại nhưng được viết khác nhau (do viết tay hoặc cách dùng từ khác nhau).
+
+NHIỆM VỤ:
+Hãy nhóm các mô tả tương đồng lại với nhau và đề xuất một "Tên chuẩn hóa" duy nhất cho mỗi nhóm.
+
+DANH SÁCH MÔ TẢ:
+${JSON.stringify(layerNames, null, 2)}
+
+YÊU CẦU ĐẦU RA (JSON thuần):
+Trả về một mảng các đối tượng, mỗi đối tượng gồm:
+- standardName: Tên chuẩn hóa bạn đề xuất (ngắn gọn, chính xác về thuật ngữ địa chất).
+- originalNames: Mảng các tên gốc từ danh sách trên thuộc về nhóm này.
+
+LƯU Ý:
+- Chỉ nhóm những tên thực sự tương đồng. Nếu không chắc chắn, hãy để chúng riêng biệt.
+- Không giải thích gì thêm, chỉ trả về JSON.`;
+
+        const result = await aiInstance.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+            responseMimeType: "application/json",
+          }
+        });
+
+        const text = result.text;
+        if (!text) throw new Error("AI không trả về kết quả.");
+        const suggestions = JSON.parse(text);
+        
+        const filtered = suggestions.filter((s: any) => s.originalNames.length > 1);
+
+        if (filtered.length === 0) {
+          showToast("AI không tìm thấy nhóm nào cần chuẩn hóa thêm.", "success");
+        } else {
+          setAiSuggestions(filtered);
+          setSelectedGroups(filtered.map((_: any, i: number) => i));
+          setShowAiModal(true);
+        }
+      } catch (e: any) {
+        console.error("AI Normalization error:", e);
+        showToast(`Lỗi AI: ${e.message}`, "error");
+      } finally {
+        setIsAiNormalizing(false);
+      }
+    };
+
+    const applyAiSuggestions = async () => {
+      if (!aiSuggestions) return;
+      const mappings: { oldVal: string; newVal: string }[] = [];
+      
+      aiSuggestions.forEach((group, idx) => {
+        if (selectedGroups.includes(idx)) {
+          group.originalNames.forEach(oldName => {
+            if (oldName !== group.standardName) {
+              mappings.push({ oldVal: oldName, newVal: group.standardName });
+            }
+          });
+        }
+      });
+
+      if (mappings.length === 0) {
+        setShowAiModal(false);
+        return;
+      }
+
+      setShowAiModal(false);
+      await geoList.bulkCommitEdit(mappings);
+      setAiSuggestions(null);
     };
 
     // ── Tab 1: Cấu tạo lớp địa chất ──
@@ -3607,6 +3615,16 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {activeTab === 'geology' && items.length > 0 && (
+              <button
+                onClick={handleAiNormalizeGeology}
+                disabled={isAiNormalizing}
+                className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
+              >
+                {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                Chuẩn hóa bằng AI
+              </button>
+            )}
             {syncStatus === 'syncing' && (
               <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200 animate-pulse">
                 <Loader2 size={12} className="animate-spin" /> Đang đồng bộ {syncCount} biên bản...
@@ -3735,6 +3753,147 @@ export default function App() {
                   </table>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Normalization Modal */}
+        {showAiModal && aiSuggestions && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-orange-500 to-amber-500 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl">
+                    <Sparkles size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black uppercase tracking-tight">Gợi ý chuẩn hóa bằng AI</h3>
+                    <p className="text-xs text-orange-100 font-medium">AI đã tìm thấy {aiSuggestions.length} nhóm tên tương đồng</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAiModal(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
+                {aiSuggestions.map((group, idx) => (
+                  <div 
+                    key={idx} 
+                    className={cn(
+                      "p-5 rounded-2xl border-2 transition-all group relative",
+                      selectedGroups.includes(idx) 
+                        ? "bg-white border-orange-400 shadow-md" 
+                        : "bg-slate-100 border-transparent opacity-60"
+                    )}
+                  >
+                    <div className="flex gap-6">
+                      {/* Left: Original Names */}
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Các tên gốc sẽ gộp</span>
+                          <div className="h-px flex-1 bg-slate-200" />
+                        </div>
+                        <div className="space-y-1.5 pl-4 border-l-2 border-slate-200">
+                          {group.originalNames.map((name, nIdx) => (
+                            <div key={nIdx} className="text-xs text-slate-600 flex items-center justify-between group/item hover:bg-slate-100 p-1 rounded-lg transition-colors">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                {name}
+                              </div>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeOriginalNameFromGroup(idx, nIdx);
+                                }}
+                                className="opacity-0 group-hover/item:opacity-100 p-1 hover:bg-red-100 hover:text-red-500 text-slate-400 rounded transition-all"
+                                title="Loại bỏ tên này khỏi nhóm"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Middle: Arrow */}
+                      <div className="flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
+                          <ArrowRight size={20} />
+                        </div>
+                      </div>
+
+                      {/* Right: Edit Name */}
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full uppercase tracking-wider">Tên sửa đổi lại</span>
+                          <div className="h-px flex-1 bg-orange-100" />
+                        </div>
+                        <div className="relative">
+                          <textarea
+                            rows={3}
+                            value={group.standardName}
+                            onChange={(e) => updateAiSuggestionName(idx, e.target.value)}
+                            className="w-full bg-white border-2 border-orange-200 focus:border-orange-500 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none transition-all pr-10 resize-none leading-relaxed"
+                            placeholder="Nhập tên chuẩn hóa..."
+                          />
+                          <div className="absolute right-3 top-4 text-orange-400">
+                            <CheckCircle2 size={16} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-2 justify-center">
+                        <button 
+                          onClick={() => {
+                            setSelectedGroups(prev => 
+                              prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+                            );
+                          }}
+                          className={cn(
+                            "w-10 h-10 rounded-xl border-2 flex items-center justify-center transition-all shadow-sm",
+                            selectedGroups.includes(idx) ? "bg-orange-500 border-orange-500 text-white" : "bg-white border-slate-300 text-slate-400 hover:border-orange-300 hover:text-orange-400"
+                          )}
+                        >
+                          <CheckCircle2 size={20} />
+                        </button>
+                        <button 
+                          onClick={() => removeAiSuggestionGroup(idx)}
+                          className="w-10 h-10 rounded-xl bg-white border-2 border-slate-200 text-slate-400 hover:border-red-300 hover:text-red-500 transition-all shadow-sm flex items-center justify-center"
+                          title="Xóa nhóm này"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-white flex items-center justify-between">
+                <button 
+                  onClick={() => setSelectedGroups(selectedGroups.length === aiSuggestions.length ? [] : aiSuggestions.map((_, i) => i))}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-widest"
+                >
+                  {selectedGroups.length === aiSuggestions.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+                </button>
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setShowAiModal(false)}
+                    className="px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-widest"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button 
+                    onClick={applyAiSuggestions}
+                    disabled={selectedGroups.length === 0}
+                    className="px-10 py-3 rounded-xl text-sm font-black uppercase tracking-widest bg-orange-500 hover:bg-orange-600 text-white shadow-xl shadow-orange-200 transition-all disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
+                  >
+                    Áp dụng chuẩn hóa ({selectedGroups.length})
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -4536,7 +4695,7 @@ export default function App() {
                           <th>Hạng mục</th>
                           <th>Tên bộ phận</th>
                           <th>Số hiệu</th>
-                          <th>Biên bản số</th>
+                          <th>Tên Máy khoan</th>
                           <th>Đường kính</th>
                           <th>Bắt đầu</th>
                           <th>Kết thúc</th>
@@ -5190,7 +5349,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Số hiệu cọc" value={result.pileId} icon={<Layers className="text-blue-600" />} />
-        <StatCard title="Biên bản số" value={result.reportNumber} icon={<FileText className="text-blue-600" />} />
+        <StatCard title="Tên Máy khoan" value={result.reportNumber} icon={<FileText className="text-blue-600" />} />
         <StatCard title="Đường kính" value={result.diameter} icon={<Activity className="text-blue-600" />} />
         <StatCard title="Tổng chiều sâu" value={`${formatNumber((result.layers || []).reduce((acc, l) => acc + l.lengthMeters, 0))} m`} icon={<ArrowDownToLine className="text-orange-600" />} />
         <StatCard title="Bắt đầu" value={result.constructionStart} icon={<Calendar className="text-blue-600" />} />
@@ -5221,7 +5380,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300">
                 <th className="sticky left-0 bg-slate-100 z-20 px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">ĐỊA CHẤT <br/> THỰC TẾ</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Biên bản số</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Tên Máy khoan</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
                 <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[350px]">Mô tả lớp thiết kế</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Từ (h)</th>
@@ -6577,7 +6736,7 @@ function SummaryView({
                             tc.fill = solidFill('FF1E3A6E') as any;
                             tc.alignment = center;
 
-                            const HDRS = ['STT','Dự án','Hạng mục','Tên bộ phận','Số hiệu','Biên bản số','Đường kính','Bắt đầu','Kết thúc','Chiều dài (m)','T.Gian TC (h)','Vận tốc TB (m/h)','Sheet ảnh'];
+                            const HDRS = ['STT','Dự án','Hạng mục','Tên bộ phận','Số hiệu','Tên Máy khoan','Đường kính','Bắt đầu','Kết thúc','Chiều dài (m)','T.Gian TC (h)','Vận tốc TB (m/h)','Sheet ảnh'];
                             const hdrRow = wsDTC.addRow(HDRS);
                             hdrRow.height = 25;
                             hdrRow.eachCell((c: any, ci: number) => {
@@ -6739,7 +6898,7 @@ function SummaryView({
                               const infoItems: [string, any][] = [
                                 ['Dự án', res.project], ['Hạng mục', res.item],
                                 ['Tên bộ phận', res.componentName], ['Số hiệu cọc', res.pileId],
-                                ['Biên bản số', res.reportNumber], ['Đường kính', res.diameter],
+                                ['Tên Máy khoan', res.reportNumber], ['Đường kính', res.diameter],
                                 ['Bắt đầu thi công', res.constructionStart], ['Kết thúc thi công', res.constructionEnd],
                               ];
                               infoItems.forEach(([k, v]) => {
@@ -7667,7 +7826,7 @@ function SummaryView({
                 {/* Action buttons */}
                 <div className="px-4 py-2.5 bg-red-50 border-t border-red-100 flex items-center gap-2 justify-end">
                   <span className="text-[10px] text-red-500 font-medium flex-1">
-                    BB: {rec.reportNumber || '—'} · {rec.constructionStart || '—'} → {rec.constructionEnd || '—'}
+                    MK: {rec.reportNumber || '—'} · {rec.constructionStart || '—'} → {rec.constructionEnd || '—'}
                   </span>
                   <button
                     onClick={() => onEdit(rec)}
@@ -7728,7 +7887,7 @@ function SummaryView({
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-bold text-slate-800 truncate">{rec.project || '—'}</p>
                         <p className="text-[10px] text-slate-500 truncate">
-                          BB: <span className="font-bold">{rec.reportNumber || '—'}</span>
+                          MK: <span className="font-bold">{rec.reportNumber || '—'}</span>
                           {rec.constructionStart && <> · Bắt đầu: <span className="font-bold">{rec.constructionStart}</span></>}
                           {rec.fileName && <> · File: <span className="font-bold">{rec.fileName}</span></>}
                         </p>
@@ -7847,53 +8006,6 @@ function SummaryView({
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Cảnh báo vận tốc thấp (< 1m/h) ── */}
-      {slowPiles.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="p-1.5 bg-red-500 rounded-lg">
-              <AlertCircle size={16} className="text-white" />
-            </div>
-            <h4 className="text-[11px] font-black text-red-700 uppercase tracking-widest">
-              Cảnh báo vận tốc khoan thấp (&lt; 1m/h)
-            </h4>
-            <span className="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-              {slowPiles.length} cọc
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {slowPiles.map((pile) => {
-              const slowLayers = (pile.layers || []).slice(0, -2).filter(l => l.speedMph > 0 && l.speedMph < 1);
-              return (
-                <button
-                  key={pile.id}
-                  onClick={() => onEdit(pile)}
-                  className="flex flex-col p-3 bg-white border border-red-100 rounded-xl hover:border-red-400 hover:shadow-md transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-black text-slate-900">Cọc: {pile.pileId || '—'}</span>
-                    <ChevronRight size={14} className="text-slate-300 group-hover:text-red-500 transition-colors" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-slate-500 font-bold uppercase truncate">
-                      Dự án: {pile.project || '—'}
-                    </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {slowLayers.map((l, idx) => (
-                        <span key={idx} className="text-[9px] font-black bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
-                          Lớp {l.layerNumber}: {toNum(l.speedMph).toFixed(2)} m/h
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
       )}
@@ -8557,7 +8669,7 @@ function EditSplitView({
       const infoItems = [
         ['Dự án', result.project], ['Hạng mục', result.item],
         ['Tên bộ phận', result.componentName], ['Số hiệu cọc', result.pileId],
-        ['Biên bản số', result.reportNumber], ['Đường kính', result.diameter],
+        ['Tên Máy khoan', result.reportNumber], ['Đường kính', result.diameter],
         ['Bắt đầu thi công', result.constructionStart], ['Kết thúc thi công', result.constructionEnd],
       ];
       infoItems.forEach(([k, v]) => {
@@ -9137,7 +9249,7 @@ function EditSplitView({
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Biên bản số</label>
+              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
               <input 
                 value={data.reportNumber} 
                 onChange={(e) => updateField('reportNumber', e.target.value)}
