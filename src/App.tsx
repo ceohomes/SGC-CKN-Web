@@ -1435,7 +1435,8 @@ export default function App() {
       extractionsSubscription = supabase
         .channel('public:drill_extractions')
         .on('postgres_changes', { event: 'INSERT', table: 'drill_extractions', schema: 'public' }, (payload) => {
-          const newRow = payload.new as ExtractionResult;
+          const rawRow = payload.new as ExtractionResult;
+          const newRow = { ...rawRow, layers: (rawRow.layers || []).map((l: any) => sanitizeLayer(l)) };
           setHistory(prev => {
             // Tránh duplicate nếu chính client này vừa insert
             if (prev.some(r => r.id === newRow.id)) return prev;
@@ -1452,7 +1453,8 @@ export default function App() {
         })
         .on('postgres_changes', { event: 'UPDATE', table: 'drill_extractions', schema: 'public' }, (payload) => {
           // payload.new chứa toàn bộ record — chỉ merge fields cần thiết để tránh overwrite layers từ local
-          const updated = payload.new as ExtractionResult;
+          const rawUpdated = payload.new as ExtractionResult;
+          const updated = { ...rawUpdated, layers: (rawUpdated.layers || []).map((l: any) => sanitizeLayer(l)) };
           setHistory(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
           // Cập nhật localStorage
           try {
@@ -2510,9 +2512,10 @@ export default function App() {
           .eq('id', result.id)
           .single();
         if (data?.layers && Array.isArray(data.layers) && data.layers.length > 0) {
-          safeResult = { ...safeResult, layers: data.layers };
+          const cleanLayers = data.layers.map((l: any) => sanitizeLayer(l));
+          safeResult = { ...safeResult, layers: cleanLayers };
           // Cập nhật lại history state để lần sau không cần fetch lại
-          setHistory(prev => prev.map(r => r.id === result.id ? { ...r, layers: data.layers } : r));
+          setHistory(prev => prev.map(r => r.id === result.id ? { ...r, layers: cleanLayers } : r));
         }
       } catch (e) {
         console.warn('[handleEdit] Không thể lazy-load layers:', e);
