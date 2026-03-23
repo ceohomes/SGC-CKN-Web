@@ -180,7 +180,7 @@ function sanitizeLayer(layer: any): any {
     cumulativeDepth: toNum(layer.cumulativeDepth, 0),
     speedMph:       toNum(layer.speedMph,        0),
     layerNumber:    toNum(layer.layerNumber,     0),
-    soilClass:      layer.soilClass || 'Chưa Phân định nhóm',
+    soilClass:      (['Chưa Phân định nhóm','Đất cấp I','Đất cấp II','Đất cấp III','Đá cấp I'].includes(layer.soilClass) ? layer.soilClass : 'Chưa Phân định nhóm'),
   };
 }
 
@@ -1314,7 +1314,10 @@ export default function App() {
             console.warn('[loadData] Supabase history error:', historyRes.error?.message);
             const savedHistory = localStorage.getItem('pile_drill_history');
             if (savedHistory) {
-              try { setHistory(JSON.parse(savedHistory)); } catch {}
+              try {
+                const parsed = JSON.parse(savedHistory);
+                setHistory(parsed.map((r: any) => ({ ...r, layers: (r.layers || []).map((l: any) => sanitizeLayer(l)) })));
+              } catch {}
             }
           }
 
@@ -1369,13 +1372,19 @@ export default function App() {
           console.error('[loadData] Supabase sync failed:', e);
           const savedHistory = localStorage.getItem('pile_drill_history');
           if (savedHistory) {
-            try { setHistory(JSON.parse(savedHistory)); } catch {}
+            try {
+              const parsed = JSON.parse(savedHistory);
+              setHistory(parsed.map((r: any) => ({ ...r, layers: (r.layers || []).map((l: any) => sanitizeLayer(l)) })));
+            } catch {}
           }
         }
       } else {
         const savedHistory = localStorage.getItem('pile_drill_history');
         if (savedHistory) {
-          try { setHistory(JSON.parse(savedHistory)); } catch {}
+          try {
+            const parsed = JSON.parse(savedHistory);
+            setHistory(parsed.map((r: any) => ({ ...r, layers: (r.layers || []).map((l: any) => sanitizeLayer(l)) })));
+          } catch {}
         }
       }
       setIsInitialLoading(false); // Tắt splash screen sau khi load xong
