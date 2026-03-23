@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
   Upload, 
   FileText, 
@@ -45,6 +46,7 @@ import {
   RotateCw,
   FileDown,
   ArrowRight,
+  ArrowLeftRight,
   Sparkles,
   CircleDot
 } from 'lucide-react';
@@ -179,6 +181,7 @@ function sanitizeLayer(layer: any): any {
     cumulativeDepth: toNum(layer.cumulativeDepth, 0),
     speedMph:       toNum(layer.speedMph,        0),
     layerNumber:    toNum(layer.layerNumber,     0),
+    soilClass:      layer.soilClass || 'Chưa Phân định nhóm',
   };
 }
 
@@ -208,6 +211,7 @@ interface DrillLayer {
   lengthMeters: number;
   cumulativeDepth: number;
   speedMph: number;
+  soilClass?: string;
 }
 
 interface ExtractionResult {
@@ -233,6 +237,14 @@ interface ExtractionResult {
   designLayerMap?: Record<string, string>; // Bảng tra cứu lớp địa chất
   casingElevation?: number | null; // Cao độ đỉnh casing (m) — dùng để tính cao độ tuyệt đối cho Loại B
 }
+
+const SOIL_CLASSES = [
+  'Chưa Phân định nhóm',
+  'Đất cấp I',
+  'Đất cấp II',
+  'Đất cấp III',
+  'Đá cấp I'
+];
 
 const GROUP_COLORS = [
   { bg: 'BFDFFF', font: '0D3B6E' },{ bg: 'FDE68A', font: '78350F' },
@@ -1904,7 +1916,7 @@ export default function App() {
       const rowColorIdx = result.layers.map((layer) => {
         const key = layer.layerDesign?.trim() || '__';
         if (key !== pk) { gc++; pk = key; }
-        return (gc - 1) % GROUP_COLORS.length;
+        return Math.max(0, gc - 1) % GROUP_COLORS.length;
       });
 
       const ws1 = wb.addWorksheet('Chi tiết địa chất');
@@ -2001,7 +2013,7 @@ export default function App() {
       result.layers.forEach((layer) => {
         const key = layer.layerDesign?.trim() || '(Chưa có)';
         if (key !== pk2) { gc2++; pk2 = key; }
-        const ci2 = (gc2 - 1) % GROUP_COLORS.length;
+        const ci2 = Math.max(0, gc2 - 1) % GROUP_COLORS.length;
         const last = groups[groups.length - 1];
         if (last && last.layerDesign === key) {
           last.segments++; last.elevationTo = layer.elevationTo;
@@ -2560,7 +2572,7 @@ export default function App() {
       const rowColorIdx = item.layers.map((layer) => {
         const key = layer.layerDesign?.trim() || '__';
         if (key !== pk) { gc++; pk = key; }
-        return (gc - 1) % GROUP_COLORS.length;
+        return Math.max(0, gc - 1) % GROUP_COLORS.length;
       });
 
       // Sheet 1: Chi tiết địa chất
@@ -2657,7 +2669,7 @@ export default function App() {
       item.layers.forEach((layer) => {
         const key = layer.layerDesign?.trim() || '(Chưa có)';
         if (key !== pk2b) { gc2b++; pk2b = key; }
-        const ci2 = (gc2b - 1) % GROUP_COLORS.length;
+        const ci2 = Math.max(0, gc2b - 1) % GROUP_COLORS.length;
         const last = groups2[groups2.length - 1];
         if (last && last.layerDesign === key) {
           last.segments++; last.elevationTo = layer.elevationTo;
@@ -3004,7 +3016,7 @@ export default function App() {
         const rowColorIdx = (res.layers || []).map((layer) => {
           const key = layer.layerDesign?.trim() || '__';
           if (key !== pk) { gc++; pk = key; }
-          return (gc - 1) % GROUP_COLORS.length;
+          return Math.max(0, gc - 1) % GROUP_COLORS.length;
         });
         (res.layers || []).forEach((layer, ri) => {
           const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
@@ -3170,6 +3182,10 @@ export default function App() {
       const [aiSuggestions, setAiSuggestions] = React.useState<{ standardName: string; originalNames: string[] }[] | null>(null);
       const [showAiModal, setShowAiModal] = React.useState(false);
       const [selectedGroups, setSelectedGroups] = React.useState<number[]>([]);
+
+      const [isAiClassifying, setIsAiClassifying] = React.useState(false);
+      const [aiClassificationPreview, setAiClassificationPreview] = React.useState<{ originalName: string; oldClass: string; newClass: string }[]>([]);
+      const [showClassificationModal, setShowClassificationModal] = React.useState(false);
 
       const updateAiSuggestionName = (idx: number, newName: string) => {
         if (!aiSuggestions) return;
@@ -3477,6 +3493,117 @@ LƯU Ý:
       }
     };
 
+    const handleAiClassifySoilClasses = async () => {
+      if (geoList.items.length === 0) return;
+      setIsAiClassifying(true);
+      try {
+        const apiKey = geminiApiKeys[activeKeyIndex] || userApiKey || (process.env.GEMINI_API_KEY as string);
+        if (!apiKey) {
+          showToast("Vui lòng cấu hình API Key trong phần Cài đặt.", "error");
+          return;
+        }
+        
+        const aiInstance = new GoogleGenAI({ apiKey });
+
+        const layerItems = geoList.items as any[];
+        const layerNames = layerItems.map(it => it.value);
+        
+        const prompt = `Bạn là một chuyên gia về địa chất công trình Việt Nam. 
+Dưới đây là danh sách các mô tả lớp địa chất. 
+NHIỆM VỤ:
+Hãy phân loại từng mô tả vào một trong các nhóm sau:
+${SOIL_CLASSES.map(c => `- "${c}"`).join('\n')}
+
+MÔ TẢ CÁC NHÓM:
+- "Đất cấp I": Các loại đất rất mềm, bùn, đất lấp, cát rời...
+- "Đất cấp II": Các loại đất sét, sét pha, cát chặt vừa...
+- "Đất cấp III": Các loại đất sét cứng, cuội sỏi, cát rất chặt...
+- "Đá cấp I": Các loại đá phong hóa, đá mềm, đá nứt nẻ...
+
+DANH SÁCH MÔ TẢ:
+${JSON.stringify(layerNames, null, 2)}
+
+YÊU CẦU ĐẦU RA (JSON thuần):
+Trả về một mảng các đối tượng, mỗi đối tượng gồm:
+- originalName: Tên gốc từ danh sách trên.
+- soilClass: Tên nhóm bạn phân loại (phải khớp chính xác với danh sách nhóm ở trên).
+
+LƯU Ý:
+- Nếu không chắc chắn, hãy gán "Chưa Phân định nhóm".
+- Trả về JSON hợp lệ, không giải thích gì thêm.`;
+
+        const result = await aiInstance.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+            responseMimeType: "application/json",
+          }
+        });
+
+        const text = result.text;
+        if (!text) throw new Error("AI không trả về kết quả.");
+        const classifications = JSON.parse(text);
+        
+        const preview = classifications.map((c: any) => {
+          const item = layerItems.find(it => it.value === c.originalName);
+          return {
+            originalName: c.originalName,
+            oldClass: item?.soilClass || 'Chưa Phân định nhóm',
+            newClass: c.soilClass
+          };
+        }).filter((p: any) => p.oldClass !== p.newClass);
+
+        if (preview.length === 0) {
+          showToast("AI không tìm thấy thay đổi nào cần thiết.", "success");
+        } else {
+          setAiClassificationPreview(preview);
+          setShowClassificationModal(true);
+        }
+      } catch (e: any) {
+        console.error("AI Classification error:", e);
+        showToast(`Lỗi AI: ${e.message}`, "error");
+      } finally {
+        setIsAiClassifying(false);
+      }
+    };
+
+    const applyAiClassification = async () => {
+      if (aiClassificationPreview.length === 0) return;
+      
+      try {
+        // Collect all updates
+        const toUpdateList: { result: any; newLayers: any[] }[] = [];
+        
+        aiClassificationPreview.forEach(p => {
+          history.forEach(res => {
+            const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === p.originalName);
+            if (!hasMatch) return;
+            const newLayers = res.layers.map(l =>
+              (l.layerDesign || '').trim() === p.originalName ? { ...l, soilClass: p.newClass } : l
+            );
+            toUpdateList.push({ result: res, newLayers });
+          });
+        });
+
+        if (toUpdateList.length === 0) return;
+
+        await Promise.all(toUpdateList.map(item =>
+          supabase.from('drill_extractions').update({ layers: item.newLayers }).eq('id', item.result.id)
+        ));
+        
+        const newHistory = history.map(res => {
+          const match = toUpdateList.find(u => u.result.id === res.id);
+          return match ? { ...res, layers: match.newLayers } : res;
+        });
+        setHistory(newHistory);
+        setShowClassificationModal(false);
+        showToast(`Đã tự động phân định ${aiClassificationPreview.length} lớp địa chất`, 'success');
+      } catch (e: any) {
+        showToast(`Lỗi khi lưu phân định: ${e.message}`, 'error');
+      }
+    };
+
     const applyAiSuggestions = async () => {
       if (!aiSuggestions) return;
       const mappings: { oldVal: string; newVal: string }[] = [];
@@ -3504,12 +3631,17 @@ LƯU Ý:
     // ── Tab 1: Cấu tạo lớp địa chất ──
     const geoList = useEditableList(
       () => {
-        const map = new Map<string, { value: string; count: number }>();
+        const map = new Map<string, { value: string; count: number; soilClass: string }>();
         history.forEach(res => {
           (res.layers || []).forEach(layer => {
             const v = (layer.layerDesign || '').trim();
             if (!v) return;
-            map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
+            const sc = layer.soilClass || 'Chưa Phân định nhóm';
+            if (map.has(v)) {
+              map.get(v)!.count++;
+            } else {
+              map.set(v, { value: v, count: 1, soilClass: sc });
+            }
           });
         });
         return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
@@ -3518,10 +3650,38 @@ LƯU Ý:
       (layer, newVal) => ({ ...layer, layerDesign: newVal, actualGeology: newVal })
     );
 
+    const moveSoilClass = async (layerName: string, newClass: string) => {
+      const toUpdateList: { result: ExtractionResult; newLayers: DrillLayer[] }[] = [];
+      history.forEach(res => {
+        const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === layerName);
+        if (!hasMatch) return;
+        const newLayers = res.layers.map(l =>
+          (l.layerDesign || '').trim() === layerName ? { ...l, soilClass: newClass } : l
+        );
+        toUpdateList.push({ result: res, newLayers });
+      });
+
+      if (toUpdateList.length === 0) return;
+
+      try {
+        await Promise.all(toUpdateList.map(item =>
+          supabase.from('drill_extractions').update({ layers: item.newLayers }).eq('id', item.result.id)
+        ));
+        const newHistory = history.map(res => {
+          const match = toUpdateList.find(u => u.result.id === res.id);
+          return match ? { ...res, layers: match.newLayers } : res;
+        });
+        setHistory(newHistory);
+        showToast(`Đã chuyển "${layerName}" sang nhóm ${newClass}`, 'success');
+      } catch (e: any) {
+        showToast(`Lỗi khi chuyển nhóm: ${e.message}`, 'error');
+      }
+    };
+
     // ── Tab 2: Dự án ──
     const projectList = useEditableList(
       () => {
-        const map = new Map<string, { value: string; count: number }>();
+        const map = new Map<string, { value: string; count: number; soilClass?: string }>();
         history.forEach(res => {
           const v = (res.project || '').trim();
           if (!v) return;
@@ -3533,12 +3693,12 @@ LƯU Ý:
       (layer) => layer,
       (res) => res.project || '',
       (res, newVal) => ({ ...res, project: newVal })
-    );
+    ) as any;
 
     // ── Tab 3: Đường kính ──
     const diameterList = useEditableList(
       () => {
-        const map = new Map<string, { value: string; count: number }>();
+        const map = new Map<string, { value: string; count: number; soilClass?: string }>();
         history.forEach(res => {
           const v = (res.diameter || '').trim();
           if (!v) return;
@@ -3554,7 +3714,7 @@ LƯU Ý:
       (layer) => layer,
       (res) => res.diameter || '',
       (res, newVal) => ({ ...res, diameter: newVal })
-    );
+    ) as any;
 
     const tabs: { id: DataTab; label: string; icon: React.ReactNode; list: typeof geoList; emptyMsg: string; colHeader: string; activeClass: string; badgeClass: string; headerBg: string }[] = [
       {
@@ -3616,14 +3776,24 @@ LƯU Ý:
           </div>
           <div className="flex items-center gap-2">
             {activeTab === 'geology' && items.length > 0 && (
-              <button
-                onClick={handleAiNormalizeGeology}
-                disabled={isAiNormalizing}
-                className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
-              >
-                {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                Chuẩn hóa bằng AI
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAiClassifySoilClasses}
+                  disabled={isAiClassifying || isAiNormalizing}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+                >
+                  {isAiClassifying ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Phân định nhóm bằng AI
+                </button>
+                <button
+                  onClick={handleAiNormalizeGeology}
+                  disabled={isAiNormalizing || isAiClassifying}
+                  className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
+                >
+                  {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Chuẩn hóa bằng AI
+                </button>
+              </div>
             )}
             {syncStatus === 'syncing' && (
               <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200 animate-pulse">
@@ -3675,13 +3845,119 @@ LƯU Ý:
           {activeTab === 'diameter' && 'Danh sách đường kính cọc — chỉnh sửa sẽ cập nhật trường "diameter" trong tất cả biên bản liên quan'}
         </div>
 
-        {/* Table */}
+        {/* Table / Columns */}
         {items.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
             <Layers size={48} className="text-slate-200 mx-auto mb-4" />
             <p className="text-slate-500 font-medium">{emptyMsg}</p>
             <p className="text-sm text-slate-400 mt-1">Hãy upload biên bản để xem dữ liệu</p>
           </div>
+        ) : activeTab === 'geology' ? (
+          <DragDropContext onDragEnd={(result: DropResult) => {
+            if (!result.destination) return;
+            const itemValue = result.draggableId;
+            const newClass = result.destination.droppableId;
+            const oldClass = result.source.droppableId;
+            if (newClass !== oldClass) {
+              moveSoilClass(itemValue, newClass);
+            }
+          }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {SOIL_CLASSES.map(sc => {
+                const classItems = (geoList.items as any[]).filter(it => it.soilClass === sc);
+                return (
+                  <Droppable key={sc} droppableId={sc}>
+                    {(provided, snapshot) => (
+                      <div 
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={cn(
+                          "flex flex-col bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden min-h-[400px] transition-colors",
+                          snapshot.isDraggingOver ? "bg-blue-50/50 border-blue-300" : ""
+                        )}
+                      >
+                        <div className="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between">
+                          <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-700">{sc}</h4>
+                          <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            {classItems.length}
+                          </span>
+                        </div>
+                        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[600px]">
+                          {classItems.map((row, idx) => {
+                            const isEditing = editingKey === row.value;
+                            const isSaving = savingKey === row.value;
+                            return (
+                              <Draggable key={row.value} draggableId={row.value} index={idx}>
+                                {(provided, snapshot) => (
+                                  <div 
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className={cn(
+                                      "bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group",
+                                      snapshot.isDragging ? "shadow-xl border-blue-400 ring-2 ring-blue-400/20" : ""
+                                    )}
+                                  >
+                                    {isEditing ? (
+                                      <div className="space-y-2">
+                                        <textarea
+                                          autoFocus
+                                          className="w-full border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                                          rows={2}
+                                          value={editValue}
+                                          onChange={e => setEditValue(e.target.value)}
+                                        />
+                                        <div className="flex gap-1">
+                                          <button onClick={() => commitEdit(row.value)} className="flex-1 bg-green-500 text-white text-[10px] py-1 rounded-lg font-bold">Lưu</button>
+                                          <button onClick={cancelEdit} className="flex-1 bg-slate-100 text-slate-600 text-[10px] py-1 rounded-lg font-bold">Hủy</button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <span className="text-xs text-slate-700 font-medium leading-tight">{row.value}</span>
+                                          <button onClick={() => startEdit(row.value)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 rounded-lg transition-all">
+                                            <Edit2 size={12} className="text-blue-500" />
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100">
+                                            {row.count} biên bản
+                                          </span>
+                                          <div className="relative group/menu">
+                                            <button className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                                              <ArrowLeftRight size={12} />
+                                            </button>
+                                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-10 hidden group-hover/menu:block">
+                                              <p className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Chuyển đến nhóm</p>
+                                              {SOIL_CLASSES.filter(c => c !== sc).map(targetClass => (
+                                                <button
+                                                  key={targetClass}
+                                                  onClick={() => moveSoilClass(row.value, targetClass)}
+                                                  className="w-full text-left px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                >
+                                                  {targetClass}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </Draggable>
+                            );
+                          })}
+                          {provided.placeholder}
+                        </div>
+                      </div>
+                    )}
+                  </Droppable>
+                );
+              })}
+            </div>
+          </DragDropContext>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="flex gap-0 divide-x divide-slate-200">
@@ -3893,6 +4169,72 @@ LƯU Ý:
                     Áp dụng chuẩn hóa ({selectedGroups.length})
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Classification Modal */}
+        {showClassificationModal && aiClassificationPreview.length > 0 && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl">
+                    <Sparkles size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black uppercase tracking-tight">Phân định nhóm bằng AI</h3>
+                    <p className="text-xs text-blue-100 font-medium">AI đề xuất thay đổi phân loại cho {aiClassificationPreview.length} lớp địa chất</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowClassificationModal(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+                <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+                  <div className="col-span-6">Lớp địa chất</div>
+                  <div className="col-span-3 text-center">Nhóm cũ</div>
+                  <div className="col-span-3 text-center">Nhóm mới (AI đề xuất)</div>
+                </div>
+                {aiClassificationPreview.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-4 items-center p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
+                    <div className="col-span-6 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">
+                        {idx + 1}
+                      </div>
+                      <span className="text-xs font-bold text-slate-700 leading-tight">{item.originalName}</span>
+                    </div>
+                    <div className="col-span-3 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
+                        {item.oldClass}
+                      </span>
+                    </div>
+                    <div className="col-span-3 flex items-center justify-center gap-2">
+                      <ArrowRight size={14} className="text-slate-300" />
+                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
+                        {item.newClass}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-4">
+                <button 
+                  onClick={() => setShowClassificationModal(false)}
+                  className="px-6 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-widest"
+                >
+                  Hủy bỏ
+                </button>
+                <button 
+                  onClick={applyAiClassification}
+                  className="px-10 py-3 rounded-xl text-sm font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 transition-all flex items-center gap-2"
+                >
+                  Lưu thay đổi ({aiClassificationPreview.length})
+                </button>
               </div>
             </div>
           </div>
@@ -6063,6 +6405,50 @@ function SummaryView({
   });
 
   const totalSegments = designLayerStats.reduce((s, g) => s + g.segments, 0);
+
+  // ── Bổ sung: Thống kê theo Cấp đất đá ──
+  const soilStatsMap: Record<string, LayerStat> = {};
+  history.forEach(res => {
+    (res.layers || []).forEach(layer => {
+      const sc = (layer.soilClass || 'Chưa Phân định nhóm').trim();
+      const dia = (res.diameter || '—').trim();
+      const key = `${sc}|||${dia}`;
+      
+      if (!soilStatsMap[key]) {
+        soilStatsMap[key] = {
+          designLayerCode: '',
+          layerDesign: sc,
+          diameter: dia,
+          pileIds: new Set(),
+          segments: 0,
+          minSpeed: Infinity,
+          maxSpeed: -Infinity,
+          totalDuration: 0,
+          totalLength: 0,
+          colorIdx: Math.max(0, SOIL_CLASSES.indexOf(sc)) % GROUP_COLORS.length
+        };
+      }
+      
+      const stat = soilStatsMap[key];
+      stat.pileIds.add((res.pileId || res.id).trim());
+      stat.segments += 1;
+      stat.totalDuration += layer.durationHours;
+      stat.totalLength += layer.lengthMeters;
+      
+      const spd = layer.speedMph;
+      if (spd > 0) {
+        if (spd < stat.minSpeed) stat.minSpeed = spd;
+        if (spd > stat.maxSpeed) stat.maxSpeed = spd;
+      }
+    });
+  });
+
+  const soilClassStats = Object.values(soilStatsMap).sort((a, b) => {
+    const diaA = parseInt((a.diameter || '').replace(/\D/g, '')) || 0;
+    const diaB = parseInt((b.diameter || '').replace(/\D/g, '')) || 0;
+    if (diaA !== diaB) return diaA - diaB;
+    return SOIL_CLASSES.indexOf(a.layerDesign) - SOIL_CLASSES.indexOf(b.layerDesign);
+  });
   const totalDur = designLayerStats.reduce((s, g) => s + g.totalDuration, 0);
   const totalLen = designLayerStats.reduce((s, g) => s + g.totalLength, 0);
   const totalAvgSpd = totalDur > 0 ? totalLen / totalDur : 0;
@@ -6923,7 +7309,7 @@ function SummaryView({
                               const rowColorIdx = (res.layers || []).map((layer: any) => {
                                 const key = layer.layerDesign?.trim() || '__';
                                 if (key !== pk) { gc++; pk = key; }
-                                return (gc - 1) % GROUP_COLORS.length;
+                                return Math.max(0, gc - 1) % GROUP_COLORS.length;
                               });
                               (res.layers || []).forEach((layer: any, ri: number) => {
                                 const { bg, font: fontColor } = GROUP_COLORS[rowColorIdx[ri]];
@@ -8010,6 +8396,85 @@ function SummaryView({
         </div>
       )}
 
+      {/* ── Bảng Tổng hợp thống kê theo Cấp đất đá ── */}
+      <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
+        <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-blue-300" />
+            <h4 className="text-[12px] font-black text-white uppercase tracking-widest">
+              Tổng hợp thống kê theo Cấp đất đá
+            </h4>
+          </div>
+          <div className="flex items-center gap-3">
+            {(() => {
+              const diameters = Array.from(new Set(soilClassStats.map(s => s.diameter))).sort((a, b) => {
+                const na = parseInt(a.replace(/\D/g, '')) || 0;
+                const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                return na - nb;
+              });
+              return diameters.length > 1 ? (
+                <select
+                  className="text-[12px] font-semibold bg-white border border-white/40 text-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/50 cursor-pointer shadow-sm"
+                  onChange={e => {
+                    const val = e.target.value;
+                    const rows = document.querySelectorAll('[data-soil-dia-row]');
+                    rows.forEach((r: any) => {
+                      r.style.display = (!val || r.dataset.soilDiaRow === val) ? '' : 'none';
+                    });
+                  }}
+                >
+                  <option value="">Tất cả đường kính</option>
+                  {diameters.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              ) : null;
+            })()}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr style={{ background: '#e0f2f1' }}>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-10">STT</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">Đường kính</th>
+                <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-teal-200">Cấp đất đá</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số cọc</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số mẫu</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-28">Tổng dài (m)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-28">T.Gian (h)</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.Min</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.Max</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">V.TB (m/h)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {soilClassStats.map((stat, i) => {
+                const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
+                const rowBg = i % 2 === 0 ? '#ffffff' : '#f0fdfa';
+                return (
+                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-50 hover:bg-teal-50/50 transition-colors">
+                    <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-r border-teal-50">{i + 1}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-teal-700 border-r border-teal-50">{stat.diameter}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `#${GROUP_COLORS[stat.colorIdx].bg}` }} />
+                        <span className="text-xs font-bold text-slate-700">{stat.layerDesign}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border-l border-teal-50">{stat.pileIds.size}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border-l border-teal-50">{stat.segments}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-800 border-l border-teal-50">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-500 border-l border-teal-50">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border-l border-teal-50">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border-l border-teal-50">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-black text-teal-600 border-l border-teal-50">{avgSpd.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
       <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
         <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
@@ -8651,7 +9116,7 @@ function EditSplitView({
       const rowColorIdx = result.layers.map((layer) => {
         const key = layer.layerDesign?.trim() || '__';
         if (key !== pk) { gc++; pk = key; }
-        return (gc - 1) % GROUP_COLORS.length;
+        return Math.max(0, gc - 1) % GROUP_COLORS.length;
       });
 
       // ════════════════════════════════════════
@@ -8775,7 +9240,7 @@ function EditSplitView({
       result.layers.forEach((layer) => {
         const key = layer.layerDesign?.trim() || '(Chưa có)';
         if (key !== pk2) { gc2++; pk2 = key; }
-        const ci2 = (gc2 - 1) % GROUP_COLORS.length;
+        const ci2 = Math.max(0, gc2 - 1) % GROUP_COLORS.length;
         const last = groups[groups.length - 1];
         if (last && last.layerDesign === key) {
           last.segments++; last.elevationTo = layer.elevationTo;
@@ -9344,7 +9809,7 @@ function EditSplitView({
                       const rowColorIdx: number[] = data.layers.map((layer) => {
                         const key = layer.layerDesign?.trim() || '__empty__';
                         if (key !== prevKey) { groupCount++; prevKey = key; }
-                        return (groupCount - 1) % groupColors.length;
+                        return Math.max(0, groupCount - 1) % groupColors.length;
                       });
                       return data.layers.map((layer, idx) => {
                         const { row: rowBg, text: rowText } = groupColors[rowColorIdx[idx]];
@@ -9554,7 +10019,7 @@ function EditSplitView({
                       data.layers.forEach((layer) => {
                         const key = layer.layerDesign?.trim() || '(Chưa có)';
                         if (key !== prevKey) { groupCount++; prevKey = key; }
-                        const colorIdx = (groupCount - 1) % groupColors.length;
+                        const colorIdx = Math.max(0, groupCount - 1) % groupColors.length;
                         const last = groups[groups.length - 1];
                         if (last && last.layerDesign === key) {
                           last.segments += 1;
