@@ -153,6 +153,12 @@ function getGeoDisplay(layer: { actualGeology?: string; designLayerCode?: string
 //     "11.Sét xám vàng..."     → "Sét xám vàng..."
 //     "3.Sét lẫn hữu cơ..."   → "Sét lẫn hữu cơ..."
 //     "Đất Lấp"               → "Đất Lấp"  (giữ nguyên nếu không có số đầu)
+// Chuẩn hóa tên lớp để so sánh: bỏ khoảng trắng thừa (đầu/cuối + kép bên trong), chuẩn hóa Unicode
+function normalizeLayerName(s: string): string {
+  if (!s) return '';
+  return s.trim().replace(/\s+/g, ' ').normalize('NFC');
+}
+
 function stripLayerPrefix(desc: string): string {
   if (!desc) return desc;
   // Khớp: số (1 hoặc nhiều chữ số) theo sau là dấu chấm/gạch/ngoặc rồi khoảng trắng tuỳ ý
@@ -3620,11 +3626,11 @@ LƯU Ý:
             const currentUpdate = toUpdateMap.get(res.id);
             const currentLayers = currentUpdate ? currentUpdate.newLayers : res.layers;
             
-            const hasMatch = (currentLayers || []).some(l => (l.layerDesign || '').trim() === p.originalName);
+            const hasMatch = (currentLayers || []).some(l => normalizeLayerName(l.layerDesign || '') === normalizeLayerName(p.originalName));
             if (!hasMatch) return;
 
             const newLayers = currentLayers.map(l =>
-              (l.layerDesign || '').trim() === p.originalName ? { ...l, soilClass: p.newClass } : l
+              normalizeLayerName(l.layerDesign || '') === normalizeLayerName(p.originalName) ? { ...l, soilClass: p.newClass } : l
             );
             toUpdateMap.set(res.id, { result: res, newLayers });
           });
@@ -3679,15 +3685,20 @@ LƯU Ý:
         const map = new Map<string, { value: string; count: number; soilClass: string }>();
         history.forEach(res => {
           (res.layers || []).forEach(layer => {
-            const v = (layer.layerDesign || '').trim();
-            if (!v) return;
+            const raw = (layer.layerDesign || '').trim();
+            if (!raw) return;
+            const v = normalizeLayerName(raw);
             const scRaw = (layer.soilClass || '').trim();
-            // Nếu soilClass không nằm trong danh sách chuẩn → coi là "Chưa Phân định nhóm"
             const sc = SOIL_CLASSES.includes(scRaw) ? scRaw : 'Chưa Phân định nhóm';
             if (map.has(v)) {
               map.get(v)!.count++;
+              // ⭐ Ưu tiên class đã phân định: nếu layer này có class tốt hơn → cập nhật
+              const existing = map.get(v)!;
+              if (existing.soilClass === 'Chưa Phân định nhóm' && sc !== 'Chưa Phân định nhóm') {
+                existing.soilClass = sc;
+              }
             } else {
-              map.set(v, { value: v, count: 1, soilClass: sc });
+              map.set(v, { value: raw, count: 1, soilClass: sc });
             }
           });
         });
@@ -3698,12 +3709,13 @@ LƯU Ý:
     );
 
     const moveSoilClass = async (layerName: string, newClass: string) => {
+      const normName = normalizeLayerName(layerName);
       const toUpdateList: { result: ExtractionResult; newLayers: DrillLayer[] }[] = [];
       history.forEach(res => {
-        const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === layerName);
+        const hasMatch = (res.layers || []).some(l => normalizeLayerName(l.layerDesign || '') === normName);
         if (!hasMatch) return;
         const newLayers = res.layers.map(l =>
-          (l.layerDesign || '').trim() === layerName ? { ...l, soilClass: newClass } : l
+          normalizeLayerName(l.layerDesign || '') === normName ? { ...l, soilClass: newClass } : l
         );
         toUpdateList.push({ result: res, newLayers });
       });
@@ -5893,7 +5905,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         // Lookup map: cùng layerDesign → ưu tiên soilClass đã phân định
         const soilLookup = new Map<string, string>();
         (result.layers || []).forEach(l => {
-          const k = (l.layerDesign || '').trim();
+          const k = normalizeLayerName(l.layerDesign || '');
           if (!k) return;
           const sc = SOIL_CLASSES.includes((l.soilClass || '').trim()) ? l.soilClass.trim() : 'Chưa Phân định nhóm';
           if (!soilLookup.has(k) || soilLookup.get(k) === 'Chưa Phân định nhóm') soilLookup.set(k, sc);
@@ -5937,7 +5949,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-black italic text-[12px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
                   <td className="px-4 py-3 text-[11px] border-r border-slate-200 text-center">
                     {(() => {
-                      const sc = soilLookup.get((layer.layerDesign || '').trim()) || 'Chưa Phân định nhóm';
+                      const sc = soilLookup.get(normalizeLayerName(layer.layerDesign || '')) || 'Chưa Phân định nhóm';
                       return (
                         <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${soilBadgeColors[sc] || soilBadgeColors['Chưa Phân định nhóm']}`}>
                           {sc === 'Chưa Phân định nhóm' ? 'Chưa PĐN' : sc}
@@ -8929,11 +8941,10 @@ function EditSplitView({
   const layerDesignSoilMap = React.useMemo(() => {
     const map = new Map<string, string>();
     (data.layers || []).forEach(l => {
-      const key = (l.layerDesign || '').trim();
+      const key = normalizeLayerName(l.layerDesign || '');
       if (!key) return;
       const sc = SOIL_CLASSES.includes((l.soilClass || '').trim()) ? l.soilClass.trim() : 'Chưa Phân định nhóm';
       const existing = map.get(key);
-      // Ưu tiên class đã phân định (khác Chưa Phân định nhóm)
       if (!existing || existing === 'Chưa Phân định nhóm') {
         map.set(key, sc);
       }
@@ -10112,7 +10123,7 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'110px'}}>
                           <div className="flex items-center justify-center px-1 py-1">
                             {(() => {
-                              const key = (layer.layerDesign || '').trim();
+                              const key = normalizeLayerName(layer.layerDesign || '');
                               const sc = layerDesignSoilMap.get(key) || 'Chưa Phân định nhóm';
                               const colors: Record<string, string> = {
                                 'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
