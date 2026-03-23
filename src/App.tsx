@@ -8709,7 +8709,7 @@ function SummaryView({
                       </div>
                     </div>
                     <button
-                      onClick={() => { setSoilDrillDown(null); onSelectResult(res); }}
+                      onClick={() => { setSoilDrillDown(null); onEdit(res); }}
                       className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-[11px] font-black hover:bg-teal-700 transition-all whitespace-nowrap"
                     >
                       Xem chi tiết →
@@ -10021,6 +10021,7 @@ function EditSplitView({
                     <tr className="bg-slate-100 border-b border-slate-300">
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'60px'}}>ĐỊA CHẤT <br/> THỰC TẾ</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đường kính</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'110px'}}>Cấp đất đá</th>
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
@@ -10079,6 +10080,26 @@ function EditSplitView({
                             className={`w-full bg-transparent border-none text-[12px] text-black font-normal px-2 py-1 text-center outline-none`}
                             style={{ minWidth: '80px', width: '80px' }}
                           />
+                        </td>
+                        <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'110px'}}>
+                          <div className="flex items-center justify-center px-1 py-1">
+                            {(() => {
+                              const sc = SOIL_CLASSES.includes((layer.soilClass || '').trim()) ? layer.soilClass.trim() : 'Chưa PĐN';
+                              const colors: Record<string, string> = {
+                                'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
+                                'Đất cấp II':  'bg-emerald-100 text-emerald-800 border-emerald-300',
+                                'Đất cấp III': 'bg-orange-100 text-orange-800 border-orange-300',
+                                'Đá cấp I':    'bg-rose-100 text-rose-800 border-rose-300',
+                                'Chưa PĐN':    'bg-slate-100 text-slate-500 border-slate-300',
+                                'Chưa Phân định nhóm': 'bg-slate-100 text-slate-500 border-slate-300',
+                              };
+                              return (
+                                <span className={`inline-block px-1.5 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${colors[sc] || colors['Chưa PĐN']}`}>
+                                  {sc === 'Chưa Phân định nhóm' ? 'Chưa PĐN' : sc}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{minWidth:'160px'}}>
                           <AutoResizeTextarea 
