@@ -6662,10 +6662,14 @@ function SummaryView({
   });
 
   const soilClassStats = Object.values(soilStatsMap).sort((a, b) => {
+    // Nhóm theo Cấp đất đá trước
+    const scA = SOIL_CLASSES.indexOf(a.layerDesign);
+    const scB = SOIL_CLASSES.indexOf(b.layerDesign);
+    if (scA !== scB) return scA - scB;
+    // Sau đó mới theo đường kính
     const diaA = parseInt((a.diameter || '').replace(/\D/g, '')) || 0;
     const diaB = parseInt((b.diameter || '').replace(/\D/g, '')) || 0;
-    if (diaA !== diaB) return diaA - diaB;
-    return SOIL_CLASSES.indexOf(a.layerDesign) - SOIL_CLASSES.indexOf(b.layerDesign);
+    return diaA - diaB;
   });
   const totalDur = designLayerStats.reduce((s, g) => s + g.totalDuration, 0);
   const totalLen = designLayerStats.reduce((s, g) => s + g.totalLength, 0);
@@ -8653,8 +8657,8 @@ function SummaryView({
             <thead>
               <tr style={{ background: '#e0f2f1' }}>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-10">STT</th>
-                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">Đường kính</th>
                 <th className="px-4 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-teal-200">Cấp đất đá</th>
+                <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-24">Đường kính</th>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số cọc</th>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-20">Số mẫu</th>
                 <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-teal-200 w-28">Tổng dài (m)</th>
@@ -8669,7 +8673,7 @@ function SummaryView({
                 const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
                 const rowBg = i % 2 === 0 ? '#ffffff' : '#f0fdfa';
                 return (
-                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-50 hover:bg-teal-50/50 transition-colors cursor-pointer"
+                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-200 hover:bg-teal-50/50 transition-colors cursor-pointer"
                     onClick={() => {
                       // Lọc các biên bản thuộc nhóm này
                       const piles = history.filter(res =>
@@ -8682,21 +8686,21 @@ function SummaryView({
                       setSoilDrillDown({ diameter: stat.diameter, soilClass: stat.layerDesign, piles });
                     }}
                   >
-                    <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-r border-teal-50">{i + 1}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-teal-700 border-r border-teal-50">{stat.diameter}</td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-teal-200">{i + 1}</td>
+                    <td className="px-4 py-2.5 border border-teal-200">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `#${GROUP_COLORS[stat.colorIdx].bg}` }} />
                         <span className="text-xs font-bold text-slate-700">{stat.layerDesign}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border-l border-teal-50">{stat.pileIds.size}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border-l border-teal-50">{stat.segments}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-800 border-l border-teal-50">{stat.totalLength.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-500 border-l border-teal-50">{stat.totalDuration.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border-l border-teal-50">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border-l border-teal-50">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
-                    <td className="px-3 py-2.5 text-xs text-center font-black text-teal-600 border-l border-teal-50">{avgSpd.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-teal-700 border border-teal-200">{stat.diameter}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border border-teal-200">{stat.pileIds.size}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-600 border border-teal-200">{stat.segments}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-800 border border-teal-200">{stat.totalLength.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-bold text-slate-500 border border-teal-200">{stat.totalDuration.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border border-teal-200">{stat.minSpeed === Infinity ? '—' : stat.minSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-medium text-slate-500 border border-teal-200">{stat.maxSpeed === -Infinity ? '—' : stat.maxSpeed.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 text-xs text-center font-black text-teal-600 border border-teal-200">{avgSpd.toFixed(2)}</td>
                   </tr>
                 );
               })}
