@@ -3186,6 +3186,7 @@ export default function App() {
       const [isAiClassifying, setIsAiClassifying] = React.useState(false);
       const [aiClassificationPreview, setAiClassificationPreview] = React.useState<{ originalName: string; oldClass: string; newClass: string }[]>([]);
       const [showClassificationModal, setShowClassificationModal] = React.useState(false);
+      const [searchQuery, setSearchQuery] = React.useState('');
 
       const updateAiSuggestionName = (idx: number, newName: string) => {
         if (!aiSuggestions) return;
@@ -3199,6 +3200,22 @@ export default function App() {
         const next = aiSuggestions.filter((_, i) => i !== idx);
         setAiSuggestions(next);
         setSelectedGroups(prev => prev.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
+      };
+
+      const [viewingReports, setViewingReports] = React.useState<{ value: string, reports: any[] } | null>(null);
+
+      const showReportsForItem = (value: string) => {
+        let reports: any[] = [];
+        if (activeTab === 'geology') {
+          reports = history.filter(res => 
+            (res.layers || []).some(layer => (layer.layerDesign || '').trim() === value)
+          );
+        } else if (activeTab === 'project') {
+          reports = history.filter(res => (res.project || '').trim() === value);
+        } else if (activeTab === 'diameter') {
+          reports = history.filter(res => (res.diameter || '').trim() === value);
+        }
+        setViewingReports({ value, reports });
       };
 
       const removeOriginalNameFromGroup = (groupIdx: number, nameIdx: number) => {
@@ -3229,7 +3246,12 @@ export default function App() {
       const [syncStatus, setSyncStatus] = React.useState<'idle'|'syncing'|'done'|'error'>('idle');
       const [syncCount, setSyncCount] = React.useState(0);
 
-      const items = React.useMemo(getItems, [history]);
+      const items = React.useMemo(() => {
+        const allItems = getItems();
+        if (!searchQuery.trim()) return allItems;
+        const q = searchQuery.toLowerCase().trim();
+        return allItems.filter(it => it.value.toLowerCase().includes(q));
+      }, [history, searchQuery]);
 
       const startEdit = (key: string) => { setEditingKey(key); setEditValue(key); };
       const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
@@ -3442,17 +3464,25 @@ export default function App() {
         
         const aiInstance = new GoogleGenAI({ apiKey });
 
-        const layerNames = geoList.items.map(it => it.value);
+        const groupedLayers = (geoList.items as any[]).reduce((acc, it) => {
+          const sc = it.soilClass || 'Chưa Phân định nhóm';
+          if (!acc[sc]) acc[sc] = [];
+          acc[sc].push(it.value);
+          return acc;
+        }, {} as Record<string, string[]>);
         
         const prompt = `Bạn là một chuyên gia về địa chất công trình. 
-Dưới đây là danh sách các mô tả lớp địa chất được trích xuất từ các biên bản khoan. 
-Nhiều mô tả thực chất là cùng một loại nhưng được viết khác nhau (do viết tay hoặc cách dùng từ khác nhau).
+Dưới đây là danh sách các mô tả lớp địa chất được trích xuất từ các biên bản khoan, được nhóm theo từng "Nhóm Đất hoặc Đá".
 
 NHIỆM VỤ:
-Hãy nhóm các mô tả tương đồng lại với nhau và đề xuất một "Tên chuẩn hóa" duy nhất cho mỗi nhóm.
+Trong TỪNG NHÓM, hãy tìm các mô tả tương đồng (thực chất là cùng một loại nhưng viết khác nhau) và đề xuất một "Tên chuẩn hóa" duy nhất cho mỗi nhóm nhỏ đó.
 
-DANH SÁCH MÔ TẢ:
-${JSON.stringify(layerNames, null, 2)}
+QUAN TRỌNG:
+- CHỈ so sánh và gộp các tên TRONG CÙNG MỘT NHÓM. KHÔNG được gộp các tên từ hai nhóm khác nhau.
+- Nếu một tên không có tên nào khác tương đồng trong cùng nhóm, hãy bỏ qua.
+
+DANH SÁCH MÔ TẢ THEO NHÓM:
+${JSON.stringify(groupedLayers, null, 2)}
 
 YÊU CẦU ĐẦU RA (JSON thuần):
 Trả về một mảng các đối tượng, mỗi đối tượng gồm:
@@ -3572,20 +3602,24 @@ LƯU Ý:
       if (aiClassificationPreview.length === 0) return;
       
       try {
-        // Collect all updates
-        const toUpdateList: { result: any; newLayers: any[] }[] = [];
+        const toUpdateMap = new Map<string, { result: ExtractionResult; newLayers: DrillLayer[] }>();
         
         aiClassificationPreview.forEach(p => {
           history.forEach(res => {
-            const hasMatch = (res.layers || []).some(l => (l.layerDesign || '').trim() === p.originalName);
+            const currentUpdate = toUpdateMap.get(res.id);
+            const currentLayers = currentUpdate ? currentUpdate.newLayers : res.layers;
+            
+            const hasMatch = (currentLayers || []).some(l => (l.layerDesign || '').trim() === p.originalName);
             if (!hasMatch) return;
-            const newLayers = res.layers.map(l =>
+
+            const newLayers = currentLayers.map(l =>
               (l.layerDesign || '').trim() === p.originalName ? { ...l, soilClass: p.newClass } : l
             );
-            toUpdateList.push({ result: res, newLayers });
+            toUpdateMap.set(res.id, { result: res, newLayers });
           });
         });
 
+        const toUpdateList = Array.from(toUpdateMap.values());
         if (toUpdateList.length === 0) return;
 
         await Promise.all(toUpdateList.map(item =>
@@ -3593,7 +3627,7 @@ LƯU Ý:
         ));
         
         const newHistory = history.map(res => {
-          const match = toUpdateList.find(u => u.result.id === res.id);
+          const match = toUpdateMap.get(res.id);
           return match ? { ...res, layers: match.newLayers } : res;
         });
         setHistory(newHistory);
@@ -3776,23 +3810,28 @@ LƯU Ý:
           </div>
           <div className="flex items-center gap-2">
             {activeTab === 'geology' && items.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleAiClassifySoilClasses}
-                  disabled={isAiClassifying || isAiNormalizing}
-                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
-                >
-                  {isAiClassifying ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  Phân định nhóm bằng AI
-                </button>
-                <button
-                  onClick={handleAiNormalizeGeology}
-                  disabled={isAiNormalizing || isAiClassifying}
-                  className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
-                >
-                  {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  Chuẩn hóa bằng AI
-                </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAiClassifySoilClasses}
+                    disabled={isAiClassifying || isAiNormalizing}
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+                  >
+                    {isAiClassifying ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Phân định nhóm bằng AI
+                  </button>
+                  <button
+                    onClick={handleAiNormalizeGeology}
+                    disabled={isAiNormalizing || isAiClassifying}
+                    className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
+                  >
+                    {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    Chuẩn hóa bằng AI
+                  </button>
+                </div>
+                <p className="text-[10px] text-red-500 font-bold italic">
+                  * Lưu ý: Công cụ chuẩn hóa này chỉ so sánh các dữ liệu cùng Nhóm Đất hoặc đá
+                </p>
               </div>
             )}
             {syncStatus === 'syncing' && (
@@ -3814,28 +3853,52 @@ LƯU Ý:
         </div>
 
         {/* 3 Tab buttons */}
-        <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all',
-                activeTab === tab.id
-                  ? tab.activeClass
-                  : 'text-slate-500 hover:text-slate-700'
-              )}
-            >
-              {tab.icon}
-              {tab.label}
-              <span className={cn(
-                'text-[10px] font-black px-2 py-0.5 rounded-full',
-                activeTab === tab.id ? tab.badgeClass : 'bg-slate-200 text-slate-500'
-              )}>
-                {tab.list.items.length}
-              </span>
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setSearchQuery('');
+                }}
+                className={cn(
+                  'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all',
+                  activeTab === tab.id
+                    ? tab.activeClass
+                    : 'text-slate-500 hover:text-slate-700'
+                )}
+              >
+                {tab.icon}
+                {tab.label}
+                <span className={cn(
+                  'text-[10px] font-black px-2 py-0.5 rounded-full',
+                  activeTab === tab.id ? tab.badgeClass : 'bg-slate-200 text-slate-500'
+                )}>
+                  {tab.list.items.length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder={`Tìm kiếm ${activeTabData.label.toLowerCase()}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tab description */}
@@ -3921,9 +3984,12 @@ LƯU Ý:
                                           </button>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100">
+                                          <button 
+                                            onClick={(e) => { e.stopPropagation(); showReportsForItem(row.value); }}
+                                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100 hover:bg-blue-100 transition-colors"
+                                          >
                                             {row.count} biên bản
-                                          </span>
+                                          </button>
                                           <div className="relative group/menu">
                                             <button className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
                                               <ArrowLeftRight size={12} />
@@ -4018,9 +4084,12 @@ LƯU Ý:
                               )}
                             </td>
                             <td className="px-3 py-2.5 text-center">
-                              <span className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200">
+                              <button 
+                                onClick={() => showReportsForItem(row.value)}
+                                className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                              >
                                 {row.count}
-                              </span>
+                              </button>
                             </td>
                           </tr>
                         );
@@ -4195,13 +4264,14 @@ LƯU Ý:
 
               <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
                 <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                  <div className="col-span-6">Lớp địa chất</div>
+                  <div className="col-span-5">Lớp địa chất</div>
                   <div className="col-span-3 text-center">Nhóm cũ</div>
                   <div className="col-span-3 text-center">Nhóm mới (AI đề xuất)</div>
+                  <div className="col-span-1 text-right">Xóa</div>
                 </div>
                 {aiClassificationPreview.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-12 gap-4 items-center p-4 bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
-                    <div className="col-span-6 flex items-center gap-3">
+                    <div className="col-span-5 flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-xs">
                         {idx + 1}
                       </div>
@@ -4217,6 +4287,15 @@ LƯU Ý:
                       <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
                         {item.newClass}
                       </span>
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <button 
+                        onClick={() => setAiClassificationPreview(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="Xóa đề xuất này"
+                      >
+                        <X size={16} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -4234,6 +4313,85 @@ LƯU Ý:
                   className="px-10 py-3 rounded-xl text-sm font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 transition-all flex items-center gap-2"
                 >
                   Lưu thay đổi ({aiClassificationPreview.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Viewing Reports Modal */}
+        {viewingReports && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-50 rounded-xl text-blue-600">
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black uppercase tracking-tight text-slate-800">Danh sách biên bản</h3>
+                    <p className="text-xs text-slate-400 font-medium">Có {viewingReports.reports.length} biên bản chứa giá trị: <span className="text-blue-600 font-bold">"{viewingReports.value}"</span></p>
+                  </div>
+                </div>
+                <button onClick={() => setViewingReports(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {viewingReports.reports.map((report, idx) => (
+                    <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{report.boreholeId || "N/A"}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">{report.project || "Dự án không xác định"}</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                          {report.diameter || "N/A"} mm
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400">Độ sâu:</span>
+                          <span className="font-bold text-slate-700">{report.depth || 0}m</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400">Số lớp:</span>
+                          <span className="font-bold text-slate-700">{(report.layers || []).length}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                        <button 
+                          onClick={() => {
+                            // Logic to open this report in the main view
+                            // We can use setActiveSheet and some state to highlight it
+                            // For now, just a placeholder
+                            alert(`Chuyển đến biên bản ${report.boreholeId}`);
+                          }}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                        >
+                          Xem chi tiết <ArrowRight size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-white flex justify-end">
+                <button 
+                  onClick={() => setViewingReports(null)}
+                  className="px-8 py-3 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-100 transition-all uppercase tracking-widest"
+                >
+                  Đóng
                 </button>
               </div>
             </div>
