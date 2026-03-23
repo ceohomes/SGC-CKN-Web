@@ -5889,6 +5889,23 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
         </div>
       </div>
 
+      {(() => {
+        // Lookup map: cùng layerDesign → ưu tiên soilClass đã phân định
+        const soilLookup = new Map<string, string>();
+        (result.layers || []).forEach(l => {
+          const k = (l.layerDesign || '').trim();
+          if (!k) return;
+          const sc = SOIL_CLASSES.includes((l.soilClass || '').trim()) ? l.soilClass.trim() : 'Chưa Phân định nhóm';
+          if (!soilLookup.has(k) || soilLookup.get(k) === 'Chưa Phân định nhóm') soilLookup.set(k, sc);
+        });
+        const soilBadgeColors: Record<string, string> = {
+          'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
+          'Đất cấp II':  'bg-emerald-100 text-emerald-800 border-emerald-300',
+          'Đất cấp III': 'bg-orange-100 text-orange-800 border-orange-300',
+          'Đá cấp I':    'bg-rose-100 text-rose-800 border-rose-300',
+          'Chưa Phân định nhóm': 'bg-slate-100 text-slate-500 border-slate-300',
+        };
+        return (
       <div className="modern-card overflow-hidden border border-slate-300 shadow-sm">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full border-collapse table-fixed min-w-[1500px]">
@@ -5920,17 +5937,10 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-black italic text-[12px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
                   <td className="px-4 py-3 text-[11px] border-r border-slate-200 text-center">
                     {(() => {
-                      const sc = SOIL_CLASSES.includes((layer.soilClass || '').trim()) ? layer.soilClass.trim() : 'Chưa Phân định nhóm';
-                      const colors: Record<string, string> = {
-                        'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
-                        'Đất cấp II':  'bg-emerald-100 text-emerald-800 border-emerald-300',
-                        'Đất cấp III': 'bg-orange-100 text-orange-800 border-orange-300',
-                        'Đá cấp I':    'bg-rose-100 text-rose-800 border-rose-300',
-                        'Chưa Phân định nhóm': 'bg-slate-100 text-slate-500 border-slate-300',
-                      };
+                      const sc = soilLookup.get((layer.layerDesign || '').trim()) || 'Chưa Phân định nhóm';
                       return (
-                        <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${colors[sc] || colors['Chưa Phân định nhóm']}`}>
-                          {sc}
+                        <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${soilBadgeColors[sc] || soilBadgeColors['Chưa Phân định nhóm']}`}>
+                          {sc === 'Chưa Phân định nhóm' ? 'Chưa PĐN' : sc}
                         </span>
                       );
                     })()}
@@ -5960,6 +5970,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
           </table>
         </div>
       </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 gap-8">
         <div className="modern-card p-10 flex flex-col justify-center items-center text-center">
@@ -8913,6 +8925,22 @@ function EditSplitView({
   const [rescanStatus, setRescanStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isReplacingFile, setIsReplacingFile] = useState(false);
 
+  // ── Bảng tra cứu soilClass theo layerDesign: ưu tiên class đã được phân định ──
+  const layerDesignSoilMap = React.useMemo(() => {
+    const map = new Map<string, string>();
+    (data.layers || []).forEach(l => {
+      const key = (l.layerDesign || '').trim();
+      if (!key) return;
+      const sc = SOIL_CLASSES.includes((l.soilClass || '').trim()) ? l.soilClass.trim() : 'Chưa Phân định nhóm';
+      const existing = map.get(key);
+      // Ưu tiên class đã phân định (khác Chưa Phân định nhóm)
+      if (!existing || existing === 'Chưa Phân định nhóm') {
+        map.set(key, sc);
+      }
+    });
+    return map;
+  }, [data.layers]);
+
   // ── Thay thế File: upload PDF mới → thay trên GitHub → quét lại AI → cập nhật data ──
   const replaceFile = async () => {
     if (!githubCreds) {
@@ -10084,17 +10112,17 @@ function EditSplitView({
                         <td className={`p-0 border-r border-slate-200 align-middle ${rowBg}`} style={{width:'110px'}}>
                           <div className="flex items-center justify-center px-1 py-1">
                             {(() => {
-                              const sc = SOIL_CLASSES.includes((layer.soilClass || '').trim()) ? layer.soilClass.trim() : 'Chưa PĐN';
+                              const key = (layer.layerDesign || '').trim();
+                              const sc = layerDesignSoilMap.get(key) || 'Chưa Phân định nhóm';
                               const colors: Record<string, string> = {
                                 'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
                                 'Đất cấp II':  'bg-emerald-100 text-emerald-800 border-emerald-300',
                                 'Đất cấp III': 'bg-orange-100 text-orange-800 border-orange-300',
                                 'Đá cấp I':    'bg-rose-100 text-rose-800 border-rose-300',
-                                'Chưa PĐN':    'bg-slate-100 text-slate-500 border-slate-300',
                                 'Chưa Phân định nhóm': 'bg-slate-100 text-slate-500 border-slate-300',
                               };
                               return (
-                                <span className={`inline-block px-1.5 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${colors[sc] || colors['Chưa PĐN']}`}>
+                                <span className={`inline-block px-1.5 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${colors[sc] || colors['Chưa Phân định nhóm']}`}>
                                   {sc === 'Chưa Phân định nhóm' ? 'Chưa PĐN' : sc}
                                 </span>
                               );
