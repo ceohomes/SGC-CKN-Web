@@ -5898,6 +5898,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Tên Máy khoan</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Đường kính</th>
                 <th className="px-4 py-3 text-left text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[350px]">Mô tả lớp thiết kế</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Cấp đất đá</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Từ (h)</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Đến (h)</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ từ</th>
@@ -5917,6 +5918,23 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                   <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{result.reportNumber}</td>
                   <td className="text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">{layer.diameter}</td>
                   <td className="text-black italic text-[12px] leading-relaxed px-4 py-3 border-r border-slate-200 whitespace-pre-wrap break-words">{layer.layerDesign}</td>
+                  <td className="px-4 py-3 text-[11px] border-r border-slate-200 text-center">
+                    {(() => {
+                      const sc = SOIL_CLASSES.includes((layer.soilClass || '').trim()) ? layer.soilClass.trim() : 'Chưa Phân định nhóm';
+                      const colors: Record<string, string> = {
+                        'Đất cấp I':   'bg-yellow-100 text-yellow-800 border-yellow-300',
+                        'Đất cấp II':  'bg-emerald-100 text-emerald-800 border-emerald-300',
+                        'Đất cấp III': 'bg-orange-100 text-orange-800 border-orange-300',
+                        'Đá cấp I':    'bg-rose-100 text-rose-800 border-rose-300',
+                        'Chưa Phân định nhóm': 'bg-slate-100 text-slate-500 border-slate-300',
+                      };
+                      return (
+                        <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${colors[sc] || colors['Chưa Phân định nhóm']}`}>
+                          {sc}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200 text-center">
                     <div>{layer.timeFrom}</div>
                     {layer.dateFrom && <div className="text-[9px] text-slate-500">{layer.dateFrom}</div>}
