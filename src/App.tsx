@@ -46,7 +46,6 @@ import {
   RotateCw,
   FileDown,
   ArrowRight,
-  ArrowLeftRight,
   Sparkles,
   CircleDot
 } from 'lucide-react';
@@ -3926,8 +3925,15 @@ LƯU Ý:
             }
           }}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-              {SOIL_CLASSES.map(sc => {
+              {SOIL_CLASSES.map((sc, scIdx) => {
                 const classItems = (geoList.items as any[]).filter(it => it.soilClass === sc);
+                const headerColors = [
+                  { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200', badge: 'bg-slate-200 text-slate-600' },
+                  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-600' },
+                  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-100 text-emerald-600' },
+                  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-600' },
+                  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', badge: 'bg-rose-100 text-rose-600' },
+                ][scIdx] || { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-100', badge: 'bg-slate-100 text-slate-500' };
                 return (
                   <Droppable key={sc} droppableId={sc}>
                     {(provided, snapshot) => (
@@ -3935,17 +3941,17 @@ LƯU Ý:
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                         className={cn(
-                          "flex flex-col bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden min-h-[400px] transition-colors",
+                          "flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden min-h-[400px] transition-colors",
                           snapshot.isDraggingOver ? "bg-blue-50/50 border-blue-300" : ""
                         )}
                       >
-                        <div className="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between">
-                          <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-700">{sc}</h4>
-                          <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        <div className={cn("px-4 py-3 border-b flex items-center justify-between", headerColors.bg, headerColors.border)}>
+                          <h4 className={cn("text-[11px] font-black uppercase tracking-wider", headerColors.text)}>{sc}</h4>
+                          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", headerColors.badge)}>
                             {classItems.length}
                           </span>
                         </div>
-                        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[600px]">
+                        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[600px] bg-white">
                           {classItems.map((row, idx) => {
                             const isEditing = editingKey === row.value;
                             const isSaving = savingKey === row.value;
@@ -3957,7 +3963,7 @@ LƯU Ý:
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
                                     className={cn(
-                                      "bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group",
+                                      "bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group",
                                       snapshot.isDragging ? "shadow-xl border-blue-400 ring-2 ring-blue-400/20" : ""
                                     )}
                                   >
@@ -3976,36 +3982,22 @@ LƯU Ý:
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="space-y-2">
+                                      <div 
+                                        className="space-y-2 cursor-pointer group/card"
+                                        onClick={() => showReportsForItem(row.value)}
+                                      >
                                         <div className="flex items-start justify-between gap-2">
-                                          <span className="text-xs text-slate-700 font-medium leading-tight">{row.value}</span>
-                                          <button onClick={() => startEdit(row.value)} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 rounded-lg transition-all">
+                                          <span className="text-xs text-slate-700 font-medium leading-tight group-hover/card:text-blue-600 transition-colors">{row.value}</span>
+                                          <button 
+                                            onClick={(e) => { e.stopPropagation(); startEdit(row.value); }} 
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 rounded-lg transition-all"
+                                          >
                                             <Edit2 size={12} className="text-blue-500" />
                                           </button>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); showReportsForItem(row.value); }}
-                                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100 hover:bg-blue-100 transition-colors"
-                                          >
+                                          <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100 group-hover/card:bg-blue-100 transition-colors">
                                             {row.count} biên bản
-                                          </button>
-                                          <div className="relative group/menu">
-                                            <button className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
-                                              <ArrowLeftRight size={12} />
-                                            </button>
-                                            <div className="absolute right-0 bottom-full mb-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-10 hidden group-hover/menu:block">
-                                              <p className="px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">Chuyển đến nhóm</p>
-                                              {SOIL_CLASSES.filter(c => c !== sc).map(targetClass => (
-                                                <button
-                                                  key={targetClass}
-                                                  onClick={() => moveSoilClass(row.value, targetClass)}
-                                                  className="w-full text-left px-3 py-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                >
-                                                  {targetClass}
-                                                </button>
-                                              ))}
-                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -4069,16 +4061,26 @@ LƯU Ý:
                                   </button>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => !isSaving && startEdit(row.value)}>
-                                  {isSaving ? (
-                                    <span className="flex items-center gap-1.5 text-blue-600 text-xs">
-                                      <Loader2 size={12} className="animate-spin" /> Đang lưu...
-                                    </span>
-                                  ) : (
-                                    <>
-                                      <span className="text-xs text-slate-700 leading-snug">{row.value}</span>
-                                      <Edit2 size={11} className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                                    </>
+                                <div className="flex items-center justify-between group">
+                                  <div 
+                                    className="flex items-center gap-1.5 cursor-pointer flex-1" 
+                                    onClick={() => showReportsForItem(row.value)}
+                                  >
+                                    {isSaving ? (
+                                      <span className="flex items-center gap-1.5 text-blue-600 text-xs">
+                                        <Loader2 size={12} className="animate-spin" /> Đang lưu...
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-slate-700 leading-snug group-hover:text-blue-600 transition-colors">{row.value}</span>
+                                    )}
+                                  </div>
+                                  {!isSaving && (
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); startEdit(row.value); }}
+                                      className="p-1 hover:bg-slate-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                    >
+                                      <Edit2 size={11} className="text-blue-400" />
+                                    </button>
                                   )}
                                 </div>
                               )}
@@ -4371,10 +4373,9 @@ LƯU Ý:
                       <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
                         <button 
                           onClick={() => {
-                            // Logic to open this report in the main view
-                            // We can use setActiveSheet and some state to highlight it
-                            // For now, just a placeholder
-                            alert(`Chuyển đến biên bản ${report.boreholeId}`);
+                            setViewingReports(null);
+                            setActiveSheet('upload');
+                            handleEdit(report);
                           }}
                           className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                         >
