@@ -6418,6 +6418,7 @@ function SummaryView({
   const [dashTab, setDashTab] = useState<'overview' | 'weekly'>('overview');
   const [isExportingWeekly, setIsExportingWeekly] = useState(false);
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>('');
+  const [soilDrillDown, setSoilDrillDown] = useState<{ diameter: string; soilClass: string; piles: ExtractionResult[] } | null>(null);
 
   // Năm mặc định = năm có dữ liệu mới nhất (không phải năm hiện tại)
   const defaultYear = React.useMemo(() => {
@@ -8644,7 +8645,19 @@ function SummaryView({
                 const avgSpd = stat.totalDuration > 0 ? stat.totalLength / stat.totalDuration : 0;
                 const rowBg = i % 2 === 0 ? '#ffffff' : '#f0fdfa';
                 return (
-                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-50 hover:bg-teal-50/50 transition-colors">
+                  <tr key={i} data-soil-dia-row={stat.diameter} style={{ background: rowBg }} className="border-b border-teal-50 hover:bg-teal-50/50 transition-colors cursor-pointer"
+                    onClick={() => {
+                      // Lọc các biên bản thuộc nhóm này
+                      const piles = history.filter(res =>
+                        (res.diameter || '—').trim() === stat.diameter &&
+                        (res.layers || []).some(l => {
+                          const sc = SOIL_CLASSES.includes((l.soilClass || '').trim()) ? l.soilClass.trim() : 'Chưa Phân định nhóm';
+                          return sc === stat.layerDesign;
+                        })
+                      );
+                      setSoilDrillDown({ diameter: stat.diameter, soilClass: stat.layerDesign, piles });
+                    }}
+                  >
                     <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-r border-teal-50">{i + 1}</td>
                     <td className="px-3 py-2.5 text-xs text-center font-bold text-teal-700 border-r border-teal-50">{stat.diameter}</td>
                     <td className="px-4 py-2.5">
@@ -8667,6 +8680,47 @@ function SummaryView({
           </table>
         </div>
       </div>
+
+      {/* ── Modal Drill-down: danh sách cọc theo nhóm đất đá ── */}
+      {soilDrillDown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSoilDrillDown(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden mx-4" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-200" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{soilDrillDown.diameter}</p>
+                <h3 className="text-white font-black text-[15px] mt-0.5">{soilDrillDown.soilClass}</h3>
+                <p className="text-teal-300 text-[11px] mt-0.5">{soilDrillDown.piles.length} biên bản liên quan</p>
+              </div>
+              <button onClick={() => setSoilDrillDown(null)} className="text-white/60 hover:text-white text-xl font-bold transition-colors">✕</button>
+            </div>
+            {/* List */}
+            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+              {soilDrillDown.piles.length === 0 ? (
+                <div className="px-6 py-10 text-center text-slate-400 text-sm">Không có biên bản nào</div>
+              ) : (
+                soilDrillDown.piles.map((res, idx) => (
+                  <div key={res.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-slate-400 font-mono w-6">{idx + 1}</span>
+                      <div>
+                        <p className="text-[13px] font-bold text-slate-800">{res.pileId || '—'}</p>
+                        <p className="text-[11px] text-slate-500">{res.componentName || ''} · {res.constructionEnd || ''}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setSoilDrillDown(null); onSelectResult(res); }}
+                      className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-[11px] font-black hover:bg-teal-700 transition-all whitespace-nowrap"
+                    >
+                      Xem chi tiết →
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bảng Tổng hợp thống kê theo lớp thiết kế ── */}
       <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
