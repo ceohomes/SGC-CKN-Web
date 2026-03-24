@@ -5123,7 +5123,7 @@ LƯU Ý:
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
                                     className={cn(
-                                      "bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group",
+                                      "bg-slate-100 p-3 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group",
                                       snapshot.isDragging ? "shadow-xl border-blue-400 ring-2 ring-blue-400/20" : ""
                                     )}
                                   >
