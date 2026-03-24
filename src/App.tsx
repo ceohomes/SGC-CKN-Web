@@ -387,6 +387,19 @@ const simpleHash = (pwd: string): string => {
     return 'raw_' + pwd; // fallback
   }
 };
+
+const decodeHash = (hash: string): string => {
+  if (!hash) return '';
+  if (hash.startsWith('b64_')) {
+    try {
+      return decodeURIComponent(atob(hash.slice(4)));
+    } catch { return ''; }
+  }
+  if (hash.startsWith('raw_')) {
+    return hash.slice(4);
+  }
+  return '';
+};
 const verifyHash = (pwd: string, hash: string): boolean => {
   if (!hash) return false;
   // Support b64_ prefix (new)
@@ -1236,7 +1249,7 @@ const SmartDateInput = ({
 // ══════════════════════════════════════════════════════════════
 // AccountConfigView — Cấu hình tài khoản
 // ══════════════════════════════════════════════════════════════
-function AccountConfigView({ history, appProjects }: { history: ExtractionResult[]; appProjects: AppProject[] }) {
+function AccountConfigView({ history, appProjects, currentUser }: { history: ExtractionResult[]; appProjects: AppProject[]; currentUser: AppUser | null }) {
   const ROLES: UserRole[] = ['admin', 'QS-QC', 'P. TQT'];
   const ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
     'admin':   { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300' },
@@ -1359,7 +1372,12 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
     setEditingUser(user);
     setFormFullName(user.fullName);
     setFormUsername(user.username);
-    setFormPassword('');
+    // Cho phép Admin nhìn thấy mật khẩu cũ khi sửa
+    if (currentUser?.role === 'admin') {
+      setFormPassword(decodeHash(user.passwordHash));
+    } else {
+      setFormPassword('');
+    }
     setFormRole(user.role);
     setFormActive(user.isActive);
     setFormAssignedProjects(user.assignedProjects || []);
@@ -1416,6 +1434,14 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
     const newUsers = users.filter(u => u.id !== userId);
     setUsers(newUsers);
     saveUsers(newUsers);
+
+    // Explicitly delete from Supabase because upsert in saveUsers doesn't remove missing records
+    if (supabase) {
+      supabase.from('app_users').delete().eq('id', userId).then(({ error }) => {
+        if (error) console.warn('[AccountConfig] Supabase delete error:', error.message);
+      });
+    }
+
     setDeleteConfirm(null);
     showLocalToast('Đã xóa tài khoản', 'success');
   };
@@ -1428,9 +1454,17 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
   };
 
   const filtered = React.useMemo(() => {
-    if (!searchQ.trim()) return users;
-    const q = searchQ.toLowerCase();
-    return users.filter(u => u.fullName.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
+    let result = users;
+    if (searchQ.trim()) {
+      const q = searchQ.toLowerCase();
+      result = users.filter(u => u.fullName.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
+    }
+    // Sắp xếp Admin lên đầu
+    return [...result].sort((a, b) => {
+      if (a.role === 'admin' && b.role !== 'admin') return -1;
+      if (a.role !== 'admin' && b.role === 'admin') return 1;
+      return 0;
+    });
   }, [users, searchQ]);
 
   const roleCount = (role: UserRole) => users.filter(u => u.role === role).length;
@@ -1452,12 +1486,14 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
           </h2>
           <p className="text-sm text-slate-500 mt-1">Quản lý người dùng và phân quyền hệ thống</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-lg shadow-orange-200 transition-all active:scale-95"
-        >
-          <Plus size={16} /> Tạo tài khoản mới
-        </button>
+        {currentUser?.role === 'admin' && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-lg shadow-orange-200 transition-all active:scale-95"
+          >
+            <Plus size={16} /> Tạo tài khoản mới
+          </button>
+        )}
       </div>
 
       {/* Stats cards */}
@@ -1470,7 +1506,7 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
           const c = ROLE_COLORS[r];
           return (
             <div key={r} className={`${c.bg} border ${c.border} rounded-2xl p-4 shadow-sm`}>
-              <p className={`text-[10px] font-black ${c.text} uppercase tracking-widest mb-1`}>{r}</p>
+              <p className={`text-[10px] font-black ${c.text} uppercase tracking-widest mb-1`}>{r.toUpperCase()}</p>
               <span className={`text-3xl font-black ${c.text}`}>{roleCount(r)}</span>
             </div>
           );
@@ -1499,13 +1535,13 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
         <table className="w-full border-collapse">
           <thead>
             <tr style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
-              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">#</th>
-              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Tên đăng nhập</th>
-              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Phân quyền</th>
-              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Dự án phân quyền</th>
-              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Trạng thái</th>
-              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Ngày tạo</th>
-              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Thao tác</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10 border-l border-white/10">STT</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Tên đăng nhập</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Phân quyền</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Dự án phân quyền</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Trạng thái</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Ngày tạo</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -1521,11 +1557,16 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
             ) : filtered.map((user, idx) => {
               const rc = ROLE_COLORS[user.role];
               const isAdmin = user.id === DEFAULT_ADMIN.id;
-              const createdDate = new Date(user.createdAt).toLocaleDateString('vi-VN');
+              const d = new Date(user.createdAt);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = d.getFullYear();
+              const createdDate = `${day}/${month}/${year}`;
+              const isUserAdmin = user.role === 'admin';
               return (
-                <tr key={user.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3 text-[12px] font-bold text-slate-500">{idx + 1}</td>
-                  <td className="px-4 py-3">
+                <tr key={user.id} className={`border-b border-slate-200 hover:bg-slate-50 transition-colors ${!user.isActive ? 'opacity-50' : ''} ${!isUserAdmin ? 'bg-slate-50/40' : 'bg-white'}`}>
+                  <td className="px-4 py-3 text-[12px] font-bold text-slate-500 border-r border-slate-200 border-l border-slate-200 text-center">{idx + 1}</td>
+                  <td className="px-4 py-3 border-r border-slate-200">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[13px] font-black text-white shrink-0" style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}>
                         {user.username.charAt(0).toUpperCase()}
@@ -1536,12 +1577,12 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center border-r border-slate-200">
                     <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border ${rc.bg} ${rc.text} ${rc.border}`}>
-                      {user.role}
+                      {user.role.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 border-r border-slate-200">
                     {(user.assignedProjects && user.assignedProjects.length > 0) ? (
                       <div className="flex flex-wrap gap-1">
                         {user.assignedProjects.slice(0, 2).map(proj => (
@@ -1559,23 +1600,31 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                       <span className="text-[11px] text-slate-400 italic">Tất cả dự án</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center border-r border-slate-200">
                     <button
-                      onClick={() => toggleActive(user.id)}
-                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border transition-all ${user.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300' : 'bg-red-100 text-red-600 border-red-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'}`}
-                      title={user.isActive ? 'Click để vô hiệu hóa' : 'Click để kích hoạt'}
+                      onClick={() => {
+                        if (currentUser?.role === 'admin') {
+                          toggleActive(user.id);
+                        } else {
+                          showLocalToast('Chỉ Admin mới có quyền thay đổi trạng thái', 'error');
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border transition-all ${user.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300' : 'bg-red-100 text-red-600 border-red-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'} ${currentUser?.role !== 'admin' ? 'cursor-not-allowed' : ''}`}
+                      title={currentUser?.role === 'admin' ? (user.isActive ? 'Click để vô hiệu hóa' : 'Click để kích hoạt') : 'Chỉ Admin mới có quyền thay đổi'}
                     >
                       {user.isActive ? '● Hoạt động' : '○ Vô hiệu'}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-[12px] text-slate-500">{createdDate}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-center text-[12px] text-slate-500 border-r border-slate-200">{createdDate}</td>
+                  <td className="px-4 py-3 border-r border-slate-200">
                     <div className="flex items-center justify-center gap-2">
-                      <button onClick={() => openEdit(user)} className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Chỉnh sửa">
-                        <Edit2 size={14} />
-                      </button>
-                      {!isAdmin && (
-                        <button onClick={() => setDeleteConfirm(user.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-100" title="Xóa">
+                      {(currentUser?.role === 'admin' || currentUser?.id === user.id) && (
+                        <button onClick={() => openEdit(user)} className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Chỉnh sửa">
+                          <Edit2 size={14} />
+                        </button>
+                      )}
+                      {currentUser?.role === 'admin' && !isAdmin && (
+                        <button onClick={() => setDeleteConfirm(user.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-100" title="Xóa">
                           <Trash2 size={14} />
                         </button>
                       )}
@@ -1632,7 +1681,7 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
             </div>
 
             {/* Body */}
-            <div className="px-8 py-6 space-y-5">
+            <div className="px-8 py-6 space-y-5 max-h-[65vh] overflow-y-auto custom-scrollbar">
               {/* Tên đăng nhập */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Tên đăng nhập <span className="text-red-500">*</span></label>
@@ -1641,7 +1690,8 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                   value={formUsername}
                   onChange={e => setFormUsername(e.target.value)}
                   placeholder="Nguyễn Văn A"
-                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
+                  disabled={editingUser !== null && currentUser?.role !== 'admin'}
+                  className={`w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all ${editingUser !== null && currentUser?.role !== 'admin' ? 'bg-slate-100 cursor-not-allowed text-slate-500' : ''}`}
                   autoFocus
                 />
               </div>
@@ -1649,14 +1699,18 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
               {/* Mật khẩu */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">
-                  Mật khẩu {editingUser ? <span className="text-slate-400 normal-case font-medium">(để trống = giữ nguyên)</span> : <span className="text-red-500">*</span>}
+                  Mật khẩu {editingUser ? (
+                    <span className="text-slate-400 normal-case font-medium">
+                      {currentUser?.role === 'admin' ? '(Admin có thể xem mật khẩu)' : '(để trống = giữ nguyên)'}
+                    </span>
+                  ) : <span className="text-red-500">*</span>}
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={formPassword}
                     onChange={e => setFormPassword(e.target.value)}
-                    placeholder={editingUser ? '••••••••' : 'Tối thiểu 6 ký tự'}
+                    placeholder={editingUser ? (currentUser?.role === 'admin' ? 'Mật khẩu hiện tại' : '••••••••') : 'Tối thiểu 6 ký tự'}
                     className="w-full px-4 py-3 pr-12 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
                   />
                   <button
@@ -1676,14 +1730,16 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                   {ROLES.map(role => {
                     const rc = ROLE_COLORS[role];
                     const selected = formRole === role;
+                    const isDisabled = currentUser?.role !== 'admin';
                     return (
                       <button
                         key={role}
                         type="button"
-                        onClick={() => setFormRole(role)}
-                        className={`py-3 rounded-xl text-[12px] font-black border-2 transition-all ${selected ? `${rc.bg} ${rc.text} ${rc.border} shadow-md scale-105` : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                        onClick={() => !isDisabled && setFormRole(role)}
+                        disabled={isDisabled}
+                        className={`py-3 rounded-xl text-[12px] font-black border-2 transition-all ${selected ? `${rc.bg} ${rc.text} ${rc.border} shadow-md scale-105` : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'} ${isDisabled ? 'cursor-not-allowed opacity-80' : ''}`}
                       >
-                        {role}
+                        {role.toUpperCase()}
                       </button>
                     );
                   })}
@@ -1725,8 +1781,16 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => { setShowProjectDropdown(p => !p); setProjectSearch(''); }}
-                    className="w-full flex items-center justify-between px-4 py-3 border-2 border-slate-200 hover:border-blue-400 focus:border-blue-500 rounded-xl text-sm transition-all bg-white"
+                    onClick={() => {
+                      if (currentUser?.role === 'admin') {
+                        setShowProjectDropdown(p => !p);
+                        setProjectSearch('');
+                      } else {
+                        showLocalToast('Chỉ Admin mới có quyền thay đổi dự án phân quyền', 'error');
+                      }
+                    }}
+                    disabled={currentUser?.role !== 'admin'}
+                    className={`w-full flex items-center justify-between px-4 py-3 border-2 border-slate-200 hover:border-blue-400 focus:border-blue-500 rounded-xl text-sm transition-all bg-white ${currentUser?.role !== 'admin' ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                   >
                     <span className={formAssignedProjects.length > 0 ? 'text-slate-700 font-medium' : 'text-slate-400'}>
                       {formAssignedProjects.length > 0
@@ -1737,7 +1801,7 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
                   </button>
 
                   {showProjectDropdown && allProjects.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-[500] overflow-hidden">
+                    <div className="relative mt-2 bg-white border border-slate-200 rounded-xl shadow-md z-10 overflow-hidden animate-in slide-in-from-top-2 duration-200">
                       {/* Search trong dropdown */}
                       <div className="p-2 border-b border-slate-100">
                         <div className="relative">
@@ -1816,15 +1880,22 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
               </div>
 
               {/* Trạng thái */}
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div className={`flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 ${currentUser?.role !== 'admin' ? 'opacity-80' : ''}`}>
                 <div>
                   <p className="text-[12px] font-black text-slate-700 uppercase tracking-widest">Kích hoạt tài khoản</p>
                   <p className="text-[11px] text-slate-500 font-medium mt-0.5">Tài khoản có thể đăng nhập vào hệ thống</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setFormActive(p => !p)}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                  onClick={() => {
+                    if (currentUser?.role === 'admin') {
+                      setFormActive(p => !p);
+                    } else {
+                      showLocalToast('Chỉ Admin mới có quyền thay đổi trạng thái', 'error');
+                    }
+                  }}
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formActive ? 'bg-emerald-500' : 'bg-slate-300'} ${currentUser?.role !== 'admin' ? 'cursor-not-allowed' : ''}`}
                 >
                   <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition duration-200 ease-in-out ${formActive ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
@@ -4266,7 +4337,7 @@ export default function App() {
                     localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
                     // Sync Supabase nếu bảng đã tồn tại
                     if (supabase) {
-                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).catch(() => {});
+                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(() => {}, () => {});
                     }
                   }
                 } catch {}
@@ -5160,7 +5231,7 @@ LƯU Ý:
                                     localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
                                     // Sync Supabase (bỏ qua nếu bảng chưa tồn tại)
                                     if (supabase) {
-                                      supabase.from('app_projects').delete().eq('id', proj.id).catch(() => {});
+                                      supabase.from('app_projects').delete().eq('id', proj.id).then(() => {}, () => {});
                                     }
                                     showToast(`Đã xóa dự án "${row.value}"`, 'success');
                                   }}
@@ -5870,16 +5941,18 @@ LƯU Ý:
               </div>
               <div className="hidden sm:block">
                 <p className="text-white text-[11px] font-black leading-none">{currentUser.username}</p>
-                <p className="text-blue-300 text-[9px] font-bold uppercase tracking-widest mt-0.5">{currentUser.role}</p>
+                <p className="text-blue-300 text-[9px] font-bold uppercase tracking-widest mt-0.5">{currentUser.role.toUpperCase()}</p>
               </div>
             </div>
           )}
-          <button 
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
-          >
-            <Settings size={16} />
-          </button>
+          {currentUser?.role === 'admin' && (
+            <button 
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
+            >
+              <Settings size={16} />
+            </button>
+          )}
           {/* Nút đăng xuất */}
           {currentUser && (
             <button
@@ -5900,8 +5973,8 @@ LƯU Ý:
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
       {/* ── BANNER CẢNH BÁO: Tất cả API Key hết quota ── */}
-      {geminiApiKeys.some(k => k.trim()) && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
-        <div className="bg-red-600 text-white px-6 py-3 flex items-center gap-3 sticky top-[64px] z-20 shadow-lg">
+          {currentUser?.role === 'admin' && geminiApiKeys.some(k => k.trim()) && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
+            <div className="bg-red-600 text-white px-6 py-3 flex items-center gap-3 sticky top-[64px] z-20 shadow-lg">
           <span className="text-xl shrink-0">⛔</span>
           <div className="flex-1">
             <span className="font-black text-[13px] uppercase tracking-widest">Tất cả {geminiApiKeys.filter(k => k.trim()).length} API Key Gemini đã hết quota!</span>
@@ -6578,7 +6651,7 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'account-config' ? (
-          <AccountConfigView history={history} appProjects={projects} />
+          <AccountConfigView history={history} appProjects={projects} currentUser={currentUser} />
         ) : (
           <SummaryView 
             history={visibleHistory} 
