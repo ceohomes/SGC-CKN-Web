@@ -370,6 +370,14 @@ interface AppUser {
   assignedProjects?: string[]; // Danh sách dự án được phân quyền
 }
 
+// ── Types cho quản lý dự án ──
+interface AppProject {
+  id: string;
+  name: string;
+  createdAt: string;
+  createdBy: string; // username
+}
+
 // Simple hash function for demo (NOT for production — use bcrypt on server)
 // Encode password: btoa(encodeURIComponent(pwd)) — reliable cross-browser
 const simpleHash = (pwd: string): string => {
@@ -1821,6 +1829,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentResult, setCurrentResult] = useState<ExtractionResult | null>(null);
   const [history, setHistory] = useState<ExtractionResult[]>([]);
+  const [projects, setProjects] = useState<AppProject[]>([]); // Danh sách dự án từ app_projects
   const [processingFiles, setProcessingFiles] = useState<ProcessingFile[]>([]);
   const [pendingResults, setPendingResults] = useState<ExtractionResult[]>([]);
   const [conflictDialog, setConflictDialog] = useState<{
@@ -1922,14 +1931,15 @@ export default function App() {
 
       if (supabase) {
         try {
-          // 1 & 2: Gọi song song để tiết kiệm thời gian và Egress
-          const [historyRes, settingsRes] = await Promise.all([
+          // 1 & 2 & 3: Gọi song song để tiết kiệm thời gian và Egress
+          const [historyRes, settingsRes, projectsRes] = await Promise.all([
             supabase
               .from('drill_extractions')
               // Lấy đầy đủ layers để tính chiều dài, thời gian, vận tốc chính xác
               .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt, layers, casingElevation')
               .order('timestamp', { ascending: false }),
             supabase.from('app_settings').select('id, value'),
+            supabase.from('app_projects').select('id, name, created_at, created_by').order('created_at', { ascending: true }),
           ]);
 
           // Xử lý history
@@ -2019,6 +2029,24 @@ export default function App() {
               setGithubUsernameInput(username);
               setGithubRepoInput(repo);
               setIsGithubConnected(true);
+            }
+          }
+
+          // Xử lý danh sách dự án
+          if (!projectsRes.error && projectsRes.data && projectsRes.data.length > 0) {
+            const loadedProjects: AppProject[] = projectsRes.data.map((r: any) => ({
+              id: r.id,
+              name: r.name,
+              createdAt: r.created_at,
+              createdBy: r.created_by || '',
+            }));
+            setProjects(loadedProjects);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(loadedProjects));
+          } else {
+            // Fallback localStorage
+            const savedProjects = localStorage.getItem('sgc_app_projects');
+            if (savedProjects) {
+              try { setProjects(JSON.parse(savedProjects)); } catch {}
             }
           }
         } catch (e) {
@@ -2504,6 +2532,32 @@ export default function App() {
               _base64: images[0]?.base64,
               _mimeType: images[0]?.mimeType,
             };
+
+            // ── Tự động gán dự án cho QS-QC ──
+            // Nếu là QS-QC chỉ có 1 dự án → gán luôn
+            // Nếu nhiều dự án → so khớp tên dự án từ AI với danh sách được phân quyền
+            if (currentUser && currentUser.role !== 'admin') {
+              const assignedProjs = currentUser.assignedProjects && currentUser.assignedProjects.length > 0
+                ? currentUser.assignedProjects
+                : projects.map(p => p.name); // Nếu không có phân quyền cụ thể → dùng tất cả
+
+              if (assignedProjs.length === 1) {
+                // Chỉ 1 dự án → gán luôn, ghi đè AI
+                result.project = assignedProjs[0];
+              } else if (assignedProjs.length > 1) {
+                // Nhiều dự án → so khớp tên AI quét được với danh sách
+                const aiProject = (result.project || '').trim().toLowerCase();
+                const matched = assignedProjs.find(p =>
+                  aiProject.includes(p.toLowerCase()) || p.toLowerCase().includes(aiProject)
+                );
+                if (matched) {
+                  result.project = matched; // Dùng tên chuẩn trong danh sách
+                } else if (assignedProjs.length > 0) {
+                  // Không khớp → để nguyên AI quét, người dùng tự chọn trong form
+                  // (AI project name stays, user can fix via dropdown)
+                }
+              }
+            }
 
             collectedResults.push(result);
             setPendingResults(prev => [result, ...prev]);
@@ -4079,6 +4133,18 @@ export default function App() {
               }
             } catch {}
             if (errorCount === 0) {
+              // Nếu đang đổi tên dự án → cũng cập nhật bảng app_projects
+              if (supabase && setResField && getResField) {
+                try {
+                  const proj = projects.find(p => p.name.trim() === oldVal.trim());
+                  if (proj) {
+                    await supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id);
+                    const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
+                    setProjects(updatedProjects);
+                    localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
+                  }
+                } catch {}
+              }
               setSyncStatus('done');
               showToast(`✅ Đã cập nhật "${newVal}" trong ${toUpdateList.length} biên bản!`, 'success', 3000);
             } else {
@@ -4476,42 +4542,36 @@ LƯU Ý:
     const handleCreateProject = async () => {
       const trimmed = newProjectName.trim();
       if (!trimmed) return;
-      // Check duplicate
-      const exists = history.some(r => (r.project || '').trim().toLowerCase() === trimmed.toLowerCase());
+      // Check duplicate against projects list
+      const exists = projects.some(p => p.name.trim().toLowerCase() === trimmed.toLowerCase());
       if (exists) {
-        showToast(`Dự án "${trimmed}" đã tồn tại trong hệ thống!`, 'error');
+        showToast(`Dự án "${trimmed}" đã tồn tại!`, 'error');
         return;
       }
       setIsSavingNewProject(true);
       try {
-        // Insert a placeholder record into Supabase with only project name filled
-        const placeholderId = crypto.randomUUID();
-        const placeholder: any = {
-          id: placeholderId,
-          timestamp: Date.now(),
-          project: trimmed,
-          item: '',
-          componentName: '',
-          pileId: '',
-          reportNumber: '',
-          diameter: '',
-          constructionStart: '',
-          constructionEnd: '',
-          notes: '',
-          layers: [],
-          fileName: '',
-          fileUrl: '',
-          excelUrl: '',
+        const newProj: AppProject = {
+          id: crypto.randomUUID(),
+          name: trimmed,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.username || 'admin',
         };
         if (supabase) {
-          const { error } = await supabase.from('drill_extractions').insert([placeholder]);
+          const { error } = await supabase.from('app_projects').insert([{
+            id: newProj.id,
+            name: newProj.name,
+            created_at: newProj.createdAt,
+            created_by: newProj.createdBy,
+          }]);
           if (error) {
             showToast(`Lỗi tạo dự án: ${error.message}`, 'error');
             setIsSavingNewProject(false);
             return;
           }
         }
-        setHistory(prev => [placeholder, ...prev]);
+        const updated = [...projects, newProj];
+        setProjects(updated);
+        localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
         setNewProjectName('');
         showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
       } catch (e: any) {
@@ -4523,13 +4583,22 @@ LƯU Ý:
 
     const projectList = useEditableList(
       () => {
-        const map = new Map<string, { value: string; count: number; soilClass?: string }>();
+        // Merge: dự án từ app_projects + dự án xuất hiện trong biên bản (history)
+        const nameSet = new Map<string, { value: string; count: number; soilClass?: string }>();
+        // 1. Từ bảng app_projects (nguồn chính, luôn hiển thị dù chưa có biên bản)
+        projects.forEach(p => {
+          if (!p.name.trim()) return;
+          nameSet.set(p.name.trim(), { value: p.name.trim(), count: 0 });
+        });
+        // 2. Đếm biên bản từ history
         history.forEach(res => {
           const v = (res.project || '').trim();
           if (!v) return;
-          map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
+          const existing = nameSet.get(v);
+          if (existing) { existing.count++; }
+          else { nameSet.set(v, { value: v, count: 1 }); }
         });
-        return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
+        return Array.from(nameSet.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
       },
       (_layer, res) => res.project || '',
       (layer) => layer,
@@ -4868,6 +4937,7 @@ LƯU Ý:
                         <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-white/20">#</th>
                         <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-white/20">{colHeader}</th>
                         <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số biên bản</th>
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-10"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -4927,13 +4997,41 @@ LƯU Ý:
                               )}
                             </td>
                             <td className="px-3 py-2.5 text-center">
-                              <button 
-                                onClick={() => showReportsForItem(row.value)}
-                                className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
-                              >
-                                {row.count}
-                              </button>
+                              {row.count > 0 ? (
+                                <button 
+                                  onClick={() => showReportsForItem(row.value)}
+                                  className="inline-flex items-center justify-center bg-blue-50 text-blue-700 font-bold text-xs px-2 py-0.5 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                                >
+                                  {row.count}
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center justify-center bg-slate-50 text-slate-400 font-bold text-xs px-2 py-0.5 rounded-full border border-slate-200">
+                                  0
+                                </span>
+                              )}
                             </td>
+                            {activeTab === 'project' && row.count === 0 && (
+                              <td className="px-2 py-2.5 text-center">
+                                <button
+                                  title="Xóa dự án này (chưa có biên bản)"
+                                  onClick={async () => {
+                                    const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                    if (!proj) return;
+                                    if (!window.confirm(`Xóa dự án "${row.value}"?`)) return;
+                                    if (supabase) {
+                                      await supabase.from('app_projects').delete().eq('id', proj.id);
+                                    }
+                                    const updated = projects.filter(p => p.id !== proj.id);
+                                    setProjects(updated);
+                                    localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+                                    showToast(`Đã xóa dự án "${row.value}"`, 'success');
+                                  }}
+                                  className="p-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all border border-red-100"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -11051,11 +11149,57 @@ function EditSplitView({
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
-              <input 
-                value={data.project} 
-                onChange={(e) => updateField('project', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
+              {(() => {
+                // Lấy danh sách dự án: ưu tiên app_projects, fallback history
+                const allUsers: AppUser[] = (() => {
+                  try {
+                    const raw = localStorage.getItem('sgc_app_users');
+                    const parsed: AppUser[] = raw ? JSON.parse(raw) : [];
+                    return parsed.find((u: AppUser) => u.id === 'admin-default') ? parsed : [DEFAULT_ADMIN, ...parsed];
+                  } catch { return [DEFAULT_ADMIN]; }
+                })();
+                const sessionRaw = localStorage.getItem('sgc_session');
+                const sessionUser: AppUser | null = sessionRaw ? (() => { try { return JSON.parse(sessionRaw); } catch { return null; } })() : null;
+                const savedProjects: AppProject[] = (() => {
+                  try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
+                })();
+
+                // Dự án cho dropdown: nếu QS-QC có assignedProjects → lọc, ngược lại lấy tất cả
+                let availableProjects: string[] = savedProjects.map(p => p.name);
+                if (sessionUser && sessionUser.role !== 'admin' && sessionUser.assignedProjects && sessionUser.assignedProjects.length > 0) {
+                  availableProjects = sessionUser.assignedProjects;
+                }
+                // Thêm các tên dự án từ history nếu chưa có trong danh sách (backward compat)
+                const historyProjects: string[] = [];
+                try {
+                  const h = localStorage.getItem('pile_drill_history');
+                  if (h) JSON.parse(h).forEach((r: any) => { if (r.project && !availableProjects.includes(r.project.trim())) historyProjects.push(r.project.trim()); });
+                } catch {}
+                const allProjectOptions = [...new Set([...availableProjects, ...historyProjects])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'vi'));
+
+                return allProjectOptions.length > 0 ? (
+                  <select
+                    value={data.project}
+                    onChange={e => updateField('project', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="">-- Chọn dự án --</option>
+                    {allProjectOptions.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                    {data.project && !allProjectOptions.includes(data.project) && (
+                      <option value={data.project}>{data.project} (AI quét)</option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    value={data.project}
+                    onChange={(e) => updateField('project', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+                    placeholder="Nhập tên dự án..."
+                  />
+                );
+              })()}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
