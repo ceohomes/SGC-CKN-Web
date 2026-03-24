@@ -1931,16 +1931,27 @@ export default function App() {
 
       if (supabase) {
         try {
-          // 1 & 2 & 3: Gọi song song để tiết kiệm thời gian và Egress
-          const [historyRes, settingsRes, projectsRes] = await Promise.all([
+          // 1 & 2: Gọi song song history + settings
+          const [historyRes, settingsRes] = await Promise.all([
             supabase
               .from('drill_extractions')
               // Lấy đầy đủ layers để tính chiều dài, thời gian, vận tốc chính xác
               .select('id, timestamp, project, item, componentName, pileId, reportNumber, diameter, constructionStart, constructionEnd, notes, fileName, fileUrl, excelUrl, stt, layers, casingElevation')
               .order('timestamp', { ascending: false }),
             supabase.from('app_settings').select('id, value'),
-            supabase.from('app_projects').select('id, name, created_at, created_by').order('created_at', { ascending: true }),
           ]);
+
+          // 3: app_projects — fetch riêng, bắt lỗi 404 khi bảng chưa tạo
+          let projectsRes: { data: any[] | null; error: any } = { data: null, error: null };
+          try {
+            const _pr = await supabase
+              .from('app_projects')
+              .select('id, name, created_at, created_by')
+              .order('created_at', { ascending: true });
+            projectsRes = _pr;
+          } catch (_e) {
+            projectsRes = { data: null, error: { message: 'table_not_found' } };
+          }
 
           // Xử lý history
           if (!historyRes.error && historyRes.data) {
@@ -2034,6 +2045,7 @@ export default function App() {
 
           // Xử lý danh sách dự án
           if (!projectsRes.error && projectsRes.data && projectsRes.data.length > 0) {
+            // Bảng tồn tại và có dữ liệu → load từ Supabase
             const loadedProjects: AppProject[] = projectsRes.data.map((r: any) => ({
               id: r.id,
               name: r.name,
@@ -2043,10 +2055,15 @@ export default function App() {
             setProjects(loadedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(loadedProjects));
           } else {
-            // Fallback localStorage
+            // Bảng chưa tạo hoặc rỗng → load từ localStorage
             const savedProjects = localStorage.getItem('sgc_app_projects');
             if (savedProjects) {
               try { setProjects(JSON.parse(savedProjects)); } catch {}
+            }
+            // Log gợi ý tạo bảng nếu lỗi 404
+            if (projectsRes.error) {
+              console.warn('[app_projects] Bảng chưa tồn tại hoặc lỗi:', projectsRes.error.message,
+                '\n→ Chạy SQL trong Supabase để tạo bảng (xem README.md)');
             }
           }
         } catch (e) {
@@ -4133,15 +4150,18 @@ export default function App() {
               }
             } catch {}
             if (errorCount === 0) {
-              // Nếu đang đổi tên dự án → cũng cập nhật bảng app_projects
-              if (supabase && setResField && getResField) {
+              // Nếu đang đổi tên dự án → cũng cập nhật app_projects (optimistic UI trước)
+              if (setResField && getResField) {
                 try {
                   const proj = projects.find(p => p.name.trim() === oldVal.trim());
                   if (proj) {
-                    await supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id);
                     const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
                     setProjects(updatedProjects);
                     localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
+                    // Sync Supabase nếu bảng đã tồn tại
+                    if (supabase) {
+                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).catch(() => {});
+                    }
                   }
                 } catch {}
               }
@@ -4556,24 +4576,34 @@ LƯU Ý:
           createdAt: new Date().toISOString(),
           createdBy: currentUser?.username || 'admin',
         };
-        if (supabase) {
-          const { error } = await supabase.from('app_projects').insert([{
-            id: newProj.id,
-            name: newProj.name,
-            created_at: newProj.createdAt,
-            created_by: newProj.createdBy,
-          }]);
-          if (error) {
-            showToast(`Lỗi tạo dự án: ${error.message}`, 'error');
-            setIsSavingNewProject(false);
-            return;
-          }
-        }
+        // Lưu localStorage trước (optimistic, không chờ Supabase)
         const updated = [...projects, newProj];
         setProjects(updated);
         localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
         setNewProjectName('');
-        showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+
+        // Đồng bộ Supabase — nếu bảng chưa tạo thì chỉ báo warning, không block
+        if (supabase) {
+          try {
+            const { error } = await supabase.from('app_projects').insert([{
+              id: newProj.id,
+              name: newProj.name,
+              created_at: newProj.createdAt,
+              created_by: newProj.createdBy,
+            }]);
+            if (error) {
+              // Bảng chưa tạo hoặc lỗi khác → vẫn lưu localStorage, chỉ cảnh báo
+              console.warn('[app_projects] Supabase insert failed:', error.message);
+              showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ). Vui lòng tạo bảng app_projects trong Supabase để đồng bộ.`, 'success', 6000);
+            } else {
+              showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+            }
+          } catch (_e) {
+            showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ).`, 'success');
+          }
+        } else {
+          showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+        }
       } catch (e: any) {
         showToast(`Lỗi: ${e?.message}`, 'error');
       } finally {
@@ -5018,12 +5048,14 @@ LƯU Ý:
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
                                     if (!proj) return;
                                     if (!window.confirm(`Xóa dự án "${row.value}"?`)) return;
-                                    if (supabase) {
-                                      await supabase.from('app_projects').delete().eq('id', proj.id);
-                                    }
+                                    // Optimistic: xóa UI + localStorage trước
                                     const updated = projects.filter(p => p.id !== proj.id);
                                     setProjects(updated);
                                     localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+                                    // Sync Supabase (bỏ qua nếu bảng chưa tồn tại)
+                                    if (supabase) {
+                                      supabase.from('app_projects').delete().eq('id', proj.id).catch(() => {});
+                                    }
                                     showToast(`Đã xóa dự án "${row.value}"`, 'success');
                                   }}
                                   className="p-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all border border-red-100"
