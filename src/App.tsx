@@ -1661,6 +1661,15 @@ export default function App() {
   const [isExportingAll, setIsExportingAll] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
+  // ── Auth state ──
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [isLoginScreen, setIsLoginScreen] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginShowPass, setLoginShowPass] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+
   // ── Confirm Dialog (thay window.confirm) ──
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -1846,6 +1855,20 @@ export default function App() {
         }
       }
       setIsInitialLoading(false); // Tắt splash screen sau khi load xong
+      // Kiểm tra session đăng nhập
+      const savedSession = localStorage.getItem("sgc_session");
+      if (savedSession) {
+        try {
+          const sessionUser: AppUser = JSON.parse(savedSession);
+          if (sessionUser && sessionUser.id && sessionUser.isActive) {
+            setCurrentUser(sessionUser);
+          } else {
+            setIsLoginScreen(true);
+          }
+        } catch { setIsLoginScreen(true); }
+      } else {
+        setIsLoginScreen(true);
+      }
     };
 
     loadData();
@@ -1971,6 +1994,54 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditModalOpen, isSettingsOpen, currentResult, isSidebarOpen]);
 
+
+  // ── Đăng nhập ──
+  const handleLogin = () => {
+    setLoginError("");
+    if (!loginUsername.trim() || !loginPassword.trim()) {
+      setLoginError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu");
+      return;
+    }
+    setLoginLoading(true);
+    setTimeout(() => {
+      const allUsers: AppUser[] = (() => {
+        try {
+          const raw = localStorage.getItem("sgc_app_users");
+          const parsed: AppUser[] = raw ? JSON.parse(raw) : [];
+          if (!parsed.find((u: AppUser) => u.id === "admin-default")) return [DEFAULT_ADMIN, ...parsed];
+          return parsed;
+        } catch { return [DEFAULT_ADMIN]; }
+      })();
+      const found = allUsers.find(
+        (u: AppUser) => u.username === loginUsername.trim() && verifyHash(loginPassword.trim(), u.passwordHash)
+      );
+      if (!found) {
+        setLoginError("Tên đăng nhập hoặc mật khẩu không đúng");
+        setLoginLoading(false);
+        return;
+      }
+      if (!found.isActive) {
+        setLoginError("Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ Admin");
+        setLoginLoading(false);
+        return;
+      }
+      localStorage.setItem("sgc_session", JSON.stringify(found));
+      setCurrentUser(found);
+      setIsLoginScreen(false);
+      setLoginPassword("");
+      setLoginError("");
+      setLoginLoading(false);
+    }, 600);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("sgc_session");
+    setCurrentUser(null);
+    setIsLoginScreen(true);
+    setLoginUsername("");
+    setLoginPassword("");
+    setLoginError("");
+  };
   const saveApiKey = async (key: string) => {
     // key ở đây là keys[0] (key đầu tiên), nhưng ta lưu toàn bộ mảng
     const keysToSave = geminiApiKeys.map((k, i) => i === 0 ? key : k);
@@ -4929,6 +5000,127 @@ LƯU Ý:
         </div>
       )}
 
+
+      {/* ── Màn hình đăng nhập ── */}
+      {!isInitialLoading && isLoginScreen && (
+        <div
+          className="fixed inset-0 z-[9990] flex items-center justify-center"
+          style={{ background: "linear-gradient(160deg, #0f1e3d 0%, #1a3a6b 40%, #163570 100%)" }}
+        >
+          {/* Background decoration */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-10" style={{background:"radial-gradient(circle, #f97316, transparent)"}} />
+            <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full opacity-10" style={{background:"radial-gradient(circle, #3b82f6, transparent)"}} />
+            <div className="absolute top-1/2 left-1/4 w-64 h-64 rounded-full opacity-5" style={{background:"radial-gradient(circle, #ffffff, transparent)"}} />
+          </div>
+
+          <div className="w-full max-w-md mx-4 animate-in zoom-in-95 fade-in duration-500">
+            {/* Logo + Tên app */}
+            <div className="flex flex-col items-center mb-8">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 flex items-center justify-center bg-white/10 mb-4">
+                {customLogo ? (
+                  <img src={customLogo} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-12 h-12">
+                    <rect x="8" y="28" width="10" height="28" rx="2" fill="white" fillOpacity="0.9"/>
+                    <rect x="27" y="16" width="10" height="40" rx="2" fill="white"/>
+                    <rect x="46" y="8" width="10" height="48" rx="2" fill="white" fillOpacity="0.7"/>
+                  </svg>
+                )}
+              </div>
+              <h1 className="text-white font-black text-2xl tracking-widest uppercase">SGC – CKN</h1>
+              <p className="text-blue-300 text-xs font-bold tracking-[0.3em] uppercase mt-1">Construction Management</p>
+            </div>
+
+            {/* Card đăng nhập */}
+            <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+              {/* Card header */}
+              <div className="px-8 py-5 border-b border-slate-100" style={{background:"linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)"}}>
+                <h2 className="text-white font-black text-lg uppercase tracking-tight">Đăng nhập hệ thống</h2>
+                <p className="text-blue-200 text-xs font-medium mt-0.5">Vui lòng đăng nhập để tiếp tục</p>
+              </div>
+
+              {/* Form */}
+              <div className="px-8 py-7 space-y-5">
+                {/* Error */}
+                {loginError && (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl animate-in slide-in-from-top-2 duration-200">
+                    <AlertCircle size={15} className="text-red-500 shrink-0" />
+                    <p className="text-red-600 text-[12px] font-bold">{loginError}</p>
+                  </div>
+                )}
+
+                {/* Username */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Tên đăng nhập</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <input
+                      type="text"
+                      value={loginUsername}
+                      onChange={e => { setLoginUsername(e.target.value); setLoginError(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleLogin()}
+                      placeholder="Nhập tên đăng nhập"
+                      autoFocus
+                      className="w-full pl-11 pr-4 py-3.5 border-2 border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-xl text-sm font-medium outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Mật khẩu</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <input
+                      type={loginShowPass ? "text" : "password"}
+                      value={loginPassword}
+                      onChange={e => { setLoginPassword(e.target.value); setLoginError(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleLogin()}
+                      placeholder="Nhập mật khẩu"
+                      className="w-full pl-11 pr-12 py-3.5 border-2 border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-xl text-sm font-medium outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setLoginShowPass(p => !p)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {loginShowPass
+                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      }
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  onClick={handleLogin}
+                  disabled={loginLoading}
+                  className="w-full py-4 rounded-xl font-black text-white text-[13px] uppercase tracking-widest transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  style={{background: loginLoading ? "#64748b" : "linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)", boxShadow: "0 4px 20px rgba(26,58,107,0.4)"}}
+                >
+                  {loginLoading ? (
+                    <><svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Đang xác thực...</>
+                  ) : (
+                    <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> Đăng nhập</>
+                  )}
+                </button>
+              </div>
+
+              {/* Footer */}
+              <div className="px-8 pb-6 text-center">
+                <p className="text-[11px] text-slate-400 font-medium">© SGC – CKN Construction Management System</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast thông báo đồng bộ ── */}
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold text-sm transition-all animate-in slide-in-from-bottom-4 duration-300 ${
@@ -5140,12 +5332,38 @@ LƯU Ý:
         </div>
         
         <div className="flex items-center gap-3">
+          {/* Thông tin user đang đăng nhập */}
+          {currentUser && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 border border-white/15 rounded-xl">
+              <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center text-white text-[11px] font-black shrink-0">
+                {currentUser.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-white text-[11px] font-black leading-none">{currentUser.username}</p>
+                <p className="text-blue-300 text-[9px] font-bold uppercase tracking-widest mt-0.5">{currentUser.role}</p>
+              </div>
+            </div>
+          )}
           <button 
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
           >
             <Settings size={16} />
           </button>
+          {/* Nút đăng xuất */}
+          {currentUser && (
+            <button
+              onClick={handleLogout}
+              title="Đăng xuất"
+              className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-red-500/80 hover:border-red-400/30 transition-all shadow-sm"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          )}
         </div>
       </header>
 
