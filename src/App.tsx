@@ -1884,6 +1884,18 @@ export default function App() {
     if (type !== 'loading') setTimeout(() => setToast(null), duration);
   };
 
+  // ── visibleHistory: lọc theo phân quyền dự án của QS-QC ──
+  // Admin / P.TQT → thấy tất cả
+  // QS-QC có assignedProjects → chỉ thấy biên bản thuộc dự án được phân quyền
+  const visibleHistory = React.useMemo(() => {
+    if (!currentUser) return history;
+    if (currentUser.role === 'admin' || currentUser.role === 'P. TQT') return history;
+    // QS-QC
+    const assigned = currentUser.assignedProjects;
+    if (!assigned || assigned.length === 0) return history; // không giới hạn nếu chưa gán
+    return history.filter(r => assigned.some(p => p.trim() === (r.project || '').trim()));
+  }, [history, currentUser]);
+
   // Bộ lọc Sheet 1
   const [filterProject, setFilterProject] = useState('');
   const [filterItem, setFilterItem] = useState('');
@@ -6000,7 +6012,7 @@ LƯU Ý:
               <div className="w-full space-y-12">
 
             {/* Main Data Table on Sheet 1 */}
-            {!currentResult && (history.length > 0 ? (() => {
+            {!currentResult && (visibleHistory.length > 0 ? (() => {
               // Parse date từ chuỗi "HH:mm DD/MM/YYYY"
               const parseDate = (s: string): Date | null => {
                 const m = s?.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
@@ -6013,7 +6025,7 @@ LƯU Ý:
                 return new Date(parseInt(y), parseInt(mo) - 1, parseInt(d));
               };
 
-              const filtered = history.map((item, idx) => ({ ...item, displayStt: history.length - idx }))
+              const filtered = visibleHistory.map((item, idx) => ({ ...item, displayStt: visibleHistory.length - idx }))
                 .filter((item) => {
                 const reportStt = item.displayStt.toString();
                 if (filterStt && reportStt !== filterStt) return false;
@@ -6054,7 +6066,7 @@ LƯU Ý:
                       Dữ liệu thi công
                       {hasActiveFilter && (
                         <span className="text-[11px] font-black text-orange-500 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full normal-case">
-                          {filtered.length}/{history.length} bản ghi
+                          {filtered.length}/{visibleHistory.length} bản ghi
                         </span>
                       )}
                     </h3>
@@ -6152,7 +6164,7 @@ LƯU Ý:
                       </div>
                       {/* Dự án - Dropdown + Search */}
                       {(() => {
-                        const opts = [...new Set(history.map(r => r.project).filter(Boolean))].sort();
+                        const opts = [...new Set(visibleHistory.map(r => r.project).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterProject.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={projectDropdownRef}>
@@ -6184,7 +6196,7 @@ LƯU Ý:
                                             className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterProject === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
                                             <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterProject === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
                                             <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterProject.length)}</span>}{idx>=0?p.slice(idx+filterProject.length):''}</span>
-                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.project === p).length}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{visibleHistory.filter(r => r.project === p).length}</span>
                                           </button>
                                         );
                                       })
@@ -6197,7 +6209,7 @@ LƯU Ý:
                       })()}
                       {/* Hạng mục - Dropdown + Search */}
                       {(() => {
-                        const opts = [...new Set(history.map(r => r.item).filter(Boolean))].sort();
+                        const opts = [...new Set(visibleHistory.map(r => r.item).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterItem.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={itemDropdownRef}>
@@ -6229,7 +6241,7 @@ LƯU Ý:
                                             className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterItem === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
                                             <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterItem === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
                                             <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterItem.length)}</span>}{idx>=0?p.slice(idx+filterItem.length):''}</span>
-                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.item === p).length}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{visibleHistory.filter(r => r.item === p).length}</span>
                                           </button>
                                         );
                                       })
@@ -6262,7 +6274,7 @@ LƯU Ý:
                       </div>
                       {/* Đường kính - Dropdown + Search */}
                       {(() => {
-                        const opts = [...new Set(history.map(r => r.diameter).filter(Boolean))].sort();
+                        const opts = [...new Set(visibleHistory.map(r => r.diameter).filter(Boolean))].sort();
                         const matched = opts.filter(p => p.toLowerCase().includes(filterDiameter.toLowerCase()));
                         return (
                           <div className="space-y-2 relative" ref={diameterDropdownRef}>
@@ -6294,7 +6306,7 @@ LƯU Ý:
                                             className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterDiameter === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
                                             <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterDiameter === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
                                             <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterDiameter.length)}</span>}{idx>=0?p.slice(idx+filterDiameter.length):''}</span>
-                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{history.filter(r => r.diameter === p).length}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{visibleHistory.filter(r => r.diameter === p).length}</span>
                                           </button>
                                         );
                                       })
@@ -6478,7 +6490,7 @@ LƯU Ý:
           <AccountConfigView history={history} appProjects={projects} />
         ) : (
           <SummaryView 
-            history={history} 
+            history={visibleHistory} 
             onSelectResult={(res) => { setCurrentResult({ ...res, layers: Array.isArray(res.layers) ? res.layers : [] }); setActiveSheet('upload'); }} 
             onEdit={handleEdit}
             onDelete={handleDelete}
