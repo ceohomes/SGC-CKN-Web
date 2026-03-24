@@ -1236,7 +1236,7 @@ const SmartDateInput = ({
 // ══════════════════════════════════════════════════════════════
 // AccountConfigView — Cấu hình tài khoản
 // ══════════════════════════════════════════════════════════════
-function AccountConfigView({ history }: { history: ExtractionResult[] }) {
+function AccountConfigView({ history, appProjects }: { history: ExtractionResult[]; appProjects: AppProject[] }) {
   const ROLES: UserRole[] = ['admin', 'QS-QC', 'P. TQT'];
   const ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
     'admin':   { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300' },
@@ -1297,12 +1297,15 @@ function AccountConfigView({ history }: { history: ExtractionResult[] }) {
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
   const [searchQ, setSearchQ] = React.useState('');
 
-  // Lấy danh sách dự án duy nhất từ history
+  // Lấy danh sách dự án: ưu tiên app_projects (nguồn chính) + merge từ history
   const allProjects = React.useMemo(() => {
     const set = new Set<string>();
+    // Từ app_projects trước (dự án được tạo chính thức)
+    appProjects.forEach(p => { if (p.name?.trim()) set.add(p.name.trim()); });
+    // Từ history (biên bản đã có) — để backward compat
     history.forEach(r => { if (r.project?.trim()) set.add(r.project.trim()); });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
-  }, [history]);
+  }, [history, appProjects]);
 
   const filteredProjects = React.useMemo(() => {
     if (!projectSearch.trim()) return allProjects;
@@ -6472,7 +6475,7 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'account-config' ? (
-          <AccountConfigView history={history} />
+          <AccountConfigView history={history} appProjects={projects} />
         ) : (
           <SummaryView 
             history={history} 
