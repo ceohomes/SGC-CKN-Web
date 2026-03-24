@@ -4470,6 +4470,57 @@ LƯU Ý:
     };
 
     // ── Tab 2: Dự án ──
+    const [newProjectName, setNewProjectName] = React.useState('');
+    const [isSavingNewProject, setIsSavingNewProject] = React.useState(false);
+
+    const handleCreateProject = async () => {
+      const trimmed = newProjectName.trim();
+      if (!trimmed) return;
+      // Check duplicate
+      const exists = history.some(r => (r.project || '').trim().toLowerCase() === trimmed.toLowerCase());
+      if (exists) {
+        showToast(`Dự án "${trimmed}" đã tồn tại trong hệ thống!`, 'error');
+        return;
+      }
+      setIsSavingNewProject(true);
+      try {
+        // Insert a placeholder record into Supabase with only project name filled
+        const placeholderId = crypto.randomUUID();
+        const placeholder: any = {
+          id: placeholderId,
+          timestamp: Date.now(),
+          project: trimmed,
+          item: '',
+          componentName: '',
+          pileId: '',
+          reportNumber: '',
+          diameter: '',
+          constructionStart: '',
+          constructionEnd: '',
+          notes: '',
+          layers: [],
+          fileName: '',
+          fileUrl: '',
+          excelUrl: '',
+        };
+        if (supabase) {
+          const { error } = await supabase.from('drill_extractions').insert([placeholder]);
+          if (error) {
+            showToast(`Lỗi tạo dự án: ${error.message}`, 'error');
+            setIsSavingNewProject(false);
+            return;
+          }
+        }
+        setHistory(prev => [placeholder, ...prev]);
+        setNewProjectName('');
+        showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+      } catch (e: any) {
+        showToast(`Lỗi: ${e?.message}`, 'error');
+      } finally {
+        setIsSavingNewProject(false);
+      }
+    };
+
     const projectList = useEditableList(
       () => {
         const map = new Map<string, { value: string; count: number; soilClass?: string }>();
@@ -4664,6 +4715,38 @@ LƯU Ý:
           {activeTab === 'project' && 'Danh sách dự án — chỉnh sửa sẽ cập nhật trường "project" trong tất cả biên bản liên quan'}
           {activeTab === 'diameter' && 'Danh sách đường kính cọc — chỉnh sửa sẽ cập nhật trường "diameter" trong tất cả biên bản liên quan'}
         </div>
+
+        {/* Create new project panel - only shown in project tab */}
+        {activeTab === 'project' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
+            <div className="flex-1">
+              <label className="text-[11px] font-black text-blue-700 uppercase tracking-widest block mb-2">
+                Tạo dự án mới
+              </label>
+              <input
+                type="text"
+                value={newProjectName}
+                onChange={e => setNewProjectName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateProject(); }}
+                placeholder="Nhập tên dự án mới..."
+                className="w-full px-4 py-2.5 border-2 border-blue-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
+                disabled={isSavingNewProject}
+              />
+            </div>
+            <button
+              onClick={handleCreateProject}
+              disabled={!newProjectName.trim() || isSavingNewProject}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl text-[12px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-5 shrink-0"
+              style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}
+            >
+              {isSavingNewProject ? (
+                <><Loader2 size={14} className="animate-spin" />Đang lưu...</>
+              ) : (
+                <><Save size={14} />Lưu dự án</>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Table / Columns */}
         {items.length === 0 ? (
@@ -5464,6 +5547,7 @@ LƯU Ý:
               <span className="font-medium text-sm">Dashboard tổng hợp</span>
             </button>
 
+            {currentUser?.role === 'admin' && (
             <button 
               onClick={() => { setActiveSheet('geology'); setIsSidebarOpen(false); }}
               className={cn(
@@ -5476,6 +5560,7 @@ LƯU Ý:
               <Layers size={18} className={activeSheet === 'geology' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Chuẩn hóa data</span>
             </button>
+            )}
 
             <button 
               onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
@@ -6247,7 +6332,15 @@ LƯU Ý:
         ) : activeSheet === 'pdf-splitter' ? (
           <PdfSplitterView />
         ) : activeSheet === 'geology' ? (
-          <GeologyView />
+          currentUser?.role === 'admin' ? <GeologyView /> : (
+            <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
+              <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight mb-2">Không có quyền truy cập</h3>
+              <p className="text-slate-400 text-sm">Chức năng Chuẩn hóa Data chỉ dành cho tài khoản Admin.</p>
+            </div>
+          )
         ) : activeSheet === 'account-config' ? (
           <AccountConfigView history={history} />
         ) : (
