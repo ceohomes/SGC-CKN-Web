@@ -367,6 +367,7 @@ interface AppUser {
   role: UserRole;
   createdAt: string;
   isActive: boolean;
+  assignedProjects?: string[]; // Danh sách dự án được phân quyền
 }
 
 // Simple hash function for demo (NOT for production — use bcrypt on server)
@@ -1227,7 +1228,7 @@ const SmartDateInput = ({
 // ══════════════════════════════════════════════════════════════
 // AccountConfigView — Cấu hình tài khoản
 // ══════════════════════════════════════════════════════════════
-function AccountConfigView() {
+function AccountConfigView({ history }: { history: ExtractionResult[] }) {
   const ROLES: UserRole[] = ['admin', 'QS-QC', 'P. TQT'];
   const ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
     'admin':   { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300' },
@@ -1281,9 +1282,24 @@ function AccountConfigView() {
   const [formPassword, setFormPassword] = React.useState('');
   const [formRole, setFormRole] = React.useState<UserRole>('QS-QC');
   const [formActive, setFormActive] = React.useState(true);
+  const [formAssignedProjects, setFormAssignedProjects] = React.useState<string[]>([]);
+  const [showProjectDropdown, setShowProjectDropdown] = React.useState(false);
+  const [projectSearch, setProjectSearch] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
   const [searchQ, setSearchQ] = React.useState('');
+
+  // Lấy danh sách dự án duy nhất từ history
+  const allProjects = React.useMemo(() => {
+    const set = new Set<string>();
+    history.forEach(r => { if (r.project?.trim()) set.add(r.project.trim()); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [history]);
+
+  const filteredProjects = React.useMemo(() => {
+    if (!projectSearch.trim()) return allProjects;
+    return allProjects.filter(p => p.toLowerCase().includes(projectSearch.toLowerCase()));
+  }, [allProjects, projectSearch]);
 
   const showLocalToast = (msg: string, type: 'success' | 'error') => {
     setToastLocal({ msg, type });
@@ -1294,6 +1310,9 @@ function AccountConfigView() {
     setEditingUser(null);
     setFormFullName(''); setFormUsername(''); setFormPassword('');
     setFormRole('QS-QC'); setFormActive(true);
+    setFormAssignedProjects([]);
+    setProjectSearch('');
+    setShowProjectDropdown(false);
     setShowPassword(false);
     setShowForm(true);
   };
@@ -1305,6 +1324,9 @@ function AccountConfigView() {
     setFormPassword('');
     setFormRole(user.role);
     setFormActive(user.isActive);
+    setFormAssignedProjects(user.assignedProjects || []);
+    setProjectSearch('');
+    setShowProjectDropdown(false);
     setShowPassword(false);
     setShowForm(true);
   };
@@ -1330,6 +1352,7 @@ function AccountConfigView() {
         passwordHash: formPassword.trim() ? simpleHash(formPassword.trim()) : u.passwordHash,
         role: formRole,
         isActive: formActive,
+        assignedProjects: formAssignedProjects,
       } : u);
     } else {
       const newUser: AppUser = {
@@ -1339,6 +1362,7 @@ function AccountConfigView() {
         passwordHash: simpleHash(formPassword.trim()),
         role: formRole,
         isActive: formActive,
+        assignedProjects: formAssignedProjects,
         createdAt: new Date().toISOString(),
       };
       newUsers = [...users, newUser];
@@ -1440,6 +1464,7 @@ function AccountConfigView() {
               <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">#</th>
               <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Tên đăng nhập</th>
               <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Phân quyền</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Dự án phân quyền</th>
               <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Trạng thái</th>
               <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Ngày tạo</th>
               <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Thao tác</th>
@@ -1448,7 +1473,7 @@ function AccountConfigView() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-16 text-slate-400">
+                <td colSpan={7} className="text-center py-16 text-slate-400">
                   <div className="flex flex-col items-center gap-3">
                     <Search size={32} className="opacity-30" />
                     <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy tài khoản</p>
@@ -1477,6 +1502,24 @@ function AccountConfigView() {
                     <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border ${rc.bg} ${rc.text} ${rc.border}`}>
                       {user.role}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {(user.assignedProjects && user.assignedProjects.length > 0) ? (
+                      <div className="flex flex-wrap gap-1">
+                        {user.assignedProjects.slice(0, 2).map(proj => (
+                          <span key={proj} className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded border border-blue-200 truncate max-w-[120px]" title={proj}>
+                            {proj}
+                          </span>
+                        ))}
+                        {user.assignedProjects.length > 2 && (
+                          <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded border border-slate-200">
+                            +{user.assignedProjects.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">Tất cả dự án</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
@@ -1532,8 +1575,12 @@ function AccountConfigView() {
 
       {/* Create/Edit form modal */}
       {showForm && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => { if (showProjectDropdown) { setShowProjectDropdown(false); setProjectSearch(''); } }}
+        >
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="px-8 py-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
               <div className="flex items-center gap-3">
@@ -1602,6 +1649,131 @@ function AccountConfigView() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Dự án phân quyền */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">
+                  Dự án <span className="text-slate-400 font-medium normal-case">(tuỳ chọn)</span>
+                </label>
+
+                {/* Tags dự án đã chọn */}
+                {formAssignedProjects.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-blue-50 border border-blue-200 rounded-xl">
+                    {formAssignedProjects.map(proj => (
+                      <span key={proj} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-lg">
+                        {proj}
+                        <button
+                          type="button"
+                          onClick={() => setFormAssignedProjects(prev => prev.filter(p => p !== proj))}
+                          className="ml-0.5 hover:bg-white/20 rounded transition-colors"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setFormAssignedProjects([])}
+                      className="text-[10px] font-bold text-blue-500 hover:text-red-500 px-1 transition-colors ml-auto"
+                    >
+                      Xóa hết
+                    </button>
+                  </div>
+                )}
+
+                {/* Dropdown chọn dự án */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => { setShowProjectDropdown(p => !p); setProjectSearch(''); }}
+                    className="w-full flex items-center justify-between px-4 py-3 border-2 border-slate-200 hover:border-blue-400 focus:border-blue-500 rounded-xl text-sm transition-all bg-white"
+                  >
+                    <span className={formAssignedProjects.length > 0 ? 'text-slate-700 font-medium' : 'text-slate-400'}>
+                      {formAssignedProjects.length > 0
+                        ? `${formAssignedProjects.length} dự án đã chọn`
+                        : allProjects.length > 0 ? 'Chọn dự án...' : 'Chưa có dự án trong hệ thống'}
+                    </span>
+                    <ChevronDown size={16} className={`text-slate-400 transition-transform duration-200 ${showProjectDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showProjectDropdown && allProjects.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-[500] overflow-hidden">
+                      {/* Search trong dropdown */}
+                      <div className="p-2 border-b border-slate-100">
+                        <div className="relative">
+                          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={projectSearch}
+                            onChange={e => setProjectSearch(e.target.value)}
+                            placeholder="Tìm dự án..."
+                            className="w-full pl-8 pr-3 py-1.5 text-[12px] border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400 bg-slate-50"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+
+                      {/* Nút chọn tất cả */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formAssignedProjects.length === allProjects.length) {
+                            setFormAssignedProjects([]);
+                          } else {
+                            setFormAssignedProjects([...allProjects]);
+                          }
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors border-b border-slate-100"
+                      >
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${formAssignedProjects.length === allProjects.length ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                          {formAssignedProjects.length === allProjects.length && <CheckCircle2 size={10} className="text-white" />}
+                        </div>
+                        {formAssignedProjects.length === allProjects.length ? 'Bỏ chọn tất cả' : `Chọn tất cả (${allProjects.length})`}
+                      </button>
+
+                      {/* Danh sách dự án */}
+                      <div className="max-h-48 overflow-y-auto">
+                        {filteredProjects.length === 0 ? (
+                          <p className="text-center py-4 text-[12px] text-slate-400">Không tìm thấy dự án</p>
+                        ) : filteredProjects.map(proj => {
+                          const isSelected = formAssignedProjects.includes(proj);
+                          return (
+                            <button
+                              key={proj}
+                              type="button"
+                              onClick={() => {
+                                setFormAssignedProjects(prev =>
+                                  isSelected ? prev.filter(p => p !== proj) : [...prev, proj]
+                                );
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors text-left ${isSelected ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                            >
+                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                {isSelected && <CheckCircle2 size={10} className="text-white" />}
+                              </div>
+                              <span className="truncate">{proj}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="px-4 py-2 border-t border-slate-100 flex justify-between items-center bg-slate-50">
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          Đã chọn {formAssignedProjects.length}/{allProjects.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setShowProjectDropdown(false); setProjectSearch(''); }}
+                          className="text-[11px] font-black text-blue-600 hover:text-blue-700 px-3 py-1 bg-blue-50 rounded-lg"
+                        >
+                          Xong
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -6077,7 +6249,7 @@ LƯU Ý:
         ) : activeSheet === 'geology' ? (
           <GeologyView />
         ) : activeSheet === 'account-config' ? (
-          <AccountConfigView />
+          <AccountConfigView history={history} />
         ) : (
           <SummaryView 
             history={history} 
