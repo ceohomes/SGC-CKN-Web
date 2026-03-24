@@ -1272,6 +1272,7 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
           role: u.role,
           created_at: u.createdAt,
           is_active: u.isActive,
+          assigned_projects: u.assignedProjects || [],
         }))
       ).then(({ error }) => {
         if (error) console.warn('[AccountConfig] Supabase sync error:', error.message);
@@ -1280,6 +1281,32 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
   };
 
   const [users, setUsers] = React.useState<AppUser[]>(loadUsers);
+
+  // Sync users from Supabase on mount
+  React.useEffect(() => {
+    const syncFromSupabase = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.from('app_users').select('*');
+      if (!error && data) {
+        const loadedUsers: AppUser[] = data.map((u: any) => ({
+          id: u.id,
+          fullName: u.full_name,
+          username: u.username,
+          passwordHash: u.password_hash,
+          role: u.role,
+          createdAt: u.created_at,
+          isActive: u.is_active,
+          assignedProjects: u.assigned_projects || [],
+        }));
+        if (!loadedUsers.find(u => u.id === DEFAULT_ADMIN.id)) {
+          loadedUsers.unshift(DEFAULT_ADMIN);
+        }
+        setUsers(loadedUsers);
+        localStorage.setItem('sgc_app_users', JSON.stringify(loadedUsers));
+      }
+    };
+    syncFromSupabase();
+  }, []);
   const [showForm, setShowForm] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<AppUser | null>(null);
   const [toast, setToastLocal] = React.useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -1352,7 +1379,7 @@ function AccountConfigView({ history, appProjects }: { history: ExtractionResult
     if (formPassword.trim() && formPassword.trim().length < 6) { showLocalToast('Mật khẩu phải ít nhất 6 ký tự', 'error'); return; }
 
     // fullName = username nếu không có
-    const finalFullName = formUsername.trim();
+    const finalFullName = formFullName.trim() || formUsername.trim();
 
     let newUsers: AppUser[];
     if (editingUser) {
@@ -2075,10 +2102,43 @@ export default function App() {
             if (savedProjects) {
               try { setProjects(JSON.parse(savedProjects)); } catch {}
             }
-            // Log gợi ý tạo bảng nếu lỗi 404
-            if (projectsRes.error) {
-              console.warn('[app_projects] Bảng chưa tồn tại hoặc lỗi:', projectsRes.error.message,
-                '\n→ Chạy SQL trong Supabase để tạo bảng (xem README.md)');
+          }
+
+          // Fetch users from Supabase to sync across devices
+          const { data: usersData, error: usersError } = await supabase.from('app_users').select('*');
+          if (!usersError && usersData) {
+            const loadedUsers: AppUser[] = usersData.map((u: any) => ({
+              id: u.id,
+              fullName: u.full_name,
+              username: u.username,
+              passwordHash: u.password_hash,
+              role: u.role,
+              createdAt: u.created_at,
+              isActive: u.is_active,
+              assignedProjects: u.assigned_projects || [],
+            }));
+            // Ensure default admin is present
+            if (!loadedUsers.find(u => u.id === DEFAULT_ADMIN.id)) {
+              loadedUsers.unshift(DEFAULT_ADMIN);
+            }
+            localStorage.setItem('sgc_app_users', JSON.stringify(loadedUsers));
+            
+            // Refresh current session user if exists to sync permissions/role
+            const savedSession = localStorage.getItem("sgc_session");
+            if (savedSession) {
+              try {
+                const sessionUser: AppUser = JSON.parse(savedSession);
+                const updatedUser = loadedUsers.find(u => u.id === sessionUser.id);
+                if (updatedUser && updatedUser.isActive) {
+                  setCurrentUser(updatedUser);
+                  localStorage.setItem("sgc_session", JSON.stringify(updatedUser));
+                } else if (updatedUser && !updatedUser.isActive) {
+                  // Account deactivated
+                  setCurrentUser(null);
+                  localStorage.removeItem("sgc_session");
+                  setIsLoginScreen(true);
+                }
+              } catch {}
             }
           }
         } catch (e) {
@@ -2265,25 +2325,52 @@ export default function App() {
 
 
   // ── Đăng nhập ──
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setLoginError("");
     if (!loginUsername.trim() || !loginPassword.trim()) {
       setLoginError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu");
       return;
     }
     setLoginLoading(true);
-    setTimeout(() => {
-      const allUsers: AppUser[] = (() => {
-        try {
-          const raw = localStorage.getItem("sgc_app_users");
-          const parsed: AppUser[] = raw ? JSON.parse(raw) : [];
-          if (!parsed.find((u: AppUser) => u.id === "admin-default")) return [DEFAULT_ADMIN, ...parsed];
-          return parsed;
-        } catch { return [DEFAULT_ADMIN]; }
-      })();
+
+    try {
+      let allUsers: AppUser[] = [];
+      
+      // Try fetching from Supabase first for real-time sync
+      if (supabase) {
+        const { data, error } = await supabase.from('app_users').select('*');
+        if (!error && data) {
+          allUsers = data.map((u: any) => ({
+            id: u.id,
+            fullName: u.full_name,
+            username: u.username,
+            passwordHash: u.password_hash,
+            role: u.role,
+            createdAt: u.created_at,
+            isActive: u.is_active,
+            assignedProjects: u.assigned_projects || [],
+          }));
+          // Sync to localStorage for offline/fallback
+          if (!allUsers.find(u => u.id === DEFAULT_ADMIN.id)) {
+            allUsers.unshift(DEFAULT_ADMIN);
+          }
+          localStorage.setItem("sgc_app_users", JSON.stringify(allUsers));
+        }
+      }
+
+      // Fallback to localStorage if Supabase failed or returned nothing
+      if (allUsers.length === 0) {
+        const raw = localStorage.getItem("sgc_app_users");
+        allUsers = raw ? JSON.parse(raw) : [DEFAULT_ADMIN];
+        if (!allUsers.find(u => u.id === DEFAULT_ADMIN.id)) {
+          allUsers.unshift(DEFAULT_ADMIN);
+        }
+      }
+
       const found = allUsers.find(
         (u: AppUser) => u.username === loginUsername.trim() && verifyHash(loginPassword.trim(), u.passwordHash)
       );
+
       if (!found) {
         setLoginError("Tên đăng nhập hoặc mật khẩu không đúng");
         setLoginLoading(false);
@@ -2299,8 +2386,12 @@ export default function App() {
       setIsLoginScreen(false);
       setLoginPassword("");
       setLoginError("");
+    } catch (err) {
+      console.error("Login error:", err);
+      setLoginError("Đã có lỗi xảy ra khi đăng nhập");
+    } finally {
       setLoginLoading(false);
-    }, 600);
+    }
   };
 
   const handleLogout = () => {
