@@ -370,21 +370,35 @@ interface AppUser {
 }
 
 // Simple hash function for demo (NOT for production — use bcrypt on server)
+// Encode password: btoa(encodeURIComponent(pwd)) — reliable cross-browser
 const simpleHash = (pwd: string): string => {
-  let h = 0;
-  for (let i = 0; i < pwd.length; i++) {
-    h = ((h << 5) - h) + pwd.charCodeAt(i);
-    h |= 0;
+  try {
+    return 'b64_' + btoa(encodeURIComponent(pwd));
+  } catch {
+    return 'raw_' + pwd; // fallback
   }
-  return 'hash_' + Math.abs(h).toString(36) + '_' + pwd.length;
 };
-const verifyHash = (pwd: string, hash: string): boolean => simpleHash(pwd) === hash;
+const verifyHash = (pwd: string, hash: string): boolean => {
+  if (!hash) return false;
+  // Support b64_ prefix (new)
+  if (hash.startsWith('b64_')) {
+    try {
+      return decodeURIComponent(atob(hash.slice(4))) === pwd;
+    } catch { return false; }
+  }
+  // Support raw_ prefix (fallback)
+  if (hash.startsWith('raw_')) {
+    return hash.slice(4) === pwd;
+  }
+  // Legacy hash_ prefix — compare directly
+  return simpleHash(pwd) === hash;
+};
 
 const DEFAULT_ADMIN: AppUser = {
   id: 'admin-default',
   fullName: 'Đỗ Công Chung',
-  username: 'admin',
-  passwordHash: simpleHash('Chung10x7'),
+  username: 'Đỗ Công Chung',
+  passwordHash: 'b64_' + btoa(encodeURIComponent('Chung10x7')),
   role: 'admin',
   createdAt: new Date().toISOString(),
   isActive: true,
@@ -1856,6 +1870,29 @@ export default function App() {
       }
       setIsInitialLoading(false); // Tắt splash screen sau khi load xong
       // Kiểm tra session đăng nhập
+      // Migrate: update DEFAULT_ADMIN username in localStorage if still 'admin'
+      try {
+        const rawUsers = localStorage.getItem("sgc_app_users");
+        if (rawUsers) {
+          const parsedUsers = JSON.parse(rawUsers);
+          const adminIdx = parsedUsers.findIndex((u: any) => u.id === "admin-default");
+          if (adminIdx !== -1 && parsedUsers[adminIdx].username === "admin") {
+            parsedUsers[adminIdx].username = "Đỗ Công Chung";
+            parsedUsers[adminIdx].fullName = "Đỗ Công Chung";
+            parsedUsers[adminIdx].passwordHash = "b64_" + btoa(encodeURIComponent("Chung10x7"));
+            localStorage.setItem("sgc_app_users", JSON.stringify(parsedUsers));
+          }
+        }
+        // Clear stale session if username was old 'admin'
+        const staleSession = localStorage.getItem("sgc_session");
+        if (staleSession) {
+          const parsed = JSON.parse(staleSession);
+          if (parsed?.id === "admin-default" && parsed?.username === "admin") {
+            localStorage.removeItem("sgc_session");
+          }
+        }
+      } catch {}
+
       const savedSession = localStorage.getItem("sgc_session");
       if (savedSession) {
         try {
