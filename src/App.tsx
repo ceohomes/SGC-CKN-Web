@@ -354,7 +354,41 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology';
+type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology' | 'account-config';
+
+// ── Types cho quản lý tài khoản ──
+type UserRole = 'admin' | 'QS-QC' | 'P. TQT';
+
+interface AppUser {
+  id: string;
+  fullName: string;
+  username: string;
+  passwordHash: string; // bcrypt hash hoặc plain (trong demo dùng plain+prefix)
+  role: UserRole;
+  createdAt: string;
+  isActive: boolean;
+}
+
+// Simple hash function for demo (NOT for production — use bcrypt on server)
+const simpleHash = (pwd: string): string => {
+  let h = 0;
+  for (let i = 0; i < pwd.length; i++) {
+    h = ((h << 5) - h) + pwd.charCodeAt(i);
+    h |= 0;
+  }
+  return 'hash_' + Math.abs(h).toString(36) + '_' + pwd.length;
+};
+const verifyHash = (pwd: string, hash: string): boolean => simpleHash(pwd) === hash;
+
+const DEFAULT_ADMIN: AppUser = {
+  id: 'admin-default',
+  fullName: 'Đỗ Công Chung',
+  username: 'admin',
+  passwordHash: simpleHash('Chung10x7'),
+  role: 'admin',
+  createdAt: new Date().toISOString(),
+  isActive: true,
+};
 
 // --- Helper Functions ---
 
@@ -1175,6 +1209,437 @@ const SmartDateInput = ({
     </div>
   );
 };
+
+// ══════════════════════════════════════════════════════════════
+// AccountConfigView — Cấu hình tài khoản
+// ══════════════════════════════════════════════════════════════
+function AccountConfigView() {
+  const ROLES: UserRole[] = ['admin', 'QS-QC', 'P. TQT'];
+  const ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
+    'admin':   { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300' },
+    'QS-QC':  { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
+    'P. TQT': { bg: 'bg-orange-100',  text: 'text-orange-800',  border: 'border-orange-300' },
+  };
+
+  const loadUsers = (): AppUser[] => {
+    try {
+      const raw = localStorage.getItem('sgc_app_users');
+      if (raw) {
+        const parsed: AppUser[] = JSON.parse(raw);
+        // Ensure default admin always present
+        if (!parsed.find(u => u.id === DEFAULT_ADMIN.id)) {
+          return [DEFAULT_ADMIN, ...parsed];
+        }
+        return parsed;
+      }
+    } catch {}
+    return [DEFAULT_ADMIN];
+  };
+
+  const saveUsers = (users: AppUser[]) => {
+    localStorage.setItem('sgc_app_users', JSON.stringify(users));
+    // Also sync to Supabase if connected
+    if (supabase) {
+      supabase.from('app_users').upsert(
+        users.map(u => ({
+          id: u.id,
+          full_name: u.fullName,
+          username: u.username,
+          password_hash: u.passwordHash,
+          role: u.role,
+          created_at: u.createdAt,
+          is_active: u.isActive,
+        }))
+      ).then(({ error }) => {
+        if (error) console.warn('[AccountConfig] Supabase sync error:', error.message);
+      });
+    }
+  };
+
+  const [users, setUsers] = React.useState<AppUser[]>(loadUsers);
+  const [showForm, setShowForm] = React.useState(false);
+  const [editingUser, setEditingUser] = React.useState<AppUser | null>(null);
+  const [toast, setToastLocal] = React.useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  // Form state
+  const [formFullName, setFormFullName] = React.useState('');
+  const [formUsername, setFormUsername] = React.useState('');
+  const [formPassword, setFormPassword] = React.useState('');
+  const [formRole, setFormRole] = React.useState<UserRole>('QS-QC');
+  const [formActive, setFormActive] = React.useState(true);
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
+  const [searchQ, setSearchQ] = React.useState('');
+
+  const showLocalToast = (msg: string, type: 'success' | 'error') => {
+    setToastLocal({ msg, type });
+    setTimeout(() => setToastLocal(null), 3000);
+  };
+
+  const openCreate = () => {
+    setEditingUser(null);
+    setFormFullName(''); setFormUsername(''); setFormPassword('');
+    setFormRole('QS-QC'); setFormActive(true);
+    setShowPassword(false);
+    setShowForm(true);
+  };
+
+  const openEdit = (user: AppUser) => {
+    setEditingUser(user);
+    setFormFullName(user.fullName);
+    setFormUsername(user.username);
+    setFormPassword(''); // don't show existing hash
+    setFormRole(user.role);
+    setFormActive(user.isActive);
+    setShowPassword(false);
+    setShowForm(true);
+  };
+
+  const handleSubmit = () => {
+    if (!formFullName.trim()) { showLocalToast('Vui lòng nhập họ và tên', 'error'); return; }
+    if (!formUsername.trim()) { showLocalToast('Vui lòng nhập tên đăng nhập', 'error'); return; }
+
+    const existingByUsername = users.find(u => u.username === formUsername.trim() && u.id !== editingUser?.id);
+    if (existingByUsername) { showLocalToast('Tên đăng nhập đã tồn tại', 'error'); return; }
+
+    if (!editingUser && !formPassword.trim()) { showLocalToast('Vui lòng nhập mật khẩu', 'error'); return; }
+    if (formPassword.trim() && formPassword.trim().length < 6) { showLocalToast('Mật khẩu phải ít nhất 6 ký tự', 'error'); return; }
+
+    let newUsers: AppUser[];
+    if (editingUser) {
+      newUsers = users.map(u => u.id === editingUser.id ? {
+        ...u,
+        fullName: formFullName.trim(),
+        username: formUsername.trim(),
+        passwordHash: formPassword.trim() ? simpleHash(formPassword.trim()) : u.passwordHash,
+        role: formRole,
+        isActive: formActive,
+      } : u);
+    } else {
+      const newUser: AppUser = {
+        id: crypto.randomUUID(),
+        fullName: formFullName.trim(),
+        username: formUsername.trim(),
+        passwordHash: simpleHash(formPassword.trim()),
+        role: formRole,
+        isActive: formActive,
+        createdAt: new Date().toISOString(),
+      };
+      newUsers = [...users, newUser];
+    }
+    setUsers(newUsers);
+    saveUsers(newUsers);
+    setShowForm(false);
+    showLocalToast(editingUser ? '✅ Cập nhật tài khoản thành công' : '✅ Tạo tài khoản thành công', 'success');
+  };
+
+  const handleDelete = (userId: string) => {
+    if (userId === DEFAULT_ADMIN.id) { showLocalToast('Không thể xóa tài khoản Admin mặc định', 'error'); return; }
+    const newUsers = users.filter(u => u.id !== userId);
+    setUsers(newUsers);
+    saveUsers(newUsers);
+    setDeleteConfirm(null);
+    showLocalToast('Đã xóa tài khoản', 'success');
+  };
+
+  const toggleActive = (userId: string) => {
+    if (userId === DEFAULT_ADMIN.id) { showLocalToast('Không thể vô hiệu hóa Admin mặc định', 'error'); return; }
+    const newUsers = users.map(u => u.id === userId ? { ...u, isActive: !u.isActive } : u);
+    setUsers(newUsers);
+    saveUsers(newUsers);
+  };
+
+  const filtered = React.useMemo(() => {
+    if (!searchQ.trim()) return users;
+    const q = searchQ.toLowerCase();
+    return users.filter(u => u.fullName.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
+  }, [users, searchQ]);
+
+  const roleCount = (role: UserRole) => users.filter(u => u.role === role).length;
+
+  return (
+    <div className="w-full space-y-6 animate-in fade-in duration-300">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-bold text-sm animate-in slide-in-from-bottom-4 duration-300 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'}`}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+            <Key size={24} className="text-orange-500" /> Cấu hình tài khoản
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">Quản lý người dùng và phân quyền hệ thống</p>
+        </div>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 bg-gradient-to-br from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-lg shadow-orange-200 transition-all active:scale-95"
+        >
+          <Plus size={16} /> Tạo tài khoản mới
+        </button>
+      </div>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tổng tài khoản</p>
+          <span className="text-3xl font-black text-slate-900">{users.length}</span>
+        </div>
+        {ROLES.map(r => {
+          const c = ROLE_COLORS[r];
+          return (
+            <div key={r} className={`${c.bg} border ${c.border} rounded-2xl p-4 shadow-sm`}>
+              <p className={`text-[10px] font-black ${c.text} uppercase tracking-widest mb-1`}>{r}</p>
+              <span className={`text-3xl font-black ${c.text}`}>{roleCount(r)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+        <input
+          type="text"
+          placeholder="Tìm kiếm tài khoản..."
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          className="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+        />
+        {searchQ && (
+          <button onClick={() => setSearchQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Users table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">#</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Họ và tên</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Tên đăng nhập</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Phân quyền</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Trạng thái</th>
+              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Ngày tạo</th>
+              <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="text-center py-16 text-slate-400">
+                  <div className="flex flex-col items-center gap-3">
+                    <Search size={32} className="opacity-30" />
+                    <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy tài khoản</p>
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.map((user, idx) => {
+              const rc = ROLE_COLORS[user.role];
+              const isAdmin = user.id === DEFAULT_ADMIN.id;
+              const createdDate = new Date(user.createdAt).toLocaleDateString('vi-VN');
+              return (
+                <tr key={user.id} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3 text-[12px] font-bold text-slate-500">{idx + 1}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[13px] font-black text-white shrink-0" style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}>
+                        {user.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-[13px] font-black text-slate-800">{user.fullName}</p>
+                        {isAdmin && <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">Mặc định</span>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <code className="text-[12px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{user.username}</code>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border ${rc.bg} ${rc.text} ${rc.border}`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => toggleActive(user.id)}
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border transition-all ${user.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300' : 'bg-red-100 text-red-600 border-red-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'}`}
+                      title={user.isActive ? 'Click để vô hiệu hóa' : 'Click để kích hoạt'}
+                    >
+                      {user.isActive ? '● Hoạt động' : '○ Vô hiệu'}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-[12px] text-slate-500">{createdDate}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => openEdit(user)} className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Chỉnh sửa">
+                        <Edit2 size={14} />
+                      </button>
+                      {!isAdmin && (
+                        <button onClick={() => setDeleteConfirm(user.id)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-100" title="Xóa">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Delete confirm dialog */}
+      {deleteConfirm && (() => {
+        const user = users.find(u => u.id === deleteConfirm);
+        return (
+          <div className="fixed inset-0 z-[9997] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100">
+              <div className="px-7 py-5 bg-red-600 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center"><Trash2 className="text-white" size={20} /></div>
+                <h2 className="text-white font-black text-lg">Xác nhận xóa tài khoản</h2>
+              </div>
+              <div className="px-7 py-6">
+                <p className="text-slate-800 font-semibold">Bạn có chắc muốn xóa tài khoản <span className="font-black text-red-600">"{user?.fullName}"</span>?</p>
+                <p className="text-slate-500 text-sm mt-2">Hành động này không thể hoàn tác.</p>
+              </div>
+              <div className="px-7 pb-6 flex gap-3">
+                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all">Hủy bỏ</button>
+                <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black transition-all shadow-lg shadow-red-200">Xác nhận xóa</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Create/Edit form modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-8 py-5 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/15 rounded-xl"><Key size={20} className="text-white" /></div>
+                <div>
+                  <h3 className="text-white font-black text-lg">{editingUser ? 'Chỉnh sửa tài khoản' : 'Tạo tài khoản mới'}</h3>
+                  <p className="text-blue-200 text-[11px] font-medium">{editingUser ? `Đang sửa: ${editingUser.fullName}` : 'Điền thông tin tài khoản'}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/10 rounded-full text-white transition-colors"><X size={20} /></button>
+            </div>
+
+            {/* Body */}
+            <div className="px-8 py-6 space-y-5">
+              {/* Họ và tên */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Họ và tên <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={formFullName}
+                  onChange={e => setFormFullName(e.target.value)}
+                  placeholder="Nguyễn Văn A"
+                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
+                />
+              </div>
+
+              {/* Tên đăng nhập */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Tên đăng nhập <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={formUsername}
+                  onChange={e => setFormUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                  placeholder="username"
+                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all font-mono"
+                />
+              </div>
+
+              {/* Mật khẩu */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">
+                  Mật khẩu {editingUser ? <span className="text-slate-400 normal-case font-medium">(để trống = giữ nguyên)</span> : <span className="text-red-500">*</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={formPassword}
+                    onChange={e => setFormPassword(e.target.value)}
+                    placeholder={editingUser ? '••••••••' : 'Tối thiểu 6 ký tự'}
+                    className="w-full px-4 py-3 pr-12 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <RotateCcw size={16} /> : <Key size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Phân quyền */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Phân quyền <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-3 gap-2">
+                  {ROLES.map(role => {
+                    const rc = ROLE_COLORS[role];
+                    const selected = formRole === role;
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => setFormRole(role)}
+                        className={`py-3 rounded-xl text-[12px] font-black border-2 transition-all ${selected ? `${rc.bg} ${rc.text} ${rc.border} shadow-md scale-105` : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                      >
+                        {role}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Trạng thái */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div>
+                  <p className="text-[12px] font-black text-slate-700 uppercase tracking-widest">Kích hoạt tài khoản</p>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">Tài khoản có thể đăng nhập vào hệ thống</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormActive(p => !p)}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition duration-200 ease-in-out ${formActive ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-8 pb-6 flex gap-3">
+              <button onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all">
+                Hủy bỏ
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="flex-1 py-3 rounded-xl font-black text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}
+              >
+                <Save size={16} />
+                {editingUser ? 'Cập nhật tài khoản' : 'Tạo tài khoản'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
@@ -4636,6 +5101,19 @@ LƯU Ý:
               <Scissors size={18} className={activeSheet === 'pdf-splitter' ? "text-white" : "text-blue-300 group-hover:text-white"} />
               <span className="font-medium text-sm">Tách file PDF</span>
             </button>
+
+            <button 
+              onClick={() => { setActiveSheet('account-config'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'account-config' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <Key size={18} className={activeSheet === 'account-config' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Cấu hình tài khoản</span>
+            </button>
           </nav>
 
           <div className="pt-6 border-t border-[#1e3a5f]">
@@ -5356,6 +5834,8 @@ LƯU Ý:
           <PdfSplitterView />
         ) : activeSheet === 'geology' ? (
           <GeologyView />
+        ) : activeSheet === 'account-config' ? (
+          <AccountConfigView />
         ) : (
           <SummaryView 
             history={history} 
