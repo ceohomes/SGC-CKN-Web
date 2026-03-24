@@ -47,7 +47,8 @@ import {
   FileDown,
   ArrowRight,
   Sparkles,
-  CircleDot
+  CircleDot,
+  UserCheck
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1249,7 +1250,12 @@ const SmartDateInput = ({
 // ══════════════════════════════════════════════════════════════
 // AccountConfigView — Cấu hình tài khoản
 // ══════════════════════════════════════════════════════════════
-function AccountConfigView({ history, appProjects, currentUser }: { history: ExtractionResult[]; appProjects: AppProject[]; currentUser: AppUser | null }) {
+function AccountConfigView({ history, appProjects, currentUser, onImpersonate }: { 
+  history: ExtractionResult[]; 
+  appProjects: AppProject[]; 
+  currentUser: AppUser | null;
+  onImpersonate?: (user: AppUser) => void;
+}) {
   const ROLES: UserRole[] = ['admin', 'QS-QC', 'P. TQT'];
   const ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
     'admin':   { bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300' },
@@ -1618,6 +1624,15 @@ function AccountConfigView({ history, appProjects, currentUser }: { history: Ext
                   <td className="px-4 py-3 text-center text-[12px] text-slate-500 border-r border-slate-200">{createdDate}</td>
                   <td className="px-4 py-3 border-r border-slate-200">
                     <div className="flex items-center justify-center gap-2">
+                      {currentUser?.role === 'admin' && user.id !== currentUser.id && (
+                        <button 
+                          onClick={() => onImpersonate?.(user)} 
+                          className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all border border-emerald-100" 
+                          title="Xem giao diện tài khoản này"
+                        >
+                          <UserCheck size={14} />
+                        </button>
+                      )}
                       {(currentUser?.role === 'admin' || currentUser?.id === user.id) && (
                         <button onClick={() => openEdit(user)} className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all border border-sky-100" title="Chỉnh sửa">
                           <Edit2 size={14} />
@@ -1959,6 +1974,7 @@ export default function App() {
 
   // ── Auth state ──
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [originalAdmin, setOriginalAdmin] = useState<AppUser | null>(null); // To switch back
   const [isLoginScreen, setIsLoginScreen] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -1980,6 +1996,22 @@ export default function App() {
   const showToast = (message: string, type: 'success' | 'error' | 'loading', duration = 3000) => {
     setToast({ message, type });
     if (type !== 'loading') setTimeout(() => setToast(null), duration);
+  };
+
+  const handleImpersonate = (user: AppUser) => {
+    if (currentUser && currentUser.role === 'admin') {
+      setOriginalAdmin(currentUser);
+      setCurrentUser(user);
+      showToast(`Đang xem giao diện của ${user.fullName} (${user.role})`, 'success');
+    }
+  };
+
+  const handleStopImpersonation = () => {
+    if (originalAdmin) {
+      setCurrentUser(originalAdmin);
+      setOriginalAdmin(null);
+      showToast(`Đã quay lại tài khoản Admin`, 'success');
+    }
   };
 
   // ── visibleHistory: lọc theo phân quyền dự án của QS-QC ──
@@ -5969,6 +6001,29 @@ LƯU Ý:
           )}
         </div>
       </header>
+      
+      {/* ── Impersonation Banner ── */}
+      {originalAdmin && (
+        <div className="bg-emerald-600 text-white px-6 py-3 flex items-center justify-between shadow-lg z-[45] animate-in slide-in-from-top duration-300 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-xl animate-pulse">
+              <UserCheck size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-black uppercase tracking-tight">Chế độ xem thử (Impersonation)</p>
+              <p className="text-[11px] text-emerald-100 font-medium">
+                Đang xem giao diện của: <span className="font-black text-white">{currentUser?.fullName}</span> | Vai trò: <span className="font-black text-white uppercase">{currentUser?.role}</span>
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={handleStopImpersonation}
+            className="px-5 py-2 bg-white text-emerald-700 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-md active:scale-95"
+          >
+            Quay lại Admin
+          </button>
+        </div>
+      )}
 
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
@@ -6651,7 +6706,12 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'account-config' ? (
-          <AccountConfigView history={history} appProjects={projects} currentUser={currentUser} />
+          <AccountConfigView 
+            history={history} 
+            appProjects={projects} 
+            currentUser={currentUser} 
+            onImpersonate={handleImpersonate}
+          />
         ) : (
           <SummaryView 
             history={visibleHistory} 
@@ -8174,13 +8234,35 @@ function SummaryView({
     return projs.map(proj => {
       const recs = selectedWeekRecords.filter(r => r.project === proj);
       const totalPiles = recs.length;
-      const totalDepth = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0), 0);
-      const totalDuration = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0), 0);
+      const totalDepth = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.lengthMeters||0),0),0);
+      const totalDuration = recs.reduce((s, r) => s + (r.layers||[]).reduce((ls,l)=>ls+(l.durationHours||0),0),0);
       const avgSpeed = totalDuration > 0 ? totalDepth / totalDuration : 0;
       const diameters = [...new Set(recs.map(r=>r.diameter).filter(Boolean))].join(', ');
+      const machines = [...new Set(recs.map(r=>r.reportNumber).filter(Boolean))].join(', ');
       const items = [...new Set(recs.map(r=>r.item||r.componentName).filter(Boolean))];
-      return { proj, totalPiles, totalDepth, totalDuration, avgSpeed, diameters, items, recs };
+      return { proj, totalPiles, totalDepth, totalDuration, avgSpeed, diameters, machines, items, recs };
     }).sort((a,b) => b.totalPiles - a.totalPiles);
+  }, [selectedWeekRecords]);
+
+  // ── Thống kê chi tiết theo Máy khoan từng dự án ──
+  const weeklyMachineStats = React.useMemo(() => {
+    const stats: { proj: string; machine: string; piles: number; depth: number; duration: number }[] = [];
+    selectedWeekRecords.forEach(r => {
+      const proj = r.project || '—';
+      const machine = r.reportNumber || '—';
+      const depth = (r.layers || []).reduce((s, l) => s + (l.lengthMeters || 0), 0);
+      const duration = (r.layers || []).reduce((s, l) => s + (l.durationHours || 0), 0);
+      
+      let existing = stats.find(s => s.proj === proj && s.machine === machine);
+      if (existing) {
+        existing.piles += 1;
+        existing.depth += depth;
+        existing.duration += duration;
+      } else {
+        stats.push({ proj, machine, piles: 1, depth, duration });
+      }
+    });
+    return stats.sort((a, b) => a.proj.localeCompare(b.proj, 'vi') || b.piles - a.piles);
   }, [selectedWeekRecords]);
 
   if (history.length === 0) return (
@@ -8542,7 +8624,7 @@ function SummaryView({
                             tCell.alignment = center;
                             tCell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
 
-                            sh.mergeCells(`${colLetter(startCol)}${startRow+1}:${colLetter(startCol + 2)}${startRow+2}`);
+                            sh.mergeCells(`${colLetter(startCol)}${startRow+1}:${colLetter(startCol + 2)}${startRow+1}`);
                             const pCell = sh.getCell(`${colLetter(startCol)}${startRow+1}`);
                             pCell.value = `${stats.piles} cọc`;
                             pCell.fill = solidFill(bg) as any;
@@ -8553,7 +8635,7 @@ function SummaryView({
                             const labels = ['Chiều sâu', 'Thời gian', 'Vận tốc TB'];
                             const values = [`${fmtN(stats.depth)} m`, `${fmtN(stats.dur, 1)} h`, stats.dur > 0 ? `${fmtN(stats.depth / stats.dur, 2)} m/h` : '—'];
                             labels.forEach((label, i) => {
-                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+3}`);
+                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+2}`);
                               c.value = label;
                               c.fill = solidFill('FFFFFFFF') as any;
                               c.font = { size: 8, color: { argb: 'FF64748B' } };
@@ -8561,7 +8643,7 @@ function SummaryView({
                               c.border = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
                             });
                             values.forEach((val, i) => {
-                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+4}`);
+                              const c = sh.getCell(`${colLetter(startCol + i)}${startRow+3}`);
                               c.value = val;
                               c.fill = solidFill('FFFFFFFF') as any;
                               c.font = { bold: true, size: 10, color: { argb: accent } };
@@ -8591,11 +8673,10 @@ function SummaryView({
                             drawSummaryBlock(sh1, 1, totalStartRow, 'LŨY KẾ ĐẾN TUẦN TRƯỚC', prevTotalStats, 'FFDCFCE7', 'FF166534', 'FF15803D');
                             drawSummaryBlock(sh1, 4, totalStartRow, 'THỰC HIỆN TUẦN NÀY', totalWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
                             drawSummaryBlock(sh1, 7, totalStartRow, 'LŨY KẾ ĐẾN TUẦN NÀY', cumTotalStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
-                            sh1.getRow(totalStartRow).height = 20;
-                            sh1.getRow(totalStartRow+1).height = 30;
-                            sh1.getRow(totalStartRow+2).height = 30;
-                            sh1.getRow(totalStartRow+3).height = 16;
-                            sh1.getRow(totalStartRow+4).height = 22;
+                            sh1.getRow(totalStartRow).height = 18;
+                            sh1.getRow(totalStartRow+1).height = 32;
+                            sh1.getRow(totalStartRow+2).height = 15;
+                            sh1.getRow(totalStartRow+3).height = 20;
                           }
 
                           sh1.columns = [{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
@@ -8603,7 +8684,7 @@ function SummaryView({
                           // Helper nhúng ảnh biểu đồ — rộng bằng mép bảng col 0→9
                           // anchorRow: row index (0-based) nơi ảnh bắt đầu
                           const embedChart = (sh: any, base64img: string, anchorRow: number) => {
-                            const NUM_ROWS = 18;
+                            const NUM_ROWS = 12;
                             const ROW_H_PT = 20;
                             const iid = wb.addImage({ base64: base64img.replace(/^data:image\/png;base64,/, ''), extension: 'png' });
                             sh.addImage(iid, {
@@ -8617,8 +8698,8 @@ function SummaryView({
                             }
                           };
 
-                          // Nhúng ảnh biểu đồ tổng hợp — bắt đầu ngay sau block 5 dòng (totalStartRow+5-1 = index 0-based)
-                          embedChart(sh1, imgAll, sh1.rowCount + 5);
+                          // Nhúng ảnh biểu đồ tổng hợp — bắt đầu ngay sau block summary
+                          embedChart(sh1, imgAll, sh1.rowCount + 1);
 
                           // ══════════════════════════════════════════════
                           // CHI TIẾT TỪNG DỰ ÁN
@@ -8655,11 +8736,76 @@ function SummaryView({
                             drawSummaryBlock(sh1, 4, startRow, 'THỰC HIỆN TUẦN NÀY', projWeekStats, ORANGE_BG.substring(2), 'FF9A3412', 'FFEA580C');
                             drawSummaryBlock(sh1, 7, startRow, 'LŨY KẾ ĐẾN TUẦN NÀY', projCumStats, BLUE_BG.substring(2), 'FF1E40AF', 'FF2563EB');
 
-                            sh1.getRow(startRow).height = 20; sh1.getRow(startRow+1).height = 30; sh1.getRow(startRow+2).height = 30; sh1.getRow(startRow+3).height = 16; sh1.getRow(startRow+4).height = 22;
+                            sh1.getRow(startRow).height = 18; sh1.getRow(startRow+1).height = 32; sh1.getRow(startRow+2).height = 15; sh1.getRow(startRow+3).height = 20;
 
                             // Thêm biểu đồ cho từng dự án
                             const projImg = drawBarChartEx(buildChartRowsEx(projName), [projName], `So coc theo tung tuan - Du an: ${projName} - Nam ${weeklyYear}`);
-                            embedChart(sh1, projImg, startRow + 4);
+                            embedChart(sh1, projImg, sh1.rowCount + 1);
+
+                            // ── BẢNG THỐNG KÊ NĂNG SUẤT MÁY KHOAN (THEO DỰ ÁN) ──
+                            const projMachineStats = weeklyMachineStats.filter(ms => ms.proj === projName);
+                            if (projMachineStats.length > 0) {
+                              sh1.addRow([]); // Spacer
+                              const rPMHeader = sh1.addRow(['THỐNG KÊ NĂNG SUẤT MÁY KHOAN TRONG TUẦN']);
+                              sh1.mergeCells(`A${sh1.rowCount}:F${sh1.rowCount}`);
+                              rPMHeader.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+                              rPMHeader.getCell(1).fill = solidFill('FF1E3A6E') as any;
+                              rPMHeader.getCell(1).alignment = center;
+                              rPMHeader.height = 22;
+
+                              const pMHdr = ['Máy khoan', '', 'Số cọc', 'Tổng MD (m)', 'Tổng TG (h)', 'Vận tốc TB (m/h)'];
+                              const rPMH = sh1.addRow(pMHdr);
+                              sh1.mergeCells(`A${sh1.rowCount}:B${sh1.rowCount}`);
+                              rPMH.height = 20;
+                              rPMH.eachCell((c: any) => {
+                                c.fill = navyFill('FF334155') as any;
+                                c.font = boldWhite(9);
+                                c.alignment = center;
+                                c.border = { bottom: thinBorder, right: thinBorder };
+                              });
+
+                              projMachineStats.forEach((ms, idx) => {
+                                const row = sh1.addRow([
+                                  ms.machine,
+                                  '',
+                                  ms.piles,
+                                  parseFloat(ms.depth.toFixed(1)),
+                                  parseFloat(ms.duration.toFixed(1)),
+                                  ms.duration > 0 ? parseFloat((ms.depth / ms.duration).toFixed(2)) : 0
+                                ]);
+                                sh1.mergeCells(`A${sh1.rowCount}:B${sh1.rowCount}`);
+                                row.height = 18;
+                                row.eachCell((c: any, ci: number) => {
+                                  c.font = { size: 9, color: { argb: 'FF1E293B' } };
+                                  c.alignment = ci === 1 ? left : center;
+                                  c.border = { bottom: thinBorder, right: thinBorder };
+                                  if (idx % 2 === 0) c.fill = solidFill('FFF8FAFC') as any;
+                                });
+                              });
+
+                              // Dòng tổng cộng dự án
+                              const rPMTot = sh1.addRow([
+                                'TỔNG CỘNG',
+                                '',
+                                projMachineStats.reduce((s, m) => s + m.piles, 0),
+                                parseFloat(projMachineStats.reduce((s, m) => s + m.depth, 0).toFixed(1)),
+                                parseFloat(projMachineStats.reduce((s, m) => s + m.duration, 0).toFixed(1)),
+                                (() => {
+                                  const td = projMachineStats.reduce((s, m) => s + m.depth, 0);
+                                  const tt = projMachineStats.reduce((s, m) => s + m.duration, 0);
+                                  return tt > 0 ? parseFloat((td / tt).toFixed(2)) : 0;
+                                })()
+                              ]);
+                              sh1.mergeCells(`A${sh1.rowCount}:B${sh1.rowCount}`);
+                              rPMTot.height = 20;
+                              rPMTot.eachCell((c: any) => {
+                                c.font = { bold: true, size: 9, color: { argb: 'FF1E3A6E' } };
+                                c.fill = solidFill('FFEFF6FF') as any;
+                                c.alignment = center;
+                                c.border = { top: thinBorder, bottom: thinBorder, right: thinBorder };
+                              });
+                            }
+                            sh1.addRow([]); // Spacer
                           });
 
                           // Define print area to only show data area dynamically
@@ -8957,7 +9103,7 @@ function SummaryView({
                             cbSub.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
 
                             // Header
-                            const HDRS_CB = ['#', 'Dự án', 'Số hiệu cọc', 'Đường kính', 'Ngày kết thúc', 'Đoạn chậm (Lớp — Vận tốc — Mô tả)', 'Tốc độ thấp nhất'];
+                            const HDRS_CB = ['#', 'Dự án', 'Máy khoan', 'Số hiệu cọc', 'Đường kính', 'Ngày kết thúc', 'Đoạn chậm (Lớp — Vận tốc — Mô tả)', 'Tốc độ thấp nhất'];
                             const hdrCB = wsCB.addRow(HDRS_CB);
                             hdrCB.height = 24;
                             hdrCB.eachCell((c: any, ci: number) => {
@@ -8969,7 +9115,7 @@ function SummaryView({
 
                             if (slowInWeek.length === 0) {
                               const noRow = wsCB.addRow(['', '✅ Không có cọc nào có vận tốc khoan thấp trong tuần này']);
-                              wsCB.mergeCells(noRow.number, 2, noRow.number, 7);
+                              wsCB.mergeCells(noRow.number, 2, noRow.number, 8);
                               noRow.getCell(2).font = { size: 10, color: { argb: 'FF166534' }, bold: true };
                               noRow.getCell(2).fill = solidFill('FFF0FDF4') as any;
                               noRow.height = 22;
@@ -8982,19 +9128,19 @@ function SummaryView({
                                 ).join('\n');
                                 const rowBg = si % 2 === 0 ? 'FFFFFFFF' : 'FFFFF1F1';
                                 const dataRow = wsCB.addRow([
-                                  si + 1, r.project, r.pileId || '—', r.diameter || '—',
+                                  si + 1, r.project, r.reportNumber || '—', r.pileId || '—', r.diameter || '—',
                                   r.constructionEnd || '—', slowDesc,
                                   parseFloat(minSpd.toFixed(2)),
                                 ]);
                                 dataRow.height = Math.max(20, slowLayers.length * 18);
                                 dataRow.eachCell((c: any, ci: number) => {
-                                  c.fill = solidFill(ci === 7 ? 'FFFEE2E2' : rowBg) as any;
+                                  c.fill = solidFill(ci === 8 ? 'FFFEE2E2' : rowBg) as any;
                                   c.font = {
-                                    size: ci === 3 ? 10 : 9,
-                                    bold: ci === 3 || ci === 7,
-                                    color: { argb: ci === 3 ? 'FFB91C1C' : ci === 7 ? 'FFDC2626' : 'FF1E293B' }
+                                    size: ci === 4 ? 10 : 9,
+                                    bold: ci === 4 || ci === 8,
+                                    color: { argb: ci === 4 ? 'FFB91C1C' : ci === 8 ? 'FFDC2626' : 'FF1E293B' }
                                   };
-                                  c.alignment = { vertical: 'middle', horizontal: ci === 2 || ci === 6 ? 'left' : 'center', wrapText: ci === 6 };
+                                  c.alignment = { vertical: 'middle', horizontal: ci === 2 || ci === 3 || ci === 7 ? 'left' : 'center', wrapText: ci === 7 };
                                   c.border = { bottom: thinBorder, right: thinBorder };
                                 });
                               });
@@ -9008,10 +9154,10 @@ function SummaryView({
 
                               const sumRow = wsCB.addRow([
                                 '', `Tổng kết tuần ${weekNo}: ${slowInWeek.length}/${selectedWeekRecords.length} cọc có đoạn chậm · ${totalSlowLayers} đoạn < 1 m/h`,
-                                '', '', '', '', `Thấp nhất: ${minAll} m/h`
+                                '', '', '', '', '', `Thấp nhất: ${minAll} m/h`
                               ]);
                               sumRow.height = 22;
-                              wsCB.mergeCells(sumRow.number, 2, sumRow.number, 5);
+                              wsCB.mergeCells(sumRow.number, 2, sumRow.number, 6);
                               sumRow.eachCell((c: any) => {
                                 c.fill = solidFill('FFFECACA') as any;
                                 c.font = { bold: true, size: 9, color: { argb: 'FF7F1D1D' } };
@@ -9455,6 +9601,111 @@ function SummaryView({
                                       })()}
                                     </ResponsiveContainer>
                                   </div>
+
+                                  {/* ── Bảng thống kê Máy khoan cho Dự án này ── */}
+                                  <div className="px-4 pb-8">
+                                    <div className="max-w-5xl mx-auto bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md">
+                                      {/* Header của bảng - Style đồng nhất tuyệt đối với Cấp đất đá */}
+                                      <div className="px-6 py-4 border-b-2 border-slate-400 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
+                                        <div className="flex items-center gap-2.5">
+                                          <Activity size={18} className="text-blue-300" />
+                                          <h4 className="text-[12px] font-black text-white uppercase tracking-widest">
+                                            Năng suất Máy khoan
+                                          </h4>
+                                        </div>
+                                        <div className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg backdrop-blur-sm flex flex-col items-end">
+                                          <span className="text-[10px] font-bold text-white uppercase tracking-widest leading-tight">Tuần {weekNo}</span>
+                                          <span className="text-[9px] font-medium text-blue-100/80 leading-tight mt-0.5">{fmtDate(weekStart)} → {fmtDate(thu5)}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                          <thead>
+                                            <tr style={{ background: '#fff3e0' }}>
+                                              <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-8">STT</th>
+                                              <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-orange-200">Máy khoan</th>
+                                              <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-14">Số cọc</th>
+                                              <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Tổng MD (m)</th>
+                                              <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">T.Gian (h)</th>
+                                              <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-18">V.TB (m/h)</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-slate-200">
+                                            {(() => {
+                                              const mStats: { machine: string; piles: number; depth: number; duration: number }[] = [];
+                                              projWeek.forEach(r => {
+                                                const m = r.reportNumber || '—';
+                                                const d = (r.layers || []).reduce((s, l) => s + (l.lengthMeters || 0), 0);
+                                                const t = (r.layers || []).reduce((s, l) => s + (l.durationHours || 0), 0);
+                                                let ex = mStats.find(s => s.machine === m);
+                                                if (ex) {
+                                                  ex.piles += 1; ex.depth += d; ex.duration += t;
+                                                } else {
+                                                  mStats.push({ machine: m, piles: 1, depth: d, duration: t });
+                                                }
+                                              });
+                                              
+                                              const sortedStats = mStats.sort((a,b) => b.piles - a.piles);
+                                              
+                                              return sortedStats.map((ms, idx) => {
+                                                const avgSpd = ms.duration > 0 ? ms.depth / ms.duration : 0;
+                                                const isSlow = avgSpd > 0 && avgSpd < 1;
+                                                const isFast = avgSpd >= 5;
+                                                const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                                                
+                                                return (
+                                                  <tr key={ms.machine} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors">
+                                                    <td className="px-1 py-3 text-[12px] text-slate-800 text-center border border-slate-200 font-medium">{idx + 1}</td>
+                                                    <td className="px-3 py-3 text-[12px] border border-slate-200">
+                                                      <span className="text-[11px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-100 shadow-sm">
+                                                        {ms.machine}
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{ms.piles}</td>
+                                                    <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{formatNumber(ms.depth, 2)}</td>
+                                                    <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{formatNumber(ms.duration, 2)}</td>
+                                                    <td className="px-1 py-3 text-center border border-slate-200">
+                                                      <span className={cn(
+                                                        "inline-block px-3 py-0.5 rounded-full text-[12px] font-black min-w-[52px] text-center",
+                                                        isSlow ? "bg-red-500 text-white shadow-sm" :
+                                                        isFast ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                                        "bg-orange-100 text-orange-700 border border-orange-200"
+                                                      )}>
+                                                        {ms.duration > 0 ? formatNumber(ms.depth/ms.duration, 2) : '—'}
+                                                      </span>
+                                                    </td>
+                                                  </tr>
+                                                );
+                                              });
+                                            })()}
+                                          </tbody>
+                                          <tfoot>
+                                            {(() => {
+                                              const totalPiles = projWeek.length;
+                                              const totalDepth = projWeek.reduce((s, r) => s + (r.layers || []).reduce((ss, l) => ss + (l.lengthMeters || 0), 0), 0);
+                                              const totalDuration = projWeek.reduce((s, r) => s + (r.layers || []).reduce((ss, l) => ss + (l.durationHours || 0), 0), 0);
+                                              const totalAvg = totalDuration > 0 ? totalDepth / totalDuration : 0;
+                                              
+                                              return (
+                                                <tr style={{ background: '#f1f5f9', borderTop: '2px solid #94a3b8' }}>
+                                                  <td colSpan={2} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
+                                                  <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalPiles}</td>
+                                                  <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{formatNumber(totalDepth, 2)}</td>
+                                                  <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{formatNumber(totalDuration, 2)}</td>
+                                                  <td className="px-1 py-3 text-center border border-slate-300">
+                                                    <span className="inline-block px-4 py-1 bg-blue-700 text-white rounded-full text-[12px] font-black shadow">
+                                                      {totalAvg > 0 ? formatNumber(totalAvg, 2) : '—'}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })()}
+                                          </tfoot>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             })()}
@@ -9466,50 +9717,6 @@ function SummaryView({
                 })()}
 
                 {/* ── Biểu đồ cột: số cọc theo từng tuần — đã chuyển vào trong từng card dự án ── */}
-
-                {/* Per-project pile list */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {weeklyProjectStats.map((ps, idx) => {
-                    const accentColors = ['border-blue-700','border-blue-700','border-blue-700','border-blue-700','border-blue-700','border-blue-700'];
-                    const pillColors = ['bg-blue-500','bg-orange-500','bg-emerald-500','bg-violet-500','bg-amber-500','bg-cyan-500'];
-                    return (
-                      <div key={ps.proj} className={`bg-white border-2 ${accentColors[idx % accentColors.length]} rounded-2xl overflow-hidden shadow-sm`}>
-                        <div className="px-4 py-3 border-b border-blue-900 flex items-center justify-between" style={{background:'linear-gradient(135deg,#1a3a6b 0%,#1e4480 100%)'}}>
-                          <div>
-                            <p className="text-[11px] font-black text-white">{ps.proj}</p>
-                            <p className="text-[9px] text-blue-200 font-medium mt-0.5">{ps.totalPiles} cọc · {formatNumber(ps.totalDepth, 1)}m · {formatNumber(ps.avgSpeed, 2)} m/h</p>
-                          </div>
-                          <span className={`text-[11px] font-black text-white ${pillColors[idx % pillColors.length]} px-3 py-1 rounded-full`}>{ps.totalPiles} cọc</span>
-                        </div>
-                        <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                          {ps.recs.map((r, ri) => {
-                            const depth = (r.layers||[]).reduce((s,l)=>s+(l.lengthMeters||0),0);
-                            const dur = (r.layers||[]).reduce((s,l)=>s+(l.durationHours||0),0);
-                            const spd = dur > 0 ? depth/dur : 0;
-                            const hasSlowLayer = (r.layers||[]).slice(0, -2).some(l => l.speedMph > 0 && l.speedMph < 1);
-                            return (
-                              <div key={r.id} className={`px-4 py-2.5 flex items-center gap-3 transition-colors group ${hasSlowLayer ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'}`}>
-                                <span className="text-[9px] font-black text-slate-400 w-4 shrink-0">{ri+1}</span>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-black text-slate-800 truncate">{r.pileId || r.componentName || '—'}</span>
-                                    {r.diameter && <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.diameter}</span>}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    {r.constructionEnd && <span className="text-[9px] text-slate-400 font-medium">{r.constructionEnd}</span>}
-                                    <span className="text-[9px] font-bold text-slate-600">{formatNumber(depth,1)}m</span>
-                                    {spd > 0 && <span className={`text-[9px] font-bold ${spd >= 1 ? 'text-emerald-600' : 'text-red-600'}`}>{formatNumber(spd,2)} m/h</span>}
-                                  </div>
-                                </div>
-                                <button onClick={()=>onEdit(r)} className="opacity-0 group-hover:opacity-100 text-[9px] font-black px-2 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-600 hover:text-white transition-all">Xem</button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
 
                 {/* ── Cảnh báo vận tốc thấp trong tuần (Bỏ qua 2 lớp cuối mỗi biên bản) ── */}
                 {(() => {
@@ -9546,6 +9753,7 @@ function SummaryView({
                             <tr className="bg-red-100 border-b border-red-200">
                               <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">#</th>
                               <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Dự án</th>
+                              <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Máy khoan</th>
                               <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Số hiệu cọc</th>
                               <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Đường kính</th>
                               <th className="px-4 py-2.5 text-[9px] font-black text-red-700 uppercase tracking-widest">Ngày kết thúc</th>
@@ -9564,6 +9772,9 @@ function SummaryView({
                                   <td className="px-4 py-3">
                                     <p className="text-[11px] font-black text-slate-800 max-w-[180px] truncate">{r.project || '—'}</p>
                                     <p className="text-[9px] text-slate-400 font-medium truncate max-w-[180px]">{r.item || r.componentName || ''}</p>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-[11px] font-black text-orange-600">{r.reportNumber || '—'}</span>
                                   </td>
                                   <td className="px-4 py-3">
                                     <span className="text-[12px] font-black text-red-700">{r.pileId || '—'}</span>
