@@ -1288,7 +1288,7 @@ function AccountConfigView() {
     setEditingUser(user);
     setFormFullName(user.fullName);
     setFormUsername(user.username);
-    setFormPassword(''); // don't show existing hash
+    setFormPassword('');
     setFormRole(user.role);
     setFormActive(user.isActive);
     setShowPassword(false);
@@ -1296,7 +1296,6 @@ function AccountConfigView() {
   };
 
   const handleSubmit = () => {
-    if (!formFullName.trim()) { showLocalToast('Vui lòng nhập họ và tên', 'error'); return; }
     if (!formUsername.trim()) { showLocalToast('Vui lòng nhập tên đăng nhập', 'error'); return; }
 
     const existingByUsername = users.find(u => u.username === formUsername.trim() && u.id !== editingUser?.id);
@@ -1305,11 +1304,14 @@ function AccountConfigView() {
     if (!editingUser && !formPassword.trim()) { showLocalToast('Vui lòng nhập mật khẩu', 'error'); return; }
     if (formPassword.trim() && formPassword.trim().length < 6) { showLocalToast('Mật khẩu phải ít nhất 6 ký tự', 'error'); return; }
 
+    // fullName = username nếu không có
+    const finalFullName = formUsername.trim();
+
     let newUsers: AppUser[];
     if (editingUser) {
       newUsers = users.map(u => u.id === editingUser.id ? {
         ...u,
-        fullName: formFullName.trim(),
+        fullName: finalFullName,
         username: formUsername.trim(),
         passwordHash: formPassword.trim() ? simpleHash(formPassword.trim()) : u.passwordHash,
         role: formRole,
@@ -1318,7 +1320,7 @@ function AccountConfigView() {
     } else {
       const newUser: AppUser = {
         id: crypto.randomUUID(),
-        fullName: formFullName.trim(),
+        fullName: finalFullName,
         username: formUsername.trim(),
         passwordHash: simpleHash(formPassword.trim()),
         role: formRole,
@@ -1422,7 +1424,6 @@ function AccountConfigView() {
           <thead>
             <tr style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
               <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">#</th>
-              <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Họ và tên</th>
               <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest">Tên đăng nhập</th>
               <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Phân quyền</th>
               <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Trạng thái</th>
@@ -1433,7 +1434,7 @@ function AccountConfigView() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-16 text-slate-400">
+                <td colSpan={6} className="text-center py-16 text-slate-400">
                   <div className="flex flex-col items-center gap-3">
                     <Search size={32} className="opacity-30" />
                     <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy tài khoản</p>
@@ -1450,16 +1451,13 @@ function AccountConfigView() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[13px] font-black text-white shrink-0" style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}>
-                        {user.fullName.charAt(0).toUpperCase()}
+                        {user.username.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-[13px] font-black text-slate-800">{user.fullName}</p>
+                        <p className="text-[13px] font-black text-slate-800">{user.username}</p>
                         {isAdmin && <span className="text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">Mặc định</span>}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <code className="text-[12px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{user.username}</code>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black border ${rc.bg} ${rc.text} ${rc.border}`}>
@@ -1536,27 +1534,16 @@ function AccountConfigView() {
 
             {/* Body */}
             <div className="px-8 py-6 space-y-5">
-              {/* Họ và tên */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Họ và tên <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={formFullName}
-                  onChange={e => setFormFullName(e.target.value)}
-                  placeholder="Nguyễn Văn A"
-                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
-                />
-              </div>
-
               {/* Tên đăng nhập */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-slate-700 uppercase tracking-widest">Tên đăng nhập <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={formUsername}
-                  onChange={e => setFormUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                  placeholder="username"
-                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all font-mono"
+                  onChange={e => setFormUsername(e.target.value)}
+                  placeholder="Nguyễn Văn A"
+                  className="w-full px-4 py-3 border-2 border-slate-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all"
+                  autoFocus
                 />
               </div>
 
