@@ -1412,9 +1412,10 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
         fullName: finalFullName,
         username: formUsername.trim(),
         passwordHash: formPassword.trim() ? simpleHash(formPassword.trim()) : u.passwordHash,
-        role: formRole,
-        isActive: formActive,
-        assignedProjects: formAssignedProjects,
+        // Chỉ Admin mới được sửa role, isActive và assignedProjects
+        role: currentUser?.role === 'admin' ? formRole : u.role,
+        isActive: currentUser?.role === 'admin' ? formActive : u.isActive,
+        assignedProjects: currentUser?.role === 'admin' ? formAssignedProjects : u.assignedProjects,
       } : u);
     } else {
       const newUser: AppUser = {
@@ -1775,20 +1776,26 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
                         {proj}
                         <button
                           type="button"
-                          onClick={() => setFormAssignedProjects(prev => prev.filter(p => p !== proj))}
-                          className="ml-0.5 hover:bg-white/20 rounded transition-colors"
+                          onClick={() => currentUser?.role === 'admin' && setFormAssignedProjects(prev => prev.filter(p => p !== proj))}
+                          disabled={currentUser?.role !== 'admin'}
+                          className={cn(
+                            "ml-0.5 hover:bg-white/20 rounded transition-colors",
+                            currentUser?.role !== 'admin' && "hidden"
+                          )}
                         >
                           <X size={11} />
                         </button>
                       </span>
                     ))}
-                    <button
-                      type="button"
-                      onClick={() => setFormAssignedProjects([])}
-                      className="text-[10px] font-bold text-blue-500 hover:text-red-500 px-1 transition-colors ml-auto"
-                    >
-                      Xóa hết
-                    </button>
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => setFormAssignedProjects([])}
+                        className="text-[10px] font-bold text-blue-500 hover:text-red-500 px-1 transition-colors ml-auto"
+                      >
+                        Xóa hết
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1836,13 +1843,15 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
                       <button
                         type="button"
                         onClick={() => {
+                          if (currentUser?.role !== 'admin') return;
                           if (formAssignedProjects.length === allProjects.length) {
                             setFormAssignedProjects([]);
                           } else {
                             setFormAssignedProjects([...allProjects]);
                           }
                         }}
-                        className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors border-b border-slate-100"
+                        disabled={currentUser?.role !== 'admin'}
+                        className={`w-full flex items-center gap-2 px-4 py-2 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors border-b border-slate-100 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${formAssignedProjects.length === allProjects.length ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
                           {formAssignedProjects.length === allProjects.length && <CheckCircle2 size={10} className="text-white" />}
@@ -1860,12 +1869,14 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
                             <button
                               key={proj}
                               type="button"
+                              disabled={currentUser?.role !== 'admin'}
                               onClick={() => {
+                                if (currentUser?.role !== 'admin') return;
                                 setFormAssignedProjects(prev =>
                                   isSelected ? prev.filter(p => p !== proj) : [...prev, proj]
                                 );
                               }}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors text-left ${isSelected ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors text-left ${isSelected ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-700 hover:bg-slate-50'} ${currentUser?.role !== 'admin' ? 'cursor-not-allowed opacity-60' : ''}`}
                             >
                               <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
                                 {isSelected && <CheckCircle2 size={10} className="text-white" />}
@@ -8246,23 +8257,24 @@ function SummaryView({
 
   // ── Thống kê chi tiết theo Máy khoan từng dự án ──
   const weeklyMachineStats = React.useMemo(() => {
-    const stats: { proj: string; machine: string; piles: number; depth: number; duration: number }[] = [];
+    const stats: { proj: string; machine: string; diameter: string; piles: number; depth: number; duration: number }[] = [];
     selectedWeekRecords.forEach(r => {
       const proj = r.project || '—';
       const machine = r.reportNumber || '—';
+      const diameter = r.diameter || '—';
       const depth = (r.layers || []).reduce((s, l) => s + (l.lengthMeters || 0), 0);
       const duration = (r.layers || []).reduce((s, l) => s + (l.durationHours || 0), 0);
       
-      let existing = stats.find(s => s.proj === proj && s.machine === machine);
+      let existing = stats.find(s => s.proj === proj && s.machine === machine && s.diameter === diameter);
       if (existing) {
         existing.piles += 1;
         existing.depth += depth;
         existing.duration += duration;
       } else {
-        stats.push({ proj, machine, piles: 1, depth, duration });
+        stats.push({ proj, machine, diameter, piles: 1, depth, duration });
       }
     });
-    return stats.sort((a, b) => a.proj.localeCompare(b.proj, 'vi') || b.piles - a.piles);
+    return stats.sort((a, b) => a.proj.localeCompare(b.proj, 'vi') || a.machine.localeCompare(b.machine, 'vi') || b.piles - a.piles);
   }, [selectedWeekRecords]);
 
   if (history.length === 0) return (
@@ -8747,13 +8759,13 @@ function SummaryView({
                             if (projMachineStats.length > 0) {
                               sh1.addRow([]); // Spacer
                               const rPMHeader = sh1.addRow(['THỐNG KÊ NĂNG SUẤT MÁY KHOAN TRONG TUẦN']);
-                              sh1.mergeCells(`A${sh1.rowCount}:F${sh1.rowCount}`);
+                              sh1.mergeCells(`A${sh1.rowCount}:G${sh1.rowCount}`);
                               rPMHeader.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
                               rPMHeader.getCell(1).fill = solidFill('FF1E3A6E') as any;
                               rPMHeader.getCell(1).alignment = center;
                               rPMHeader.height = 22;
 
-                              const pMHdr = ['Máy khoan', '', 'Số cọc', 'Tổng MD (m)', 'Tổng TG (h)', 'Vận tốc TB (m/h)'];
+                              const pMHdr = ['Máy khoan', '', 'Đường kính', 'Số cọc', 'Tổng MD (m)', 'Tổng TG (h)', 'Vận tốc TB (m/h)'];
                               const rPMH = sh1.addRow(pMHdr);
                               sh1.mergeCells(`A${sh1.rowCount}:B${sh1.rowCount}`);
                               rPMH.height = 20;
@@ -8768,6 +8780,7 @@ function SummaryView({
                                 const row = sh1.addRow([
                                   ms.machine,
                                   '',
+                                  ms.diameter,
                                   ms.piles,
                                   parseFloat(ms.depth.toFixed(1)),
                                   parseFloat(ms.duration.toFixed(1)),
@@ -8787,6 +8800,7 @@ function SummaryView({
                               const rPMTot = sh1.addRow([
                                 'TỔNG CỘNG',
                                 '',
+                                '',
                                 projMachineStats.reduce((s, m) => s + m.piles, 0),
                                 parseFloat(projMachineStats.reduce((s, m) => s + m.depth, 0).toFixed(1)),
                                 parseFloat(projMachineStats.reduce((s, m) => s + m.duration, 0).toFixed(1)),
@@ -8796,7 +8810,7 @@ function SummaryView({
                                   return tt > 0 ? parseFloat((td / tt).toFixed(2)) : 0;
                                 })()
                               ]);
-                              sh1.mergeCells(`A${sh1.rowCount}:B${sh1.rowCount}`);
+                              sh1.mergeCells(`A${sh1.rowCount}:C${sh1.rowCount}`);
                               rPMTot.height = 20;
                               rPMTot.eachCell((c: any) => {
                                 c.font = { bold: true, size: 9, color: { argb: 'FF1E3A6E' } };
@@ -9625,6 +9639,7 @@ function SummaryView({
                                             <tr style={{ background: '#fff3e0' }}>
                                               <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-8">STT</th>
                                               <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 border border-orange-200">Máy khoan</th>
+                                              <th className="px-3 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-24">Đường kính</th>
                                               <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-14">Số cọc</th>
                                               <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">Tổng MD (m)</th>
                                               <th className="px-1 py-3 text-[11px] font-black uppercase tracking-wider text-slate-800 text-center border border-orange-200 w-20">T.Gian (h)</th>
@@ -9633,20 +9648,21 @@ function SummaryView({
                                           </thead>
                                           <tbody className="divide-y divide-slate-200">
                                             {(() => {
-                                              const mStats: { machine: string; piles: number; depth: number; duration: number }[] = [];
+                                              const mStats: { machine: string; diameter: string; piles: number; depth: number; duration: number }[] = [];
                                               projWeek.forEach(r => {
                                                 const m = r.reportNumber || '—';
+                                                const dia = r.diameter || '—';
                                                 const d = (r.layers || []).reduce((s, l) => s + (l.lengthMeters || 0), 0);
                                                 const t = (r.layers || []).reduce((s, l) => s + (l.durationHours || 0), 0);
-                                                let ex = mStats.find(s => s.machine === m);
+                                                let ex = mStats.find(s => s.machine === m && s.diameter === dia);
                                                 if (ex) {
                                                   ex.piles += 1; ex.depth += d; ex.duration += t;
                                                 } else {
-                                                  mStats.push({ machine: m, piles: 1, depth: d, duration: t });
+                                                  mStats.push({ machine: m, diameter: dia, piles: 1, depth: d, duration: t });
                                                 }
                                               });
                                               
-                                              const sortedStats = mStats.sort((a,b) => b.piles - a.piles);
+                                              const sortedStats = mStats.sort((a,b) => a.machine.localeCompare(b.machine, 'vi') || b.piles - a.piles);
                                               
                                               return sortedStats.map((ms, idx) => {
                                                 const avgSpd = ms.duration > 0 ? ms.depth / ms.duration : 0;
@@ -9655,13 +9671,14 @@ function SummaryView({
                                                 const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
                                                 
                                                 return (
-                                                  <tr key={ms.machine} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors">
+                                                  <tr key={`${ms.machine}-${ms.diameter}`} style={{ background: rowBg }} className="hover:bg-blue-50/40 transition-colors">
                                                     <td className="px-1 py-3 text-[12px] text-slate-800 text-center border border-slate-200 font-medium">{idx + 1}</td>
                                                     <td className="px-3 py-3 text-[12px] border border-slate-200">
                                                       <span className="text-[11px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-100 shadow-sm">
                                                         {ms.machine}
                                                       </span>
                                                     </td>
+                                                    <td className="px-3 py-3 text-[12px] font-semibold text-slate-800 text-center border border-slate-200">{ms.diameter}</td>
                                                     <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{ms.piles}</td>
                                                     <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{formatNumber(ms.depth, 2)}</td>
                                                     <td className="px-1 py-3 text-[12px] font-bold text-slate-700 text-center border border-slate-200">{formatNumber(ms.duration, 2)}</td>
@@ -9689,7 +9706,7 @@ function SummaryView({
                                               
                                               return (
                                                 <tr style={{ background: '#f1f5f9', borderTop: '2px solid #94a3b8' }}>
-                                                  <td colSpan={2} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
+                                                  <td colSpan={3} className="px-5 py-3 text-[12px] font-black text-slate-900 uppercase tracking-widest border border-slate-300">Tổng hợp toàn bộ</td>
                                                   <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{totalPiles}</td>
                                                   <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{formatNumber(totalDepth, 2)}</td>
                                                   <td className="px-1 py-3 text-[12px] font-black text-slate-900 text-center border border-slate-300">{formatNumber(totalDuration, 2)}</td>
