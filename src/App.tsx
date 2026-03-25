@@ -4678,17 +4678,14 @@ export default function App() {
         }));
 
         // Optimistic UI update app_projects ngay lập tức (không chờ Supabase)
+        let capturedProjId: string | null = null;
         if (setResField && getResField) {
           const proj = projects.find(p => p.name.trim() === oldVal.trim());
           if (proj) {
+            capturedProjId = proj.id; // lưu id trước khi setState để tránh bug closure
             const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
             setProjects(updatedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
-            // Sync Supabase ngay lập tức (không chờ biên bản)
-            if (supabase) {
-              supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id)
-                .then(({ error }) => { if (error) console.error('[Supabase] Update project name:', error); });
-            }
             showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
           }
         }
@@ -4726,16 +4723,11 @@ export default function App() {
               }
             } catch {}
             if (errorCount === 0) {
-              // Sync app_projects lên Supabase (optimistic UI đã làm trước rồi)
-              if (setResField && getResField && supabase) {
+              // Sync app_projects lên Supabase dùng capturedProjId (tránh bug closure state cũ)
+              if (capturedProjId && supabase) {
                 try {
-                  const proj = projects.find(p => p.name.trim() === oldVal.trim()) ||
-                               projects.find(p => p.name.trim() === newVal.trim());
-                  if (proj) {
-                    supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(
-                      ({ error }) => { if (error) console.error('[Supabase] Update project error:', error); }
-                    );
-                  }
+                  const { error: projUpdateErr } = await supabase.from('app_projects').update({ name: newVal }).eq('id', capturedProjId);
+                  if (projUpdateErr) console.error('[Supabase] Update project error:', projUpdateErr);
                 } catch {}
               }
               setSyncStatus('done');
