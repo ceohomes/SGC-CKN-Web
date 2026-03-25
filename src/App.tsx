@@ -4307,13 +4307,14 @@ export default function App() {
         localStorage.setItem('sgc_app_items', JSON.stringify(updated));
         setNewItemName('');
         if (supabase) {
-          await supabase.from('app_items').insert([{
+          const { error: insErr } = await supabase.from('app_items').insert([{
             id: newItem.id,
             project_id: newItem.projectId,
             name: newItem.name,
             created_at: newItem.createdAt,
             created_by: newItem.createdBy,
           }]);
+          if (insErr) { console.error('[Supabase] Insert item error:', insErr); throw new Error(insErr.message); }
         }
         showToast(`Đã thêm hạng mục "${trimmed}"`, 'success');
       } catch (e: any) {
@@ -4636,7 +4637,9 @@ export default function App() {
                     localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
                     // Sync Supabase nếu bảng đã tồn tại
                     if (supabase) {
-                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(() => {}, () => {});
+                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(
+                                ({ error }) => { if (error) console.error('[Supabase] Update project error:', error); }
+                              );
                     }
                   }
                 } catch {}
@@ -5056,15 +5059,18 @@ LƯU Ý:
         localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
         setNewProjectName('');
         if (supabase) {
-          try {
-            await supabase.from('app_projects').insert([{
+          const { error: projErr } = await supabase.from('app_projects').insert([{
               id: newProj.id,
               name: newProj.name,
               created_at: newProj.createdAt,
               created_by: newProj.createdBy,
             }]);
-            showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
-          } catch { showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ).`, 'success'); }
+            if (projErr) {
+              console.error('[Supabase] Insert project error:', projErr);
+              showToast(`⚠️ Tạo cục bộ nhưng lỗi sync Supabase: ${projErr.message}`, 'error');
+            } else {
+              showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+            }
         } else { showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success'); }
       } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
     };
@@ -5089,13 +5095,14 @@ LƯU Ý:
         localStorage.setItem('sgc_app_items', JSON.stringify(updated));
         setNewItemName('');
         if (supabase) {
-          await supabase.from('app_items').insert([{
+          const { error: insErr } = await supabase.from('app_items').insert([{
             id: newItem.id,
             project_id: newItem.projectId,
             name: newItem.name,
             created_at: newItem.createdAt,
             created_by: newItem.createdBy,
           }]);
+          if (insErr) { console.error('[Supabase] Insert item error:', insErr); throw new Error(insErr.message); }
         }
         showToast(`✅ Đã tạo hạng mục "${trimmed}" thành công!`, 'success');
       } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
@@ -5628,11 +5635,18 @@ LƯU Ý:
                                       const updated = projects.filter(p => p.id !== proj.id);
                                       setProjects(updated);
                                       localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
-                                      // Sync Supabase (bỏ qua nếu bảng chưa tồn tại)
+                                      // Sync Supabase
                                       if (supabase) {
-                                        supabase.from('app_projects').delete().eq('id', proj.id).then(() => {}, () => {});
+                                        const { error: delErr } = await supabase.from('app_projects').delete().eq('id', proj.id);
+                                        if (delErr) {
+                                          console.error('[Supabase] Delete project error:', delErr);
+                                          showToast(`⚠️ Xóa cục bộ nhưng lỗi sync: ${delErr.message}`, 'error');
+                                        } else {
+                                          showToast(`Đã xóa dự án "${row.value}"`, 'success');
+                                        }
+                                      } else {
+                                        showToast(`Đã xóa dự án "${row.value}"`, 'success');
                                       }
-                                      showToast(`Đã xóa dự án "${row.value}"`, 'success');
                                     }}
                                     className="p-1.5 bg-red-50 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all border border-red-100 inline-flex items-center justify-center"
                                   >
