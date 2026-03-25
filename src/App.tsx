@@ -4535,7 +4535,7 @@ export default function App() {
   }
 
   // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
-    const GeologyView = () => {
+    const GeologyView = ({ editingKey: stableEditingKey, setEditingKey: setStableEditingKey, editValue: stableEditValue, setEditValue: setStableEditValue }: { editingKey: string|null, setEditingKey: (v:string|null)=>void, editValue: string, setEditValue: (v:string)=>void }) => {
       type DataTab = 'geology' | 'project' | 'diameter';
       const activeTab = geologyChuanHoaTab;
       const setActiveTab = setGeologyChuanHoaTab;
@@ -5643,12 +5643,9 @@ LƯU Ý:
                     <tbody>
                       {colRows.map((row, rowIdx) => {
                         const globalIdx = colIdx * ROWS_PER_COL + rowIdx;
-                        // Dùng stableEditingKey từ component level để tránh reset khi re-render
-                        const isEditing = activeTab === 'project'
-                          ? stableEditingKey === row.value
-                          : editingKey === row.value;
+                        // Dùng stable state từ props (component cha) — không bị reset khi re-render
+                        const isEditing = stableEditingKey === row.value;
                         const isSaving = savingKey === row.value;
-                        const currentEditVal = activeTab === 'project' ? stableEditValue : editValue;
                         const rowBg = globalIdx % 2 === 0 ? '#f1f5f9' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/50 transition-colors">
@@ -5659,47 +5656,31 @@ LƯU Ý:
                                   <input
                                     autoFocus
                                     className="flex-1 border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                    value={currentEditVal}
-                                    onChange={e => activeTab === 'project' ? setStableEditValue(e.target.value) : setEditValue(e.target.value)}
+                                    value={stableEditValue}
+                                    onChange={e => setStableEditValue(e.target.value)}
                                     onKeyDown={e => {
                                       if (e.key === 'Enter') {
-                                        if (activeTab === 'project') {
-                                          commitEdit(row.value, stableEditValue);
-                                          setStableEditingKey(null);
-                                          setStableEditValue('');
-                                        } else {
-                                          commitEdit(row.value);
-                                        }
+                                        commitEdit(row.value, stableEditValue);
+                                        setStableEditingKey(null);
+                                        setStableEditValue('');
                                       }
                                       if (e.key === 'Escape') {
-                                        if (activeTab === 'project') {
-                                          setStableEditingKey(null);
-                                          setStableEditValue('');
-                                        } else {
-                                          cancelEdit();
-                                        }
+                                        setStableEditingKey(null);
+                                        setStableEditValue('');
                                       }
                                     }}
                                   />
                                   <button onClick={() => {
-                                    if (activeTab === 'project') {
-                                      commitEdit(row.value, stableEditValue);
-                                      setStableEditingKey(null);
-                                      setStableEditValue('');
-                                    } else {
-                                      commitEdit(row.value);
-                                    }
+                                    commitEdit(row.value, stableEditValue);
+                                    setStableEditingKey(null);
+                                    setStableEditValue('');
                                   }}
                                     className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
                                     <CheckCircle2 size={11} /> Lưu
                                   </button>
                                   <button onClick={() => {
-                                    if (activeTab === 'project') {
-                                      setStableEditingKey(null);
-                                      setStableEditValue('');
-                                    } else {
-                                      cancelEdit();
-                                    }
+                                    setStableEditingKey(null);
+                                    setStableEditValue('');
                                   }}
                                     className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-lg font-semibold transition-colors">
                                     <X size={11} /> Hủy
@@ -5710,12 +5691,8 @@ LƯU Ý:
                                   <div 
                                     className="flex items-center gap-1.5 cursor-pointer flex-1" 
                                     onClick={() => {
-                                      if (activeTab === 'project') {
-                                        setStableEditingKey(row.value);
-                                        setStableEditValue(row.value);
-                                      } else {
-                                        startEdit(row.value);
-                                      }
+                                      setStableEditingKey(row.value);
+                                      setStableEditValue(row.value);
                                     }}
                                     title="Click để chỉnh sửa"
                                   >
@@ -7398,7 +7375,7 @@ LƯU Ý:
         ) : activeSheet === 'pdf-splitter' ? (
           <PdfSplitterView />
         ) : activeSheet === 'geology' ? (
-          currentUser?.role === 'admin' ? <GeologyView /> : (
+          currentUser?.role === 'admin' ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
