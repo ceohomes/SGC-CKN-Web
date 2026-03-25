@@ -3842,12 +3842,12 @@ export default function App() {
       const r0_1 = ws0.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
       r0_1.height = 30;
       cell(r0_1.getCell(1), r0_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-      ws0.mergeCells(r0_1.number, 1, r0_1.number, 13);
-      const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'Sheet ảnh'];
+      ws0.mergeCells(r0_1.number, 1, r0_1.number, 12);
+      const HDRS0 = ['STT', 'Dự án', 'Hạng mục', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Bắt đầu', 'Kết thúc', 'Chiều dài (m)', 'T.Gian TC (h)', 'Vận tốc TB (m/h)', 'Sheet ảnh'];
       const r0_2 = ws0.addRow(HDRS0);
       r0_2.height = 25;
       HDRS0.forEach((h, ci) => cell(r0_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-      ws0.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+      ws0.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 12 } };
 
       rows.forEach((res, idx) => {
         const reportStt = (res as any).displayStt || (rows.length - idx);
@@ -3857,12 +3857,12 @@ export default function App() {
         // Tên sheet ảnh cho biên bản này
         const sheetName = `BB${reportStt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
         const row = ws0.addRow([
-          reportStt, res.project, res.item, res.componentName, res.pileId,
+          reportStt, res.project, res.item, res.pileId,
           res.reportNumber, res.diameter, res.constructionStart, res.constructionEnd,
           parseFloat(totalLen.toFixed(2)), parseFloat(totalDur.toFixed(2)), parseFloat(avgSpeed.toFixed(2)),
           { text: `→ ${sheetName}`, hyperlink: `#'${sheetName}'!A1` }
         ]);
-        for (let ci = 1; ci <= 13; ci++) {
+        for (let ci = 1; ci <= 12; ci++) {
           const c = row.getCell(ci);
           const isText = [2, 3, 4, 6].includes(ci);
           const isLink = ci === 13;
@@ -3883,7 +3883,7 @@ export default function App() {
       r1_1.height = 30;
       cell(r1_1.getCell(1), r1_1.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
       ws1.mergeCells(r1_1.number, 1, r1_1.number, 17);
-      const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
+      const HDRS1 = ['STT', 'Dự án', 'Hạng mục', 'Số hiệu', 'Tên Máy khoan', 'ĐC thực tế', 'Đường kính', 'Mô tả lớp thiết kế', 'Từ (h)', 'Đến (h)', 'Cao độ từ', 'Cao độ đến', 'T.Gian (h)', 'Dài (m)', 'V (m/h)', 'Ghi chú'];
       const r2_1 = ws1.addRow(HDRS1);
       r2_1.height = 25;
       HDRS1.forEach((h, ci) => cell(r2_1.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
@@ -3895,7 +3895,7 @@ export default function App() {
         const reportStt = (res as any).displayStt || (rows.length - idx);
         (res.layers || []).forEach((layer) => {
           const row = ws1.addRow([
-            reportStt, res.project, res.item, res.componentName, res.pileId,
+            reportStt, res.project, res.item, res.pileId,
             res.reportNumber, getGeoDisplay(layer), res.diameter, layer.layerDesign,
             layer.timeFrom + ' ' + layer.dateFrom, layer.timeTo + ' ' + layer.dateTo,
             layer.elevationFrom, layer.elevationTo,
@@ -3921,12 +3921,12 @@ export default function App() {
       const r1_2 = ws2.addRow(['THỐNG KÊ THEO LỚP THIẾT KẾ - TỪNG BIÊN BẢN']);
       r1_2.height = 30;
       cell(r1_2.getCell(1), r1_2.getCell(1).value, '1E3A6E', 'FFFFFF', true, 'center', 14);
-      ws2.mergeCells(r1_2.number, 1, r1_2.number, 13);
-      const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Tên bộ phận', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
+      ws2.mergeCells(r1_2.number, 1, r1_2.number, 12);
+      const HDRS2 = ['STT', 'Dự án', 'Hạng mục', 'Số hiệu', 'Tên Máy khoan', 'Đường kính', 'Ký hiệu ĐC', 'Mô tả lớp thiết kế', 'Số mẫu', 'Tổng Dài (m)', 'Tổng T.Gian (h)', 'V.TB (m/h)'];
       const r2_2 = ws2.addRow(HDRS2);
       r2_2.height = 25;
       HDRS2.forEach((h, ci) => cell(r2_2.getCell(ci + 1), h, '1E3A6E', 'FFFFFF', true, 'center', 10, true));
-      ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+      ws2.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 12 } };
       [2, 3, 4, 6, 9].forEach(col => {
         ws2.getColumn(col).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
       });
@@ -3945,12 +3945,12 @@ export default function App() {
         Object.values(perReportStats).forEach((stat: any) => {
           const avg = stat.totalDur > 0 ? stat.totalLen / stat.totalDur : 0;
           const row = ws2.addRow([
-            reportStt, res.project, res.item, res.componentName, res.pileId,
+            reportStt, res.project, res.item, res.pileId,
             res.reportNumber, res.diameter, stat.code, stat.design, stat.segments,
             parseFloat(stat.totalLen.toFixed(2)), parseFloat(stat.totalDur.toFixed(2)), parseFloat(avg.toFixed(2)),
           ]);
           const wrapCols = [2, 3, 4, 6, 9];
-          for (let ci = 1; ci <= 13; ci++) {
+          for (let ci = 1; ci <= 12; ci++) {
             const c = row.getCell(ci);
             const shouldWrap = wrapCols.includes(ci);
             cell(c, c.value, undefined, '1E293B', false, shouldWrap ? 'left' : 'center', 9, shouldWrap);
@@ -5504,7 +5504,7 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border-2 border-slate-400 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-sm overflow-hidden">
             <div className="flex gap-0 divide-x divide-slate-200">
               {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
@@ -5581,7 +5581,7 @@ LƯU Ý:
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
                                     return it.projectId === proj?.id;
                                   }).slice(0, 5).map(it => (
-                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100 uppercase tracking-tight">
+                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100 normal-case">
                                       {it.name}
                                     </span>
                                   ))}
@@ -6856,16 +6856,7 @@ LƯU Ý:
                           </div>
                         );
                       })()}
-                      {/* Tên bộ phận */}
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Tên bộ phận</label>
-                        <div className="relative border border-slate-200 rounded-xl bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all">
-                          <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          <input value={filterComponentName} onChange={e => setFilterComponentName(e.target.value)} placeholder="Tìm kiếm tên bộ phận..."
-                            className="w-full pl-9 pr-9 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
-                          {filterComponentName && <button onClick={() => setFilterComponentName('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
-                        </div>
-                      </div>
+
                       {/* Số hiệu cọc */}
                       <div className="space-y-2">
                         <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Số hiệu cọc</label>
@@ -6946,7 +6937,6 @@ LƯU Ý:
                           <th className="text-center w-12">STT</th>
                           <th>Dự án</th>
                           <th>Hạng mục</th>
-                          <th>Tên bộ phận</th>
                           <th>Số hiệu</th>
                           <th>Tên Máy khoan</th>
                           <th>Đường kính</th>
@@ -6962,7 +6952,7 @@ LƯU Ý:
                       <tbody>
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={14} className="text-center py-16 text-slate-400">
+                            <td colSpan={13} className="text-center py-16 text-slate-400">
                               <div className="flex flex-col items-center gap-3">
                                 <Search size={32} className="opacity-30" />
                                 <p className="text-sm font-bold uppercase tracking-widest">Không tìm thấy kết quả</p>
@@ -6975,7 +6965,6 @@ LƯU Ý:
                             <td className="text-center font-bold text-blue-700 text-xs">{(item as any).displayStt}</td>
                             <td className="font-normal text-blue-900">{item.project}</td>
                             <td className="text-slate-900 font-normal">{item.item}</td>
-                            <td className="text-slate-900 font-normal">{item.componentName}</td>
                             <td className="font-normal text-blue-900 text-center">{item.pileId}</td>
                             <td className="font-normal text-slate-900">{item.reportNumber}</td>
                             <td className="font-normal text-slate-900 text-center">{item.diameter}</td>
@@ -9227,14 +9216,14 @@ function SummaryView({
                           {
                             const titleRow = wsDTC.addRow(['BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG']);
                             titleRow.height = 30;
-                            wsDTC.mergeCells(1, 1, 1, 13);
+                            wsDTC.mergeCells(1, 1, 1, 12);
                             const tc = titleRow.getCell(1);
                             tc.value = 'BẢNG TỔNG HỢP DỮ LIỆU THI CÔNG';
                             tc.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 14 };
                             tc.fill = solidFill('FF1E3A6E') as any;
                             tc.alignment = center;
 
-                            const HDRS = ['STT','Dự án','Hạng mục','Tên bộ phận','Số hiệu','Tên Máy khoan','Đường kính','Bắt đầu','Kết thúc','Chiều dài (m)','T.Gian TC (h)','Vận tốc TB (m/h)','Sheet ảnh'];
+                            const HDRS = ['STT','Dự án','Hạng mục','Số hiệu','Tên Máy khoan','Đường kính','Bắt đầu','Kết thúc','Chiều dài (m)','T.Gian TC (h)','Vận tốc TB (m/h)','Sheet ảnh'];
                             const hdrRow = wsDTC.addRow(HDRS);
                             hdrRow.height = 25;
                             hdrRow.eachCell((c: any, ci: number) => {
@@ -9243,7 +9232,7 @@ function SummaryView({
                               c.alignment = { ...center, wrapText: true };
                               c.border = { bottom: thinBorder, right: thinBorder };
                             });
-                            wsDTC.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 13 } };
+                            wsDTC.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 12 } };
 
                             // Sắp xếp theo ngày kết thúc giảm dần (mới nhất lên trên)
                             const sortedRecs = [...selectedWeekRecords].sort((a: any, b: any) => {
@@ -9258,7 +9247,7 @@ function SummaryView({
                               const rawName = `BB${stt}_${(res.pileId || '').replace(/[^\w]/g, '').slice(0, 10)}`;
                               const sheetName = rawName.slice(0, 31);
                               const row = wsDTC.addRow([
-                                stt, res.project, res.item, res.componentName, res.pileId,
+                                stt, res.project, res.item, res.pileId,
                                 res.reportNumber, res.diameter, res.constructionStart, res.constructionEnd,
                                 parseFloat(totalLen.toFixed(2)), parseFloat(totalDur.toFixed(2)), parseFloat(avgSpeed.toFixed(2)),
                                 { text: `→ ${sheetName}`, hyperlink: `#'${sheetName}'!A1` }
