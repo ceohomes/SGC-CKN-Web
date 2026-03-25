@@ -5738,7 +5738,7 @@ LƯU Ý:
                                       const proj = projects.find(p => p.name.trim() === row.value.trim());
                                       if (proj) setManagingItemsProject(proj);
                                     }}
-                                    className="ml-auto px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-bold shadow-sm"
+                                    className="ml-auto px-2 py-1 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-bold shadow-sm text-slate-900 border border-teal-200" style={{background:"#ccfbf1"}}
                                     title="Quản lý hạng mục"
                                   >
                                     <Layers size={10} />
