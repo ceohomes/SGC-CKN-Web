@@ -5192,6 +5192,12 @@ LƯU Ý:
     const handleCreateMachine = async () => {
       const trimmed = newMachineName.trim();
       if (!trimmed) return;
+      // Kiểm tra trùng tên
+      const isDuplicate = drillingMachines.some(m => m.name.trim().toLowerCase() === trimmed.toLowerCase());
+      if (isDuplicate) {
+        showToast(`⚠️ Máy khoan "${trimmed}" đã tồn tại! Vui lòng nhập tên khác.`, 'error', 3500);
+        return;
+      }
       setIsSavingNewProject(true);
       try {
         const newMachine: AppDrillingMachine = {
@@ -5868,6 +5874,12 @@ LƯU Ý:
             const newName = window.prompt(`Đổi tên máy khoan:`, oldName);
             if (!newName || newName.trim() === '' || newName.trim() === oldName) return;
             const trimmed = newName.trim();
+            // Kiểm tra trùng tên với máy khoan khác
+            const isDuplicate = drillingMachines.some(m => m.id !== machineId && m.name.trim().toLowerCase() === trimmed.toLowerCase());
+            if (isDuplicate) {
+              showToast(`⚠️ Máy khoan "${trimmed}" đã tồn tại! Vui lòng nhập tên khác.`, 'error', 3500);
+              return;
+            }
 
             // 1. Optimistic update danh sách máy khoan
             const updatedMachines = drillingMachines.map(m => m.id === machineId ? { ...m, name: trimmed } : m);
@@ -11001,6 +11013,58 @@ function SummaryView({
           </div>
         </div>
       )}
+
+      {/* ── Cảnh báo cọc không có thông tin máy khoan ── */}
+      {(() => {
+        const missingMachine = history.filter(r => !r.reportNumber || r.reportNumber.trim() === '');
+        if (missingMachine.length === 0) return null;
+        return (
+          <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-1.5 bg-amber-500 rounded-lg">
+                <AlertCircle size={16} className="text-white" />
+              </div>
+              <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-widest">
+                Cảnh báo: Cọc chưa có thông tin máy khoan
+              </h4>
+              <span className="ml-auto bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                {missingMachine.length} cọc
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-700 font-medium mb-4">
+              Các biên bản dưới đây <strong>chưa được gán tên máy khoan</strong>. Vui lòng cập nhật thông tin để đảm bảo dữ liệu đầy đủ.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] border-collapse">
+                <thead>
+                  <tr className="bg-amber-100 border-b border-amber-200">
+                    <th className="px-3 py-2 text-left font-black text-amber-800 w-10">STT</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Số hiệu cọc</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Dự án</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Hạng mục</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Đường kính</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Bắt đầu</th>
+                    <th className="px-3 py-2 text-left font-black text-amber-800">Kết thúc</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {missingMachine.map((rec, idx) => (
+                    <tr key={rec.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/50'}>
+                      <td className="px-3 py-2 text-amber-700 font-mono font-bold border-b border-amber-100">{idx + 1}</td>
+                      <td className="px-3 py-2 font-bold text-slate-900 border-b border-amber-100">{rec.pileId || '—'}</td>
+                      <td className="px-3 py-2 text-slate-700 border-b border-amber-100">{rec.project || '—'}</td>
+                      <td className="px-3 py-2 text-slate-700 border-b border-amber-100">{rec.item || '—'}</td>
+                      <td className="px-3 py-2 text-slate-700 border-b border-amber-100">{rec.diameter || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600 border-b border-amber-100 whitespace-nowrap">{rec.constructionStart || '—'}</td>
+                      <td className="px-3 py-2 text-slate-600 border-b border-amber-100 whitespace-nowrap">{rec.constructionEnd || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Bảng Tổng hợp thống kê theo Cấp đất đá ── */}
       <div className="bg-white border-2 border-slate-400 rounded-3xl overflow-hidden shadow-md mt-8">
