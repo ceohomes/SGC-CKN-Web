@@ -4678,16 +4678,33 @@ export default function App() {
         }));
 
         // Optimistic UI update app_projects ngay lập tức (không chờ Supabase)
+        // Capture đầy đủ thông tin trước khi setState (tránh bug closure)
         let capturedProjId: string | null = null;
+        let projWasInDb = false;
         if (setResField && getResField) {
           const proj = projects.find(p => p.name.trim() === oldVal.trim());
           if (proj) {
-            capturedProjId = proj.id; // lưu id trước khi setState để tránh bug closure
+            // Project đã có trong app_projects state (từ DB hoặc localStorage)
+            capturedProjId = proj.id;
+            projWasInDb = true;
             const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
             setProjects(updatedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
-            showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
+          } else {
+            // Project chỉ tồn tại trong history (chưa có trong app_projects) -> tạo mới
+            capturedProjId = crypto.randomUUID();
+            projWasInDb = false;
+            const newProjEntry: AppProject = {
+              id: capturedProjId,
+              name: newVal,
+              createdAt: new Date().toISOString(),
+              createdBy: currentUser?.username || 'admin',
+            };
+            const updatedProjects = [...projects, newProjEntry];
+            setProjects(updatedProjects);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
           }
+          showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
         }
 
         cancelEdit();
@@ -4726,9 +4743,26 @@ export default function App() {
               // Sync app_projects lên Supabase dùng capturedProjId (tránh bug closure state cũ)
               if (capturedProjId && supabase) {
                 try {
-                  const { error: projUpdateErr } = await supabase.from('app_projects').update({ name: newVal }).eq('id', capturedProjId);
-                  if (projUpdateErr) console.error('[Supabase] Update project error:', projUpdateErr);
-                } catch {}
+                  // Dùng upsert để xử lý cả INSERT lẫn UPDATE trong 1 lần gọi
+                  // on_conflict: nếu id đã tồn tại thì UPDATE name, chưa tồn tại thì INSERT
+                  const upsertPayload = {
+                    id: capturedProjId,
+                    name: newVal,
+                    created_at: new Date().toISOString(),
+                    created_by: currentUser?.username || 'admin',
+                  };
+                  const { error: upsertErr, status: upsertStatus } = await supabase
+                    .from('app_projects')
+                    .upsert(upsertPayload, { onConflict: 'id' });
+                  if (upsertErr) {
+                    console.error('[Supabase] Upsert project error:', upsertErr, 'HTTP status:', upsertStatus);
+                    showToast(`⚠️ Lỗi lưu dự án lên server (${upsertStatus}): ${upsertErr.message}`, 'error', 6000);
+                  } else {
+                    console.log('[Supabase] Project upsert OK, id:', capturedProjId, 'name:', newVal);
+                  }
+                } catch (syncErr: any) {
+                  console.error('[Supabase] Project sync exception:', syncErr);
+                }
               }
               setSyncStatus('done');
               showToast(`✅ Đã cập nhật "${newVal}" trong ${toUpdateList.length} biên bản!`, 'success', 3000);
