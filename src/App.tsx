@@ -5611,8 +5611,8 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border-2 border-slate-800 shadow-sm overflow-hidden">
-            <div className="flex gap-0 divide-x divide-slate-800">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+            <div className="flex gap-0 divide-x divide-slate-100">
               {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
@@ -5633,8 +5633,8 @@ LƯU Ý:
                         const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-700">{globalIdx + 1}</td>
-                            <td className={cn("px-3 py-2.5 border border-slate-700", activeTab === 'project' ? "w-[350px]" : "")}>
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-b border-r border-slate-100">{globalIdx + 1}</td>
+                            <td className={cn("px-3 py-2.5 border-b border-r border-slate-100", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -5682,7 +5682,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-3 py-2.5 border border-slate-700">
+                              <td className="px-3 py-2.5 border-b border-r border-slate-100">
                                 <div className="flex flex-wrap gap-1 items-center">
                                   {items.filter(it => {
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
@@ -5715,7 +5715,7 @@ LƯU Ý:
                                 </div>
                               </td>
                             )}
-                            <td className="px-3 py-2.5 text-center border border-slate-700">
+                            <td className="px-3 py-2.5 text-center border-b border-r border-slate-100">
                               {row.count > 0 ? (
                                 <button 
                                   onClick={() => showReportsForItem(row.value)}
@@ -5730,7 +5730,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-2 py-2.5 text-center border border-slate-700">
+                              <td className="px-2 py-2.5 text-center border-b border-r border-slate-100">
                                 {row.count === 0 && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
@@ -5810,7 +5810,7 @@ LƯU Ý:
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`flex-shrink-0 w-56 bg-slate-50 border-2 rounded-2xl overflow-hidden transition-colors ${snapshot.isDraggingOver ? 'border-amber-400 bg-amber-50/50' : 'border-slate-800'}`}
+                        className={`flex-shrink-0 w-56 bg-slate-50 border rounded-2xl overflow-hidden transition-colors shadow-sm ${snapshot.isDraggingOver ? 'border-amber-400 bg-amber-50/50' : 'border-slate-200 shadow-sm'}`}
                       >
                         <div className="px-3 py-2.5 bg-slate-200 border-b border-slate-300 flex items-center justify-between">
                           <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Chưa phân bổ</span>
@@ -5824,7 +5824,7 @@ LƯU Ý:
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
-                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-400 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-800 hover:border-amber-500'}`}
+                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-400 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-200 hover:border-amber-400 hover:shadow'}`}
                                 >
                                   <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
                                   {machine.name}
@@ -5858,7 +5858,7 @@ LƯU Ý:
                           <div
                             ref={provided.innerRef}
                             {...provided.droppableProps}
-                            className={`flex-shrink-0 min-w-[14rem] max-w-xs border-2 rounded-2xl overflow-hidden transition-colors bg-white ${snapshot.isDraggingOver ? `${c.drag} border-2` : 'border-slate-800'}`}
+                            className={`flex-shrink-0 min-w-[14rem] max-w-xs border rounded-2xl overflow-hidden transition-colors bg-white shadow-sm ${snapshot.isDraggingOver ? `${c.drag} border-2` : 'border-slate-200 shadow-sm'}`}
                           >
                             <div className={`px-3 py-2.5 border-b flex items-center justify-between gap-2 ${c.header}`}>
                               <span className={`text-[11px] font-black uppercase tracking-wider leading-tight ${c.text}`}>{proj.name}</span>
@@ -5872,7 +5872,7 @@ LƯU Ý:
                                       ref={provided.innerRef}
                                       {...provided.draggableProps}
                                       {...provided.dragHandleProps}
-                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-800 hover:border-blue-500'}`}
+                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-200 hover:border-blue-400 hover:shadow'}`}
                                     >
                                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
                                       {machine.name}
