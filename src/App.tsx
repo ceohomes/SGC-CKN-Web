@@ -1967,6 +1967,7 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
 
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
+  const [geologyChuanHoaTab, setGeologyChuanHoaTab] = useState<'geology' | 'project' | 'diameter'>('geology');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -4273,7 +4274,9 @@ export default function App() {
     setItems, 
     supabase, 
     currentUser, 
-    showToast 
+    showToast,
+    history,
+    setHistory,
   }: { 
     project: AppProject; 
     onClose: () => void; 
@@ -4282,6 +4285,8 @@ export default function App() {
     supabase: any; 
     currentUser: any; 
     showToast: (msg: string, type: 'success' | 'error') => void;
+    history: ExtractionResult[];
+    setHistory: React.Dispatch<React.SetStateAction<ExtractionResult[]>>;
   }) {
     const [newItemName, setNewItemName] = useState('');
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -4327,16 +4332,52 @@ export default function App() {
     const handleUpdate = async (id: string) => {
       const trimmed = editValue.trim();
       if (!trimmed) return;
+      // Lấy tên cũ của hạng mục trước khi đổi
+      const oldItem = items.find(it => it.id === id);
+      const oldName = oldItem?.name || '';
       setIsSaving(true);
       try {
+        // 1. Cập nhật app_items
         const updated = items.map(it => it.id === id ? { ...it, name: trimmed } : it);
         setItems(updated);
         localStorage.setItem('sgc_app_items', JSON.stringify(updated));
         setEditingItemId(null);
+
+        // 2. Đồng bộ field `item` trong tất cả biên bản có tên hạng mục cũ
+        if (oldName && oldName !== trimmed) {
+          const toUpdate = history.filter(res => (res.item || '').trim() === oldName.trim());
+          if (toUpdate.length > 0) {
+            // Optimistic UI
+            setHistory(prev => prev.map(res =>
+              (res.item || '').trim() === oldName.trim() ? { ...res, item: trimmed } : res
+            ));
+            // Sync localStorage
+            try {
+              const saved = localStorage.getItem('pile_drill_history');
+              if (saved) {
+                const arr = JSON.parse(saved);
+                localStorage.setItem('pile_drill_history', JSON.stringify(
+                  arr.map((r: any) => (r.item || '').trim() === oldName.trim() ? { ...r, item: trimmed } : r)
+                ));
+              }
+            } catch {}
+            // Sync Supabase
+            if (supabase) {
+              await Promise.all(toUpdate.map(res =>
+                supabase.from('drill_extractions').update({ item: trimmed }).eq('id', res.id)
+              ));
+            }
+            showToast(`✅ Đã đổi hạng mục "${oldName}" → "${trimmed}" trong ${toUpdate.length} biên bản!`, 'success');
+          } else {
+            showToast('Đã cập nhật hạng mục', 'success');
+          }
+        } else {
+          showToast('Đã cập nhật hạng mục', 'success');
+        }
+
         if (supabase) {
           await supabase.from('app_items').update({ name: trimmed }).eq('id', id);
         }
-        showToast('Đã cập nhật hạng mục', 'success');
       } catch (e: any) {
         showToast(`Lỗi: ${e.message}`, 'error');
       } finally {
@@ -4473,7 +4514,8 @@ export default function App() {
   // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
     const GeologyView = () => {
       type DataTab = 'geology' | 'project' | 'diameter';
-      const [activeTab, setActiveTab] = React.useState<DataTab>('geology');
+      const activeTab = geologyChuanHoaTab;
+      const setActiveTab = setGeologyChuanHoaTab;
 
       const [isAiNormalizing, setIsAiNormalizing] = React.useState(false);
       const [aiSuggestions, setAiSuggestions] = React.useState<{ standardName: string; originalNames: string[] }[] | null>(null);
@@ -5504,8 +5546,8 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-sm overflow-hidden">
-            <div className="flex gap-0 divide-x divide-slate-200">
+          <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-sm overflow-hidden ring-1 ring-slate-200">
+            <div className="flex gap-0 divide-x divide-slate-300">
               {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
@@ -5526,8 +5568,8 @@ LƯU Ý:
                         const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-100">{globalIdx + 1}</td>
-                            <td className={cn("px-3 py-2.5 border border-slate-100", activeTab === 'project' ? "w-[350px]" : "")}>
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-200">{globalIdx + 1}</td>
+                            <td className={cn("px-3 py-2.5 border border-slate-200", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -5575,7 +5617,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-3 py-2.5 border border-slate-100">
+                              <td className="px-3 py-2.5 border border-slate-200">
                                 <div className="flex flex-wrap gap-1 items-center">
                                   {items.filter(it => {
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
@@ -5608,7 +5650,7 @@ LƯU Ý:
                                 </div>
                               </td>
                             )}
-                            <td className="px-3 py-2.5 text-center border border-slate-100">
+                            <td className="px-3 py-2.5 text-center border border-slate-200">
                               {row.count > 0 ? (
                                 <button 
                                   onClick={() => showReportsForItem(row.value)}
@@ -5623,7 +5665,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-2 py-2.5 text-center border border-slate-100">
+                              <td className="px-2 py-2.5 text-center border border-slate-200">
                                 {row.count === 0 && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
@@ -5751,10 +5793,10 @@ LƯU Ý:
                           <div
                             ref={provided.innerRef}
                             {...provided.droppableProps}
-                            className={`flex-shrink-0 w-56 border-2 rounded-2xl overflow-hidden transition-colors bg-white ${snapshot.isDraggingOver ? `${c.drag} border-2` : 'border-slate-200'}`}
+                            className={`flex-shrink-0 min-w-[14rem] max-w-xs border-2 rounded-2xl overflow-hidden transition-colors bg-white ${snapshot.isDraggingOver ? `${c.drag} border-2` : 'border-slate-200'}`}
                           >
-                            <div className={`px-3 py-2.5 border-b flex items-center justify-between ${c.header}`}>
-                              <span className={`text-[11px] font-black uppercase tracking-wider truncate max-w-[130px] ${c.text}`} title={proj.name}>{proj.name}</span>
+                            <div className={`px-3 py-2.5 border-b flex items-center justify-between gap-2 ${c.header}`}>
+                              <span className={`text-[11px] font-black uppercase tracking-wider leading-tight ${c.text}`}>{proj.name}</span>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${c.badge}`}>{projMachines.length}</span>
                             </div>
                             <div className="p-2 space-y-2 min-h-[120px]">
@@ -7693,6 +7735,8 @@ LƯU Ý:
           supabase={supabase}
           currentUser={currentUser}
           showToast={showToast}
+          history={history}
+          setHistory={setHistory}
         />
       )}
     </div>
