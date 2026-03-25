@@ -4322,7 +4322,11 @@ export default function App() {
 
     const projectItems = items.filter(it => it.projectId === project.id);
 
+    // Phân quyền: Admin và QS-QC được phép quản lý hạng mục
+    const canManageItems = currentUser?.role === 'admin' || currentUser?.role === 'QS-QC';
+
     const handleCreate = async () => {
+      if (!canManageItems) { showToast('Bạn không có quyền thực hiện thao tác này', 'error'); return; }
       const trimmed = newItemName.trim();
       if (!trimmed) return;
       setIsSaving(true);
@@ -4357,6 +4361,7 @@ export default function App() {
     };
 
     const handleUpdate = async (id: string) => {
+      if (!canManageItems) { showToast('Bạn không có quyền thực hiện thao tác này', 'error'); return; }
       const trimmed = editValue.trim();
       if (!trimmed) return;
       // Lấy tên cũ của hạng mục trước khi đổi
@@ -4413,6 +4418,7 @@ export default function App() {
     };
 
     const handleDelete = async (id: string, name: string) => {
+      if (!canManageItems) { showToast('Bạn không có quyền thực hiện thao tác này', 'error'); return; }
       if (!window.confirm(`Xóa hạng mục "${name}"?`)) return;
       setIsSaving(true);
       try {
@@ -4448,25 +4454,32 @@ export default function App() {
 
           <div className="p-6 space-y-6 overflow-y-auto bg-slate-50/80">
             {/* Add Form */}
-            <div className="flex gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-              <input
-                type="text"
-                autoFocus
-                value={newItemName}
-                onChange={e => setNewItemName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                placeholder="Nhập tên hạng mục mới..."
-                className="flex-1 px-4 py-2 border-2 border-slate-100 focus:border-emerald-500 rounded-xl outline-none transition-all text-sm font-medium"
-              />
-              <button
-                onClick={handleCreate}
-                disabled={!newItemName.trim() || isSaving}
-                className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Thêm
-              </button>
-            </div>
+            {canManageItems ? (
+              <div className="flex gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newItemName}
+                  onChange={e => setNewItemName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                  placeholder="Nhập tên hạng mục mới..."
+                  className="flex-1 px-4 py-2 border-2 border-slate-100 focus:border-emerald-500 rounded-xl outline-none transition-all text-sm font-medium"
+                />
+                <button
+                  onClick={handleCreate}
+                  disabled={!newItemName.trim() || isSaving}
+                  className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Thêm
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs text-amber-700 font-bold">
+                <span>🔒</span>
+                <span>Chỉ Admin và QS-QC mới có quyền quản lý hạng mục</span>
+              </div>
+            )}
 
             {/* List */}
             <div className="space-y-1">
@@ -4515,13 +4528,13 @@ export default function App() {
                               setEditingItemId(it.id);
                               setEditValue(it.name);
                             }}
-                            className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                            className={`p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${!canManageItems ? 'hidden' : ''}`}
                           >
                             <Edit2 size={16} />
                           </button>
                           <button
                             onClick={() => handleDelete(it.id, it.name)}
-                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                            className={`p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${!canManageItems ? 'hidden' : ''}`}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -5123,6 +5136,7 @@ LƯU Ý:
     const [isSavingNewProject, setIsSavingNewProject] = React.useState(false);
 
     const handleCreateProject = async () => {
+      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo dự án', 'error'); return; }
       const trimmed = newProjectName.trim();
       if (!trimmed) return;
       const exists = projects.some(p => p.name.trim().toLowerCase() === trimmed.toLowerCase());
@@ -5190,6 +5204,7 @@ LƯU Ý:
     };
 
     const handleCreateMachine = async () => {
+      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo máy khoan', 'error'); return; }
       const trimmed = newMachineName.trim();
       if (!trimmed) return;
       // Kiểm tra trùng tên
@@ -5437,19 +5452,22 @@ LƯU Ý:
         {activeTab === 'project' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Dự án */}
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest block mb-2">Tạo dự án mới</label>
+            <div className={`bg-blue-50 border border-blue-200 rounded-2xl p-4 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest block mb-2">
+                Tạo dự án mới {currentUser?.role !== 'admin' && <span className="text-red-500 normal-case font-bold ml-1">(Chỉ Admin)</span>}
+              </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newProjectName}
                   onChange={e => setNewProjectName(e.target.value)}
                   placeholder="Tên dự án..."
-                  className="flex-1 px-4 py-2 border-2 border-blue-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`flex-1 px-4 py-2 border-2 border-blue-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
                 />
                 <button
                   onClick={handleCreateProject}
-                  disabled={!newProjectName.trim() || isSavingNewProject}
+                  disabled={!newProjectName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-blue-900 whitespace-nowrap"
                 >
                   {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -5459,19 +5477,22 @@ LƯU Ý:
             </div>
 
             {/* Máy khoan */}
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-              <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest block mb-2">Tạo máy khoan mới</label>
+            <div className={`bg-amber-50 border border-amber-200 rounded-2xl p-4 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest block mb-2">
+                Tạo máy khoan mới {currentUser?.role !== 'admin' && <span className="text-red-500 normal-case font-bold ml-1">(Chỉ Admin)</span>}
+              </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newMachineName}
                   onChange={e => setNewMachineName(e.target.value)}
                   placeholder="Tên máy khoan..."
-                  className="flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
                 />
                 <button
                   onClick={handleCreateMachine}
-                  disabled={!newMachineName.trim() || isSavingNewProject}
+                  disabled={!newMachineName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
                 >
                   {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -5501,6 +5522,7 @@ LƯU Ý:
                     </div>
                     <button
                       onClick={async () => {
+                        if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
                         setIsSavingNewProject(true);
                         try {
                           const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
@@ -5713,12 +5735,13 @@ LƯU Ý:
                               ) : (
                                 <div className="flex items-center justify-between group">
                                   <div 
-                                    className="flex items-center gap-1.5 cursor-pointer flex-1" 
+                                    className={`flex items-center gap-1.5 flex-1 ${currentUser?.role === 'admin' ? 'cursor-pointer' : 'cursor-default'}`}
                                     onClick={() => {
+                                      if (currentUser?.role !== 'admin') return;
                                       setStableEditingKey(row.value);
                                       setStableEditValue(row.value);
                                     }}
-                                    title="Click để chỉnh sửa"
+                                    title={currentUser?.role === 'admin' ? "Click để chỉnh sửa" : "Chỉ Admin mới có quyền chỉnh sửa"}
                                   >
                                     {isSaving ? (
                                       <span className="flex items-center gap-1.5 text-blue-600 text-xs">
@@ -5791,7 +5814,7 @@ LƯU Ý:
                             </td>
                             {activeTab === 'project' && (
                               <td className="px-2 py-2.5 text-center border-b border-r border-slate-400">
-                                {row.count === 0 && (
+                                {row.count === 0 && currentUser?.role === 'admin' && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
                                     onClick={async () => {
