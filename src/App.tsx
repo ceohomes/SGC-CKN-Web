@@ -4184,18 +4184,27 @@ export default function App() {
   };
 
   const handleSaveEdit = (updatedResult: ExtractionResult) => {
+    // Normalize item: nếu tên AI quét khớp chuẩn hóa với app_items → dùng tên chuẩn
+    const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const selectedProj = projects.find(p => p.name === updatedResult.project);
+    const projItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
+    const matchedItem = projItems.find(it => normalize(it.name) === normalize(updatedResult.item || ''));
+    const normalizedResult = matchedItem && matchedItem.name !== updatedResult.item
+      ? { ...updatedResult, item: matchedItem.name }
+      : updatedResult;
+
     setConfirmDialog({
       title: 'Xác nhận lưu thay đổi',
       message: 'Bạn có chắc chắn muốn cập nhật biên bản này không?',
-      detail: `${updatedResult.componentName || ''} — ${updatedResult.pileId || ''}`,
+      detail: `${normalizedResult.componentName || ''} — ${normalizedResult.pileId || ''}`,
       type: 'save',
       onConfirm: async () => {
         setConfirmDialog(null);
         setIsEditModalOpen(false);
         setEditingResult(null);
-        setHistory(prev => prev.map(item => item.id === updatedResult.id ? updatedResult : item));
+        setHistory(prev => prev.map(item => item.id === normalizedResult.id ? normalizedResult : item));
 
-        let finalResult = { ...updatedResult };
+        let finalResult = { ...normalizedResult };
         showToast('Đang đồng bộ dữ liệu...', 'loading');
 
         // 1. Tái tạo Excel trên GitHub
@@ -5432,6 +5441,62 @@ LƯU Ý:
                   Lưu máy khoan
                 </button>
               </div>
+              {/* Nút đồng bộ máy khoan từ biên bản */}
+              {(() => {
+                const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
+                const unsynced = [...new Set(
+                  history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
+                )].sort();
+                if (unsynced.length === 0) return null;
+                return (
+                  <div className="mt-3 pt-3 border-t border-amber-200">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
+                          Phát hiện {unsynced.length} máy khoan từ biên bản chưa được thêm vào danh mục:
+                        </p>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {unsynced.map(name => (
+                            <span key={name} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">{name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setIsSavingNewProject(true);
+                        try {
+                          const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
+                            id: crypto.randomUUID(),
+                            projectId: 'global',
+                            name,
+                            createdAt: new Date().toISOString(),
+                            createdBy: currentUser?.username || 'admin',
+                          }));
+                          const updated = [...drillingMachines, ...toAdd];
+                          setDrillingMachines(updated);
+                          localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+                          if (supabase) {
+                            await supabase.from('app_drilling_machines').insert(
+                              toAdd.map(m => ({ id: m.id, project_id: m.projectId, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
+                            );
+                          }
+                          showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
+                        } catch (e: any) {
+                          showToast(`Lỗi: ${e?.message}`, 'error');
+                        } finally {
+                          setIsSavingNewProject(false);
+                        }
+                      }}
+                      disabled={isSavingNewProject}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white bg-orange-500 hover:bg-orange-600 transition-all disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                      Đồng bộ {unsynced.length} máy khoan vào danh mục
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -12171,28 +12236,39 @@ function EditSplitView({
               {(() => {
                 const selectedProj = projects.find(p => p.name === data.project);
                 const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
+                // Normalize: nếu data.item (AI quét) trùng tên chuẩn hóa với 1 item trong app_items → tự động dùng tên chuẩn
+                const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+                const matchedItem = filteredItems.find(it => normalize(it.name) === normalize(data.item || ''));
+                const effectiveValue = matchedItem ? matchedItem.name : (data.item || '');
+                // Nếu tên AI quét khác tên chuẩn → tự động cập nhật field
+                if (matchedItem && matchedItem.name !== data.item) {
+                  setTimeout(() => updateField('item', matchedItem.name), 0);
+                }
+                const hasExactMatch = filteredItems.some(it => it.name === effectiveValue);
                 return (
-                  <select
-                    value={data.item}
-                    onChange={e => updateField('item', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
-                  >
-                    <option value="">-- Chọn hạng mục --</option>
-                    {filteredItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
-                    {data.item && !filteredItems.some(it => it.name === data.item) && (
-                      <option value={data.item}>{data.item} (AI quét)</option>
+                  <div className="space-y-1">
+                    <select
+                      value={effectiveValue}
+                      onChange={e => updateField('item', e.target.value)}
+                      className={cn(
+                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
+                        !hasExactMatch && effectiveValue ? "border-amber-400 bg-amber-50" : "border-slate-300"
+                      )}
+                    >
+                      <option value="">-- Chọn hạng mục --</option>
+                      {filteredItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
+                      {effectiveValue && !hasExactMatch && (
+                        <option value={effectiveValue}>{effectiveValue} (AI quét — chưa có trong danh mục)</option>
+                      )}
+                    </select>
+                    {effectiveValue && !hasExactMatch && (
+                      <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
+                        <span>⚠️</span> Hạng mục này do AI quét, chưa có trong danh mục dự án. Vui lòng chọn lại hoặc thêm vào danh mục.
+                      </p>
                     )}
-                  </select>
+                  </div>
                 );
               })()}
-            </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên bộ phận</label>
-              <input 
-                value={data.componentName} 
-                onChange={(e) => updateField('componentName', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Số hiệu cọc</label>
