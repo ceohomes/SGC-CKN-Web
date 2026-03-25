@@ -4653,7 +4653,7 @@ export default function App() {
           toUpdateList.push({ result: res, newLayers });
         });
 
-        // Optimistic UI update
+        // Optimistic UI update history
         setHistory(prev => prev.map(res => {
           const found = toUpdateList.find(u => u.result.id === res.id);
           if (!found) return res;
@@ -4663,6 +4663,23 @@ export default function App() {
             ...(found.newLayers ? { layers: found.newLayers } : {}),
           };
         }));
+
+        // Optimistic UI update app_projects ngay lập tức (không chờ Supabase)
+        if (setResField && getResField) {
+          const proj = projects.find(p => p.name.trim() === oldVal.trim());
+          if (proj) {
+            const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
+            setProjects(updatedProjects);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
+            // Sync Supabase ngay lập tức (không chờ biên bản)
+            if (supabase) {
+              supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id)
+                .then(({ error }) => { if (error) console.error('[Supabase] Update project name:', error); });
+            }
+            showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
+          }
+        }
+
         cancelEdit();
 
         setSavingKey(newVal);
@@ -4696,20 +4713,15 @@ export default function App() {
               }
             } catch {}
             if (errorCount === 0) {
-              // Nếu đang đổi tên dự án → cũng cập nhật app_projects (optimistic UI trước)
-              if (setResField && getResField) {
+              // Sync app_projects lên Supabase (optimistic UI đã làm trước rồi)
+              if (setResField && getResField && supabase) {
                 try {
-                  const proj = projects.find(p => p.name.trim() === oldVal.trim());
+                  const proj = projects.find(p => p.name.trim() === oldVal.trim()) ||
+                               projects.find(p => p.name.trim() === newVal.trim());
                   if (proj) {
-                    const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
-                    setProjects(updatedProjects);
-                    localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
-                    // Sync Supabase nếu bảng đã tồn tại
-                    if (supabase) {
-                      supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(
-                                ({ error }) => { if (error) console.error('[Supabase] Update project error:', error); }
-                              );
-                    }
+                    supabase.from('app_projects').update({ name: newVal }).eq('id', proj.id).then(
+                      ({ error }) => { if (error) console.error('[Supabase] Update project error:', error); }
+                    );
                   }
                 } catch {}
               }
@@ -5856,13 +5868,43 @@ LƯU Ý:
             const newName = window.prompt(`Đổi tên máy khoan:`, oldName);
             if (!newName || newName.trim() === '' || newName.trim() === oldName) return;
             const trimmed = newName.trim();
-            const updated = drillingMachines.map(m => m.id === machineId ? { ...m, name: trimmed } : m);
-            setDrillingMachines(updated);
-            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+
+            // 1. Optimistic update danh sách máy khoan
+            const updatedMachines = drillingMachines.map(m => m.id === machineId ? { ...m, name: trimmed } : m);
+            setDrillingMachines(updatedMachines);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updatedMachines));
+
+            // 2. Optimistic update reportNumber trong history (biên bản)
+            const affectedIds: string[] = [];
+            setHistory(prev => prev.map(res => {
+              if ((res.reportNumber || '').trim() === oldName.trim()) {
+                affectedIds.push(res.id);
+                return { ...res, reportNumber: trimmed };
+              }
+              return res;
+            }));
+
+            // 3. Sync localStorage history
+            try {
+              const saved = localStorage.getItem('pile_drill_history');
+              if (saved) {
+                const arr = JSON.parse(saved);
+                localStorage.setItem('pile_drill_history', JSON.stringify(
+                  arr.map((r: any) => (r.reportNumber || '').trim() === oldName.trim() ? { ...r, reportNumber: trimmed } : r)
+                ));
+              }
+            } catch {}
+
+            showToast(`✅ Đã đổi tên thành "${trimmed}"`, 'success', 2000);
+
+            // 4. Sync Supabase
             if (supabase) {
-              const { error } = await supabase.from('app_drilling_machines').update({ name: trimmed }).eq('id', machineId);
-              if (error) showToast(`⚠️ Đổi tên thất bại: ${error.message}`, 'error');
-              else showToast(`✅ Đã đổi tên thành "${trimmed}"`, 'success', 2000);
+              const [r1, r2] = await Promise.all([
+                supabase.from('app_drilling_machines').update({ name: trimmed }).eq('id', machineId),
+                supabase.from('drill_extractions').update({ reportNumber: trimmed }).eq('reportNumber', oldName),
+              ]);
+              if (r1.error) showToast(`⚠️ Lỗi cập nhật máy khoan: ${r1.error.message}`, 'error');
+              if (r2.error) showToast(`⚠️ Lỗi cập nhật biên bản: ${r2.error.message}`, 'error');
             }
           };
 
