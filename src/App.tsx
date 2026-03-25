@@ -5497,7 +5497,7 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border-2 border-slate-400 shadow-sm overflow-hidden">
             <div className="flex gap-0 divide-x divide-slate-200">
               {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
@@ -5506,7 +5506,7 @@ LƯU Ý:
                       <tr style={{ background: activeTabData.headerBg }}>
                         <th className="px-3 py-3 text-xs font-bold text-white text-center w-12 border border-white/20">STT</th>
                         <th className={cn("px-3 py-3 text-xs font-bold text-white text-left border border-white/20", activeTab === 'project' ? "w-[350px]" : "")}>{colHeader}</th>
-                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-left border border-white/20">Hạng Mục</th>}
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center border border-white/20">Hạng Mục</th>}
                         <th className="px-3 py-3 text-xs font-bold text-white text-center w-24 whitespace-nowrap border border-white/20">Số biên bản</th>
                         {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 border border-white/20">Thao tác</th>}
                       </tr>
