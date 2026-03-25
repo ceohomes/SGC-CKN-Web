@@ -2257,18 +2257,27 @@ export default function App() {
           }
 
           // Xử lý danh sách máy khoan
-          if (!drillingMachinesRes.error && drillingMachinesRes.data && drillingMachinesRes.data.length > 0) {
-            const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => ({
-              id: r.id,
-              // Normalize: null / undefined / 'global' / '' đều là chưa phân bổ
-              projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
-              name: r.name,
-              createdAt: r.created_at,
-              createdBy: r.created_by || '',
-            }));
-            setDrillingMachines(loadedMachines);
-            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(loadedMachines));
+          if (!drillingMachinesRes.error && drillingMachinesRes.data) {
+            if (drillingMachinesRes.data.length > 0) {
+              const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => ({
+                id: r.id,
+                // Normalize: null / undefined / 'global' / '' đều là chưa phân bổ
+                projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
+                name: r.name,
+                createdAt: r.created_at,
+                createdBy: r.created_by || '',
+              }));
+              setDrillingMachines(loadedMachines);
+              localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(loadedMachines));
+              console.log('[Sync] Loaded', loadedMachines.length, 'machines from Supabase');
+            } else {
+              // Table tồn tại nhưng rỗng — không fallback localStorage để tránh data cũ
+              setDrillingMachines([]);
+              console.log('[Sync] app_drilling_machines table empty');
+            }
           } else {
+            // Lỗi fetch (table không tồn tại, v.v.) — fallback localStorage
+            console.warn('[Sync] drillingMachines fetch error:', drillingMachinesRes.error?.message);
             const savedMachines = localStorage.getItem('sgc_app_drilling_machines');
             if (savedMachines) { try { setDrillingMachines(JSON.parse(savedMachines)); } catch {} }
           }
@@ -5788,7 +5797,18 @@ LƯU Ý:
             setDrillingMachines(updated);
             localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
             if (supabase) {
-              await supabase.from('app_drilling_machines').update({ project_id: (newProjectId && newProjectId !== 'global') ? newProjectId : null }).eq('id', machineId);
+              const dbProjectId = (newProjectId && newProjectId !== 'global') ? newProjectId : null;
+              const { error } = await supabase
+                .from('app_drilling_machines')
+                .update({ project_id: dbProjectId })
+                .eq('id', machineId);
+              if (error) {
+                console.error('[Sync] assignMachine error:', error.message);
+                showToast(`⚠️ Lưu phân bổ thất bại: ${error.message}`, 'error');
+              } else {
+                const projName = projects.find(p => p.id === newProjectId)?.name || 'Chưa phân bổ';
+                showToast(`✅ Đã phân bổ máy khoan vào "${projName}"`, 'success', 2000);
+              }
             }
           };
 
@@ -5801,6 +5821,35 @@ LƯU Ý:
                 <div className="w-1 h-5 bg-amber-500 rounded-full" />
                 <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
                 <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
+                <button
+                  onClick={async () => {
+                    if (!supabase) return;
+                    try {
+                      const { data, error } = await supabase.from('app_drilling_machines').select('*').order('created_at', { ascending: true });
+                      if (!error && data) {
+                        const machines = data.map((r: any) => ({
+                          id: r.id,
+                          projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
+                          name: r.name,
+                          createdAt: r.created_at,
+                          createdBy: r.created_by || '',
+                        }));
+                        setDrillingMachines(machines);
+                        localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(machines));
+                        showToast(`✅ Đã đồng bộ ${machines.length} máy khoan từ Supabase!`, 'success');
+                      } else {
+                        showToast(`⚠️ Lỗi đồng bộ: ${error?.message}`, 'error');
+                      }
+                    } catch(e: any) {
+                      showToast(`Lỗi: ${e?.message}`, 'error');
+                    }
+                  }}
+                  className="ml-2 flex items-center gap-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black rounded-lg border border-blue-200 transition-all"
+                  title="Đồng bộ lại từ Supabase"
+                >
+                  <RefreshCw size={11} />
+                  Đồng bộ
+                </button>
               </div>
               <DragDropContext onDragEnd={(result: DropResult) => {
                 if (!result.destination) return;
