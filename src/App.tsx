@@ -5666,6 +5666,129 @@ LƯU Ý:
           </div>
         )}
 
+        {/* ── Bảng Kanban Máy Khoan ── */}
+        {activeTab === 'project' && (() => {
+          // Hàm chuyển máy khoan sang dự án mới
+          const assignMachineToProject = async (machineId: string, newProjectId: string) => {
+            const updated = drillingMachines.map(m =>
+              m.id === machineId ? { ...m, projectId: newProjectId } : m
+            );
+            setDrillingMachines(updated);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            if (supabase) {
+              await supabase.from('app_drilling_machines').update({ project_id: newProjectId }).eq('id', machineId);
+            }
+          };
+
+          const unassignedMachines = drillingMachines.filter(m => !m.projectId || m.projectId === 'global');
+          const projectColumns = projects;
+
+          return (
+            <div className="mt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1 h-5 bg-amber-500 rounded-full" />
+                <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
+                <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
+              </div>
+              <DragDropContext onDragEnd={(result: DropResult) => {
+                if (!result.destination) return;
+                const machineId = result.draggableId;
+                const destProjectId = result.destination.droppableId;
+                assignMachineToProject(machineId, destProjectId);
+              }}>
+                <div className="flex gap-3 overflow-x-auto pb-3">
+                  {/* Cột Chưa phân bổ */}
+                  <Droppable droppableId="global">
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`flex-shrink-0 w-56 bg-slate-50 border-2 rounded-2xl overflow-hidden transition-colors ${snapshot.isDraggingOver ? 'border-amber-400 bg-amber-50/50' : 'border-slate-200'}`}
+                      >
+                        <div className="px-3 py-2.5 bg-slate-200 border-b border-slate-300 flex items-center justify-between">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Chưa phân bổ</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-300 text-slate-700">{unassignedMachines.length}</span>
+                        </div>
+                        <div className="p-2 space-y-2 min-h-[120px]">
+                          {unassignedMachines.map((machine, idx) => (
+                            <Draggable key={machine.id} draggableId={machine.id} index={idx}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-400 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-200 hover:border-amber-300'}`}
+                                >
+                                  <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
+                                  {machine.name}
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                          {unassignedMachines.length === 0 && (
+                            <div className="text-[10px] text-slate-400 text-center py-4 font-medium">Không có</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </Droppable>
+
+                  {/* Cột từng dự án */}
+                  {projectColumns.map((proj) => {
+                    const projMachines = drillingMachines.filter(m => m.projectId === proj.id);
+                    const colors = [
+                      { header: 'bg-blue-100 border-blue-300', text: 'text-blue-800', badge: 'bg-blue-200 text-blue-700', dot: 'bg-blue-400', drag: 'border-blue-400 bg-blue-50/50' },
+                      { header: 'bg-emerald-100 border-emerald-300', text: 'text-emerald-800', badge: 'bg-emerald-200 text-emerald-700', dot: 'bg-emerald-400', drag: 'border-emerald-400 bg-emerald-50/50' },
+                      { header: 'bg-violet-100 border-violet-300', text: 'text-violet-800', badge: 'bg-violet-200 text-violet-700', dot: 'bg-violet-400', drag: 'border-violet-400 bg-violet-50/50' },
+                      { header: 'bg-rose-100 border-rose-300', text: 'text-rose-800', badge: 'bg-rose-200 text-rose-700', dot: 'bg-rose-400', drag: 'border-rose-400 bg-rose-50/50' },
+                      { header: 'bg-amber-100 border-amber-300', text: 'text-amber-800', badge: 'bg-amber-200 text-amber-700', dot: 'bg-amber-400', drag: 'border-amber-400 bg-amber-50/50' },
+                    ];
+                    const c = colors[projectColumns.indexOf(proj) % colors.length];
+                    return (
+                      <Droppable key={proj.id} droppableId={proj.id}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`flex-shrink-0 w-56 border-2 rounded-2xl overflow-hidden transition-colors bg-white ${snapshot.isDraggingOver ? `${c.drag} border-2` : 'border-slate-200'}`}
+                          >
+                            <div className={`px-3 py-2.5 border-b flex items-center justify-between ${c.header}`}>
+                              <span className={`text-[11px] font-black uppercase tracking-wider truncate max-w-[130px] ${c.text}`} title={proj.name}>{proj.name}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${c.badge}`}>{projMachines.length}</span>
+                            </div>
+                            <div className="p-2 space-y-2 min-h-[120px]">
+                              {projMachines.map((machine, idx) => (
+                                <Draggable key={machine.id} draggableId={machine.id} index={idx}>
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.draggableProps}
+                                      {...provided.dragHandleProps}
+                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-200 hover:border-blue-300'}`}
+                                    >
+                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
+                                      {machine.name}
+                                    </div>
+                                  )}
+                                </Draggable>
+                              ))}
+                              {provided.placeholder}
+                              {projMachines.length === 0 && (
+                                <div className="text-[10px] text-slate-400 text-center py-4 font-medium">Kéo máy khoan vào đây</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </Droppable>
+                    );
+                  })}
+                </div>
+              </DragDropContext>
+            </div>
+          );
+        })()}
+
         {/* AI Normalization Modal */}
         {showAiModal && aiSuggestions && (
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
