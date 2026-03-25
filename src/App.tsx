@@ -379,6 +379,22 @@ interface AppProject {
   createdBy: string; // username
 }
 
+interface AppItem {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+interface AppDrillingMachine {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 // Simple hash function for demo (NOT for production — use bcrypt on server)
 // Encode password: btoa(encodeURIComponent(pwd)) — reliable cross-browser
 const simpleHash = (pwd: string): string => {
@@ -1957,6 +1973,9 @@ export default function App() {
   const [currentResult, setCurrentResult] = useState<ExtractionResult | null>(null);
   const [history, setHistory] = useState<ExtractionResult[]>([]);
   const [projects, setProjects] = useState<AppProject[]>([]); // Danh sách dự án từ app_projects
+  const [managingItemsProject, setManagingItemsProject] = useState<AppProject | null>(null); // Dự án đang quản lý hạng mục
+  const [items, setItems] = useState<AppItem[]>([]); // Danh sách hạng mục từ app_items
+  const [drillingMachines, setDrillingMachines] = useState<AppDrillingMachine[]>([]); // Danh sách máy khoan từ app_drilling_machines
   const [processingFiles, setProcessingFiles] = useState<ProcessingFile[]>([]);
   const [pendingResults, setPendingResults] = useState<ExtractionResult[]>([]);
   const [conflictDialog, setConflictDialog] = useState<{
@@ -2099,15 +2118,20 @@ export default function App() {
 
           // 3: app_projects — fetch riêng, bắt lỗi 404 khi bảng chưa tạo
           let projectsRes: { data: any[] | null; error: any } = { data: null, error: null };
+          let itemsRes: { data: any[] | null; error: any } = { data: null, error: null };
+          let drillingMachinesRes: { data: any[] | null; error: any } = { data: null, error: null };
+
           try {
-            const _pr = await supabase
-              .from('app_projects')
-              .select('id, name, created_at, created_by')
-              .order('created_at', { ascending: true });
-            projectsRes = _pr;
-          } catch (_e) {
-            projectsRes = { data: null, error: { message: 'table_not_found' } };
-          }
+            projectsRes = await supabase.from('app_projects').select('id, name, created_at, created_by').order('created_at', { ascending: true });
+          } catch { projectsRes = { data: null, error: { message: 'table_not_found' } }; }
+
+          try {
+            itemsRes = await supabase.from('app_items').select('*').order('created_at', { ascending: true });
+          } catch { itemsRes = { data: null, error: { message: 'table_not_found' } }; }
+
+          try {
+            drillingMachinesRes = await supabase.from('app_drilling_machines').select('*').order('created_at', { ascending: true });
+          } catch { drillingMachinesRes = { data: null, error: { message: 'table_not_found' } }; }
 
           // Xử lý history
           if (!historyRes.error && historyRes.data) {
@@ -2201,7 +2225,6 @@ export default function App() {
 
           // Xử lý danh sách dự án
           if (!projectsRes.error && projectsRes.data && projectsRes.data.length > 0) {
-            // Bảng tồn tại và có dữ liệu → load từ Supabase
             const loadedProjects: AppProject[] = projectsRes.data.map((r: any) => ({
               id: r.id,
               name: r.name,
@@ -2211,11 +2234,40 @@ export default function App() {
             setProjects(loadedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(loadedProjects));
           } else {
-            // Bảng chưa tạo hoặc rỗng → load từ localStorage
             const savedProjects = localStorage.getItem('sgc_app_projects');
-            if (savedProjects) {
-              try { setProjects(JSON.parse(savedProjects)); } catch {}
-            }
+            if (savedProjects) { try { setProjects(JSON.parse(savedProjects)); } catch {} }
+          }
+
+          // Xử lý danh sách hạng mục
+          if (!itemsRes.error && itemsRes.data && itemsRes.data.length > 0) {
+            const loadedItems: AppItem[] = itemsRes.data.map((r: any) => ({
+              id: r.id,
+              projectId: r.project_id,
+              name: r.name,
+              createdAt: r.created_at,
+              createdBy: r.created_by || '',
+            }));
+            setItems(loadedItems);
+            localStorage.setItem('sgc_app_items', JSON.stringify(loadedItems));
+          } else {
+            const savedItems = localStorage.getItem('sgc_app_items');
+            if (savedItems) { try { setItems(JSON.parse(savedItems)); } catch {} }
+          }
+
+          // Xử lý danh sách máy khoan
+          if (!drillingMachinesRes.error && drillingMachinesRes.data && drillingMachinesRes.data.length > 0) {
+            const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => ({
+              id: r.id,
+              projectId: r.project_id,
+              name: r.name,
+              createdAt: r.created_at,
+              createdBy: r.created_by || '',
+            }));
+            setDrillingMachines(loadedMachines);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(loadedMachines));
+          } else {
+            const savedMachines = localStorage.getItem('sgc_app_drilling_machines');
+            if (savedMachines) { try { setDrillingMachines(JSON.parse(savedMachines)); } catch {} }
           }
 
           // Fetch users from Supabase to sync across devices
@@ -4213,6 +4265,210 @@ export default function App() {
     });
   };
 
+  // ── ProjectItemsModal: Quản lý hạng mục cho từng dự án ──
+  function ProjectItemsModal({ 
+    project, 
+    onClose, 
+    items, 
+    setItems, 
+    supabase, 
+    currentUser, 
+    showToast 
+  }: { 
+    project: AppProject; 
+    onClose: () => void; 
+    items: AppItem[]; 
+    setItems: (items: AppItem[]) => void; 
+    supabase: any; 
+    currentUser: any; 
+    showToast: (msg: string, type: 'success' | 'error') => void;
+  }) {
+    const [newItemName, setNewItemName] = useState('');
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    const projectItems = items.filter(it => it.projectId === project.id);
+
+    const handleCreate = async () => {
+      const trimmed = newItemName.trim();
+      if (!trimmed) return;
+      setIsSaving(true);
+      try {
+        const newItem: AppItem = {
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          name: trimmed,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.username || 'admin',
+        };
+        const updated = [...items, newItem];
+        setItems(updated);
+        localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+        setNewItemName('');
+        if (supabase) {
+          await supabase.from('app_items').insert([{
+            id: newItem.id,
+            project_id: newItem.projectId,
+            name: newItem.name,
+            created_at: newItem.createdAt,
+            created_by: newItem.createdBy,
+          }]);
+        }
+        showToast(`Đã thêm hạng mục "${trimmed}"`, 'success');
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`, 'error');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    const handleUpdate = async (id: string) => {
+      const trimmed = editValue.trim();
+      if (!trimmed) return;
+      setIsSaving(true);
+      try {
+        const updated = items.map(it => it.id === id ? { ...it, name: trimmed } : it);
+        setItems(updated);
+        localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+        setEditingItemId(null);
+        if (supabase) {
+          await supabase.from('app_items').update({ name: trimmed }).eq('id', id);
+        }
+        showToast('Đã cập nhật hạng mục', 'success');
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`, 'error');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    const handleDelete = async (id: string, name: string) => {
+      if (!window.confirm(`Xóa hạng mục "${name}"?`)) return;
+      setIsSaving(true);
+      try {
+        const updated = items.filter(it => it.id !== id);
+        setItems(updated);
+        localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+        if (supabase) {
+          await supabase.from('app_items').delete().eq('id', id);
+        }
+        showToast(`Đã xóa hạng mục "${name}"`, 'success');
+      } catch (e: any) {
+        showToast(`Lỗi: ${e.message}`, 'error');
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+          <div className="px-6 py-4 bg-emerald-600 flex items-center justify-between text-white">
+            <div className="flex items-center gap-3">
+              <Layers size={20} />
+              <div>
+                <h3 className="font-black uppercase tracking-tight text-sm">Quản lý hạng mục</h3>
+                <p className="text-[10px] opacity-80 font-bold uppercase tracking-widest">{project.name}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-6 overflow-y-auto bg-slate-50/80">
+            {/* Add Form */}
+            <div className="flex gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+              <input
+                type="text"
+                autoFocus
+                value={newItemName}
+                onChange={e => setNewItemName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                placeholder="Nhập tên hạng mục mới..."
+                className="flex-1 px-4 py-2 border-2 border-slate-100 focus:border-emerald-500 rounded-xl outline-none transition-all text-sm font-medium"
+              />
+              <button
+                onClick={handleCreate}
+                disabled={!newItemName.trim() || isSaving}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Thêm
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="space-y-3">
+              {projectItems.length === 0 ? (
+                <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm">
+                  <Layers size={32} className="text-slate-300 mx-auto mb-2" />
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Chưa có hạng mục nào</p>
+                </div>
+              ) : (
+                projectItems.map((it, idx) => (
+                  <div key={it.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-emerald-400 hover:shadow-md transition-all group shadow-sm">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                        {idx + 1}
+                      </div>
+                      {editingItemId === it.id ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleUpdate(it.id);
+                            if (e.key === 'Escape') setEditingItemId(null);
+                          }}
+                          className="flex-1 px-2 py-1 border-b-2 border-emerald-500 outline-none text-sm font-medium bg-transparent"
+                        />
+                      ) : (
+                        <span className="text-sm font-bold text-slate-700 group-hover:text-slate-900 transition-colors">{it.name}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {editingItemId === it.id ? (
+                        <>
+                          <button onClick={() => handleUpdate(it.id)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                            <Save size={16} />
+                          </button>
+                          <button onClick={() => setEditingItemId(null)} className="p-2 text-slate-400 hover:bg-slate-50 rounded-lg transition-colors">
+                            <X size={16} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingItemId(it.id);
+                              setEditValue(it.name);
+                            }}
+                            className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(it.id, it.name)}
+                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
     const GeologyView = () => {
       type DataTab = 'geology' | 'project' | 'diameter';
@@ -4777,17 +5033,16 @@ LƯU Ý:
 
     // ── Tab 2: Dự án ──
     const [newProjectName, setNewProjectName] = React.useState('');
+    const [newItemName, setNewItemName] = React.useState('');
+    const [newMachineName, setNewMachineName] = React.useState('');
+    const [selectedProjectId, setSelectedProjectId] = React.useState('');
     const [isSavingNewProject, setIsSavingNewProject] = React.useState(false);
 
     const handleCreateProject = async () => {
       const trimmed = newProjectName.trim();
       if (!trimmed) return;
-      // Check duplicate against projects list
       const exists = projects.some(p => p.name.trim().toLowerCase() === trimmed.toLowerCase());
-      if (exists) {
-        showToast(`Dự án "${trimmed}" đã tồn tại!`, 'error');
-        return;
-      }
+      if (exists) { showToast(`Dự án "${trimmed}" đã tồn tại!`, 'error'); return; }
       setIsSavingNewProject(true);
       try {
         const newProj: AppProject = {
@@ -4796,39 +5051,83 @@ LƯU Ý:
           createdAt: new Date().toISOString(),
           createdBy: currentUser?.username || 'admin',
         };
-        // Lưu localStorage trước (optimistic, không chờ Supabase)
         const updated = [...projects, newProj];
         setProjects(updated);
         localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
         setNewProjectName('');
-
-        // Đồng bộ Supabase — nếu bảng chưa tạo thì chỉ báo warning, không block
         if (supabase) {
           try {
-            const { error } = await supabase.from('app_projects').insert([{
+            await supabase.from('app_projects').insert([{
               id: newProj.id,
               name: newProj.name,
               created_at: newProj.createdAt,
               created_by: newProj.createdBy,
             }]);
-            if (error) {
-              // Bảng chưa tạo hoặc lỗi khác → vẫn lưu localStorage, chỉ cảnh báo
-              console.warn('[app_projects] Supabase insert failed:', error.message);
-              showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ). Vui lòng tạo bảng app_projects trong Supabase để đồng bộ.`, 'success', 6000);
-            } else {
-              showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
-            }
-          } catch (_e) {
-            showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ).`, 'success');
-          }
-        } else {
-          showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
-        }
-      } catch (e: any) {
-        showToast(`Lỗi: ${e?.message}`, 'error');
-      } finally {
-        setIsSavingNewProject(false);
+            showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success');
+          } catch { showToast(`✅ Đã tạo dự án "${trimmed}" (lưu cục bộ).`, 'success'); }
+        } else { showToast(`✅ Đã tạo dự án "${trimmed}" thành công!`, 'success'); }
+      } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
+    };
+
+    const handleCreateItem = async () => {
+      const trimmed = newItemName.trim();
+      if (!trimmed || !selectedProjectId) {
+        if (!selectedProjectId) showToast('Vui lòng chọn dự án!', 'error');
+        return;
       }
+      setIsSavingNewProject(true);
+      try {
+        const newItem: AppItem = {
+          id: crypto.randomUUID(),
+          projectId: selectedProjectId,
+          name: trimmed,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.username || 'admin',
+        };
+        const updated = [...items, newItem];
+        setItems(updated);
+        localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+        setNewItemName('');
+        if (supabase) {
+          await supabase.from('app_items').insert([{
+            id: newItem.id,
+            project_id: newItem.projectId,
+            name: newItem.name,
+            created_at: newItem.createdAt,
+            created_by: newItem.createdBy,
+          }]);
+        }
+        showToast(`✅ Đã tạo hạng mục "${trimmed}" thành công!`, 'success');
+      } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
+    };
+
+    const handleCreateMachine = async () => {
+      const trimmed = newMachineName.trim();
+      if (!trimmed) return;
+      setIsSavingNewProject(true);
+      try {
+        const newMachine: AppDrillingMachine = {
+          id: crypto.randomUUID(),
+          projectId: selectedProjectId || 'global',
+          name: trimmed,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.username || 'admin',
+        };
+        const updated = [...drillingMachines, newMachine];
+        setDrillingMachines(updated);
+        localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+        setNewMachineName('');
+        if (supabase) {
+          await supabase.from('app_drilling_machines').insert([{
+            id: newMachine.id,
+            project_id: newMachine.projectId,
+            name: newMachine.name,
+            created_at: newMachine.createdAt,
+            created_by: newMachine.createdBy,
+          }]);
+        }
+        showToast(`✅ Đã tạo máy khoan "${trimmed}" thành công!`, 'success');
+      } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
     };
 
     const projectList = useEditableList(
@@ -4885,8 +5184,8 @@ LƯU Ý:
         list: geoList,
         emptyMsg: 'Chưa có dữ liệu lớp địa chất',
         colHeader: 'Mô tả lớp thiết kế',
-        activeClass: 'bg-white text-emerald-700 shadow-md border-b-2 border-emerald-500',
-        badgeClass: 'bg-emerald-100 text-emerald-700',
+        activeClass: 'bg-emerald-600 text-white shadow-lg shadow-emerald-200 border-emerald-700',
+        badgeClass: 'bg-white/20 text-white',
         headerBg: '#065f46',
       },
       {
@@ -4896,8 +5195,8 @@ LƯU Ý:
         list: projectList,
         emptyMsg: 'Chưa có dữ liệu dự án',
         colHeader: 'Tên dự án',
-        activeClass: 'bg-white text-blue-700 shadow-md border-b-2 border-blue-500',
-        badgeClass: 'bg-blue-100 text-blue-700',
+        activeClass: 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-blue-700',
+        badgeClass: 'bg-white/20 text-white',
         headerBg: '#1e3a8a',
       },
       {
@@ -4907,124 +5206,128 @@ LƯU Ý:
         list: diameterList,
         emptyMsg: 'Chưa có dữ liệu đường kính',
         colHeader: 'Đường kính cọc',
-        activeClass: 'bg-white text-violet-700 shadow-md border-b-2 border-violet-500',
-        badgeClass: 'bg-violet-100 text-violet-700',
+        activeClass: 'bg-violet-600 text-white shadow-lg shadow-violet-200 border-violet-700',
+        badgeClass: 'bg-white/20 text-white',
         headerBg: '#4c1d95',
       },
     ];
 
     const activeTabData = tabs.find(t => t.id === activeTab)!;
     const { list, emptyMsg, colHeader } = activeTabData;
-    const { items, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit } = list;
+    const { items: tabItems, editingKey, editValue, setEditValue, savingKey, syncStatus, syncCount, startEdit, cancelEdit, commitEdit } = list;
 
     const ROWS_PER_COL = 15;
-    const cols: typeof items[] = [];
-    for (let i = 0; i < items.length; i += ROWS_PER_COL) {
-      cols.push(items.slice(i, i + ROWS_PER_COL));
+    const cols: typeof tabItems[] = [];
+    for (let i = 0; i < tabItems.length; i += ROWS_PER_COL) {
+      cols.push(tabItems.slice(i, i + ROWS_PER_COL));
     }
 
     return (
-      <div className="w-full space-y-6">
+      <div className="w-full space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
-              <Sparkles size={24} className="text-orange-500" /> Chuẩn hóa data
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Chỉnh sửa tên sẽ <strong>đồng bộ toàn bộ biên bản</strong> liên quan
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {activeTab === 'geology' && items.length > 0 && (
-              <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-32">
+            <div>
+              <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                <Sparkles size={24} className="text-orange-500" /> Chuẩn hóa data
+              </h2>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                Chỉnh sửa sẽ <span className="text-blue-500">đồng bộ toàn bộ biên bản</span> liên quan
+              </p>
+            </div>
+
+            {/* AI buttons / Sync status */}
+            <div className="flex items-center gap-2">
+              {activeTab === 'geology' && items.length > 0 && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleAiClassifySoilClasses}
                     disabled={isAiClassifying || isAiNormalizing}
-                    className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+                    title="Phân định nhóm bằng AI"
                   >
-                    {isAiClassifying ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    Phân định nhóm bằng AI
+                    {isAiClassifying ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    Phân định AI
                   </button>
                   <button
                     onClick={handleAiNormalizeGeology}
                     disabled={isAiNormalizing || isAiClassifying}
-                    className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
+                    title="Chuẩn hóa bằng AI"
                   >
-                    {isAiNormalizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    Chuẩn hóa bằng AI
+                    {isAiNormalizing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    Chuẩn hóa AI
                   </button>
                 </div>
-                <p className="text-[10px] text-red-500 font-bold italic">
-                  * Lưu ý: Công cụ chuẩn hóa này chỉ so sánh các dữ liệu cùng Nhóm Đất hoặc đá
-                </p>
-              </div>
-            )}
-            {syncStatus === 'syncing' && (
-              <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200 animate-pulse">
-                <Loader2 size={12} className="animate-spin" /> Đang đồng bộ {syncCount} biên bản...
-              </span>
-            )}
-            {syncStatus === 'done' && (
-              <span className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
-                <CheckCircle2 size={12} /> Đã đồng bộ xong
-              </span>
-            )}
-            {syncStatus === 'error' && (
-              <span className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-full border border-red-200">
-                <AlertCircle size={12} /> Lỗi đồng bộ
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* 3 Tab buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setSearchQuery('');
-                }}
-                className={cn(
-                  'flex items-center gap-2 px-5 py-2.5 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all',
-                  activeTab === tab.id
-                    ? tab.activeClass
-                    : 'text-slate-500 hover:text-slate-700'
-                )}
-              >
-                {tab.icon}
-                {tab.label}
-                <span className={cn(
-                  'text-[10px] font-black px-2 py-0.5 rounded-full',
-                  activeTab === tab.id ? tab.badgeClass : 'bg-slate-200 text-slate-500'
-                )}>
-                  {tab.list.items.length}
+              )}
+              {syncStatus === 'syncing' && (
+                <span className="flex items-center gap-1.5 text-[10px] text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-200 animate-pulse font-black uppercase tracking-widest">
+                  <Loader2 size={10} className="animate-spin" /> Đang đồng bộ {syncCount}...
                 </span>
-              </button>
-            ))}
+              )}
+              {syncStatus === 'done' && (
+                <span className="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-200 font-black uppercase tracking-widest">
+                  <CheckCircle2 size={10} /> Xong
+                </span>
+              )}
+              {syncStatus === 'error' && (
+                <span className="flex items-center gap-1.5 text-[10px] text-red-600 bg-red-50 px-3 py-1.5 rounded-full border border-red-200 font-black uppercase tracking-widest">
+                  <AlertCircle size={10} /> Lỗi
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder={`Tìm kiếm ${activeTabData.label.toLowerCase()}...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X size={16} />
-              </button>
-            )}
+          <div className="flex items-center gap-4 flex-1 justify-end">
+            {/* 3 Tab buttons */}
+            <div className="flex gap-2 p-1.5 bg-white rounded-2xl w-fit shadow-sm border border-slate-200">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setSearchQuery('');
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border',
+                    activeTab === tab.id
+                      ? tab.activeClass
+                      : (tab.id === 'geology' ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-transparent' :
+                         tab.id === 'project' ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 border-transparent' :
+                         'bg-violet-50 text-violet-600 hover:bg-violet-100 border-transparent')
+                  )}
+                >
+                  {tab.icon}
+                  {tab.label}
+                  <span className={cn(
+                    'text-[9px] font-black px-1.5 py-0.5 rounded-full',
+                    activeTab === tab.id ? tab.badgeClass : 'bg-slate-200 text-slate-500'
+                  )}>
+                    {tab.list.items.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Search bar */}
+            <div className="relative w-72">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder={`Tìm kiếm ${activeTabData.label.toLowerCase()}...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -5035,40 +5338,57 @@ LƯU Ý:
           {activeTab === 'diameter' && 'Danh sách đường kính cọc — chỉnh sửa sẽ cập nhật trường "diameter" trong tất cả biên bản liên quan'}
         </div>
 
-        {/* Create new project panel - only shown in project tab */}
+        {/* Create new project / item / machine panel - only shown in project tab */}
         {activeTab === 'project' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
-            <div className="flex-1">
-              <label className="text-[11px] font-black text-blue-700 uppercase tracking-widest block mb-2">
-                Tạo dự án mới
-              </label>
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={e => setNewProjectName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleCreateProject(); }}
-                placeholder="Nhập tên dự án mới..."
-                className="w-full px-4 py-2.5 border-2 border-blue-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
-                disabled={isSavingNewProject}
-              />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Dự án */}
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest block mb-2">Tạo dự án mới</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  placeholder="Tên dự án..."
+                  className="flex-1 px-4 py-2 border-2 border-blue-200 focus:border-blue-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
+                />
+                <button
+                  onClick={handleCreateProject}
+                  disabled={!newProjectName.trim() || isSavingNewProject}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-blue-900 whitespace-nowrap"
+                >
+                  {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Lưu dự án
+                </button>
+              </div>
             </div>
-            <button
-              onClick={handleCreateProject}
-              disabled={!newProjectName.trim() || isSavingNewProject}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl text-[12px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-5 shrink-0"
-              style={{ background: 'linear-gradient(135deg, #1a3a6b, #1e4480)' }}
-            >
-              {isSavingNewProject ? (
-                <><Loader2 size={14} className="animate-spin" />Đang lưu...</>
-              ) : (
-                <><Save size={14} />Lưu dự án</>
-              )}
-            </button>
+
+            {/* Máy khoan */}
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest block mb-2">Tạo máy khoan mới</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMachineName}
+                  onChange={e => setNewMachineName(e.target.value)}
+                  placeholder="Tên máy khoan..."
+                  className="flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white"
+                />
+                <button
+                  onClick={handleCreateMachine}
+                  disabled={!newMachineName.trim() || isSavingNewProject}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
+                >
+                  {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Lưu máy khoan
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Table / Columns */}
-        {items.length === 0 ? (
+        {tabItems.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
             <Layers size={48} className="text-slate-200 mx-auto mb-4" />
             <p className="text-slate-500 font-medium">{emptyMsg}</p>
@@ -5088,12 +5408,12 @@ LƯU Ý:
               {SOIL_CLASSES.map((sc, scIdx) => {
                 const classItems = (geoList.items as any[]).filter(it => it.soilClass === sc);
                 const headerColors = [
-                  { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200', badge: 'bg-slate-200 text-slate-600' },
-                  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-600' },
-                  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badge: 'bg-emerald-100 text-emerald-600' },
-                  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-600' },
-                  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', badge: 'bg-rose-100 text-rose-600' },
-                ][scIdx] || { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-100', badge: 'bg-slate-100 text-slate-500' };
+                  { bg: 'bg-slate-200', text: 'text-slate-800', border: 'border-slate-300', badge: 'bg-slate-300 text-slate-700' },
+                  { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', badge: 'bg-blue-200 text-blue-700' },
+                  { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300', badge: 'bg-emerald-200 text-emerald-700' },
+                  { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300', badge: 'bg-amber-200 text-amber-700' },
+                  { bg: 'bg-rose-100', text: 'text-rose-800', border: 'border-rose-300', badge: 'bg-rose-200 text-rose-700' },
+                ][scIdx] || { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200', badge: 'bg-slate-200 text-slate-600' };
                 return (
                   <Droppable key={sc} droppableId={sc}>
                     {(provided, snapshot) => (
@@ -5184,10 +5504,11 @@ LƯU Ý:
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr style={{ background: activeTabData.headerBg }}>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-10 border-r border-white/20">#</th>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-left border-r border-white/20">{colHeader}</th>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 whitespace-nowrap">Số biên bản</th>
-                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-10"></th>}
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-12 border border-white/20">STT</th>
+                        <th className={cn("px-3 py-3 text-xs font-bold text-white text-left border border-white/20", activeTab === 'project' ? "w-[350px]" : "")}>{colHeader}</th>
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-left border border-white/20">Hạng Mục</th>}
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-24 whitespace-nowrap border border-white/20">Số biên bản</th>
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 border border-white/20">Thao tác</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -5197,9 +5518,9 @@ LƯU Ý:
                         const isSaving = savingKey === row.value;
                         const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
                         return (
-                          <tr key={row.value} style={{ background: rowBg }} className="border-b border-slate-100 hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono">{globalIdx + 1}</td>
-                            <td className="px-3 py-2.5">
+                          <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/30 transition-colors">
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-100">{globalIdx + 1}</td>
+                            <td className={cn("px-3 py-2.5 border border-slate-100", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -5246,7 +5567,41 @@ LƯU Ý:
                                 </div>
                               )}
                             </td>
-                            <td className="px-3 py-2.5 text-center">
+                            {activeTab === 'project' && (
+                              <td className="px-3 py-2.5 border border-slate-100">
+                                <div className="flex flex-wrap gap-1 items-center">
+                                  {items.filter(it => {
+                                    const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                    return it.projectId === proj?.id;
+                                  }).slice(0, 5).map(it => (
+                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100 uppercase tracking-tight">
+                                      {it.name}
+                                    </span>
+                                  ))}
+                                  {items.filter(it => {
+                                    const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                    return it.projectId === proj?.id;
+                                  }).length > 5 && (
+                                    <span className="text-[10px] text-slate-400 font-bold">...</span>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                      if (proj) setManagingItemsProject(proj);
+                                    }}
+                                    className="ml-auto p-1 hover:bg-emerald-100 text-emerald-600 rounded-lg transition-colors flex items-center gap-1"
+                                    title="Quản lý hạng mục"
+                                  >
+                                    <Layers size={10} />
+                                    <span className="text-[10px] font-black">{items.filter(it => {
+                                      const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                      return it.projectId === proj?.id;
+                                    }).length}</span>
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                            <td className="px-3 py-2.5 text-center border border-slate-100">
                               {row.count > 0 ? (
                                 <button 
                                   onClick={() => showReportsForItem(row.value)}
@@ -5260,28 +5615,30 @@ LƯU Ý:
                                 </span>
                               )}
                             </td>
-                            {activeTab === 'project' && row.count === 0 && (
-                              <td className="px-2 py-2.5 text-center">
-                                <button
-                                  title="Xóa dự án này (chưa có biên bản)"
-                                  onClick={async () => {
-                                    const proj = projects.find(p => p.name.trim() === row.value.trim());
-                                    if (!proj) return;
-                                    if (!window.confirm(`Xóa dự án "${row.value}"?`)) return;
-                                    // Optimistic: xóa UI + localStorage trước
-                                    const updated = projects.filter(p => p.id !== proj.id);
-                                    setProjects(updated);
-                                    localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
-                                    // Sync Supabase (bỏ qua nếu bảng chưa tồn tại)
-                                    if (supabase) {
-                                      supabase.from('app_projects').delete().eq('id', proj.id).then(() => {}, () => {});
-                                    }
-                                    showToast(`Đã xóa dự án "${row.value}"`, 'success');
-                                  }}
-                                  className="p-1 bg-red-50 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all border border-red-100"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
+                            {activeTab === 'project' && (
+                              <td className="px-2 py-2.5 text-center border border-slate-100">
+                                {row.count === 0 && (
+                                  <button
+                                    title="Xóa dự án này (chưa có biên bản)"
+                                    onClick={async () => {
+                                      const proj = projects.find(p => p.name.trim() === row.value.trim());
+                                      if (!proj) return;
+                                      if (!window.confirm(`Xóa dự án "${row.value}"?`)) return;
+                                      // Optimistic: xóa UI + localStorage trước
+                                      const updated = projects.filter(p => p.id !== proj.id);
+                                      setProjects(updated);
+                                      localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+                                      // Sync Supabase (bỏ qua nếu bảng chưa tồn tại)
+                                      if (supabase) {
+                                        supabase.from('app_projects').delete().eq('id', proj.id).then(() => {}, () => {});
+                                      }
+                                      showToast(`Đã xóa dự án "${row.value}"`, 'success');
+                                    }}
+                                    className="p-1.5 bg-red-50 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all border border-red-100 inline-flex items-center justify-center"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
                               </td>
                             )}
                           </tr>
@@ -6227,6 +6584,9 @@ LƯU Ý:
                           githubCreds={githubCreds}
                           userApiKey={userApiKey}
                           onExtract={callExtractWithRotation}
+                          projects={projects}
+                          items={items}
+                          drillingMachines={drillingMachines}
                           onSave={(updated) => {
                             setCurrentResult(updated);
                             setPendingResults(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -7192,6 +7552,21 @@ LƯU Ý:
           githubCreds={githubCreds}
           userApiKey={userApiKey}
           onExtract={callExtractWithRotation}
+          projects={projects}
+          items={items}
+          drillingMachines={drillingMachines}
+        />
+      )}
+
+      {managingItemsProject && (
+        <ProjectItemsModal
+          project={managingItemsProject}
+          onClose={() => setManagingItemsProject(null)}
+          items={items}
+          setItems={setItems}
+          supabase={supabase}
+          currentUser={currentUser}
+          showToast={showToast}
         />
       )}
     </div>
@@ -10518,6 +10893,9 @@ function EditSplitView({
   githubCreds,
   userApiKey,
   onExtract,
+  projects,
+  items,
+  drillingMachines,
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
@@ -10526,6 +10904,9 @@ function EditSplitView({
   githubCreds?: { token: string; username: string; repo: string } | null;
   userApiKey?: string;
   onExtract?: (images: { base64: string; mimeType: string }[]) => Promise<Omit<ExtractionResult, 'id' | 'timestamp'>>;
+  projects: AppProject[];
+  items: AppItem[];
+  drillingMachines: AppDrillingMachine[];
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
@@ -11589,64 +11970,51 @@ function EditSplitView({
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
               {(() => {
-                // Lấy danh sách dự án: ưu tiên app_projects, fallback history
-                const allUsers: AppUser[] = (() => {
-                  try {
-                    const raw = localStorage.getItem('sgc_app_users');
-                    const parsed: AppUser[] = raw ? JSON.parse(raw) : [];
-                    return parsed.find((u: AppUser) => u.id === 'admin-default') ? parsed : [DEFAULT_ADMIN, ...parsed];
-                  } catch { return [DEFAULT_ADMIN]; }
-                })();
-                const sessionRaw = localStorage.getItem('sgc_session');
-                const sessionUser: AppUser | null = sessionRaw ? (() => { try { return JSON.parse(sessionRaw); } catch { return null; } })() : null;
                 const savedProjects: AppProject[] = (() => {
                   try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
                 })();
+                const sessionRaw = localStorage.getItem('sgc_session');
+                const sessionUser: AppUser | null = sessionRaw ? (() => { try { return JSON.parse(sessionRaw); } catch { return null; } })() : null;
 
-                // Dự án cho dropdown: nếu QS-QC có assignedProjects → lọc, ngược lại lấy tất cả
-                let availableProjects: string[] = savedProjects.map(p => p.name);
+                let availableProjects = savedProjects;
                 if (sessionUser && sessionUser.role !== 'admin' && sessionUser.assignedProjects && sessionUser.assignedProjects.length > 0) {
-                  availableProjects = sessionUser.assignedProjects;
+                  availableProjects = savedProjects.filter(p => sessionUser.assignedProjects.includes(p.name));
                 }
-                // Thêm các tên dự án từ history nếu chưa có trong danh sách (backward compat)
-                const historyProjects: string[] = [];
-                try {
-                  const h = localStorage.getItem('pile_drill_history');
-                  if (h) JSON.parse(h).forEach((r: any) => { if (r.project && !availableProjects.includes(r.project.trim())) historyProjects.push(r.project.trim()); });
-                } catch {}
-                const allProjectOptions = [...new Set([...availableProjects, ...historyProjects])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'vi'));
 
-                return allProjectOptions.length > 0 ? (
+                return (
                   <select
                     value={data.project}
                     onChange={e => updateField('project', e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
                   >
                     <option value="">-- Chọn dự án --</option>
-                    {allProjectOptions.map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                    {data.project && !allProjectOptions.includes(data.project) && (
+                    {availableProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    {data.project && !availableProjects.some(p => p.name === data.project) && (
                       <option value={data.project}>{data.project} (AI quét)</option>
                     )}
                   </select>
-                ) : (
-                  <input
-                    value={data.project}
-                    onChange={(e) => updateField('project', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-                    placeholder="Nhập tên dự án..."
-                  />
                 );
               })()}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
-              <input 
-                value={data.item} 
-                onChange={(e) => updateField('item', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
+              {(() => {
+                const selectedProj = projects.find(p => p.name === data.project);
+                const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
+                return (
+                  <select
+                    value={data.item}
+                    onChange={e => updateField('item', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="">-- Chọn hạng mục --</option>
+                    {filteredItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
+                    {data.item && !filteredItems.some(it => it.name === data.item) && (
+                      <option value={data.item}>{data.item} (AI quét)</option>
+                    )}
+                  </select>
+                );
+              })()}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên bộ phận</label>
@@ -11666,11 +12034,23 @@ function EditSplitView({
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
-              <input 
-                value={data.reportNumber} 
-                onChange={(e) => updateField('reportNumber', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-              />
+              {(() => {
+                const selectedProj = projects.find(p => p.name === data.project);
+                const filteredMachines = selectedProj ? drillingMachines.filter(m => m.projectId === selectedProj.id) : [];
+                return (
+                  <select
+                    value={data.reportNumber}
+                    onChange={e => updateField('reportNumber', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="">-- Chọn máy khoan --</option>
+                    {filteredMachines.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                    {data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber) && (
+                      <option value={data.reportNumber}>{data.reportNumber} (AI quét)</option>
+                    )}
+                  </select>
+                );
+              })()}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
