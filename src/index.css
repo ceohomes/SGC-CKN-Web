@@ -18,6 +18,7 @@
 @layer base {
   body {
     @apply bg-sky-50/50 text-slate-900 font-sans antialiased;
+    font-family: "Roboto", ui-sans-serif, system-ui, sans-serif;
   }
 }
 

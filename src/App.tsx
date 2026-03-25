@@ -5723,7 +5723,7 @@ LƯU Ý:
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
                                     return it.projectId === proj?.id;
                                   }).slice(0, 5).map(it => (
-                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-slate-900 text-[11px] font-bold border border-emerald-100 normal-case">
+                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded text-white text-[11px] font-bold normal-case" style={{background:"#1e3a8a"}}>
                                       {it.name}
                                     </span>
                                   ))}
