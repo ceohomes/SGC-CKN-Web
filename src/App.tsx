@@ -1969,6 +1969,9 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
   const [geologyChuanHoaTab, setGeologyChuanHoaTab] = useState<'geology' | 'project' | 'diameter'>('geology');
+  // Stable edit states tách riêng ở component level để tránh reset khi re-render
+  const [stableEditingKey, setStableEditingKey] = useState<string | null>(null);
+  const [stableEditValue, setStableEditValue] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -5640,8 +5643,12 @@ LƯU Ý:
                     <tbody>
                       {colRows.map((row, rowIdx) => {
                         const globalIdx = colIdx * ROWS_PER_COL + rowIdx;
-                        const isEditing = editingKey === row.value;
+                        // Dùng stableEditingKey từ component level để tránh reset khi re-render
+                        const isEditing = activeTab === 'project'
+                          ? stableEditingKey === row.value
+                          : editingKey === row.value;
                         const isSaving = savingKey === row.value;
+                        const currentEditVal = activeTab === 'project' ? stableEditValue : editValue;
                         const rowBg = globalIdx % 2 === 0 ? '#f1f5f9' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/50 transition-colors">
@@ -5652,18 +5659,48 @@ LƯU Ý:
                                   <input
                                     autoFocus
                                     className="flex-1 border-2 border-blue-400 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                    value={editValue}
-                                    onChange={e => setEditValue(e.target.value)}
+                                    value={currentEditVal}
+                                    onChange={e => activeTab === 'project' ? setStableEditValue(e.target.value) : setEditValue(e.target.value)}
                                     onKeyDown={e => {
-                                      if (e.key === 'Enter') commitEdit(row.value);
-                                      if (e.key === 'Escape') cancelEdit();
+                                      if (e.key === 'Enter') {
+                                        if (activeTab === 'project') {
+                                          commitEdit(row.value, stableEditValue);
+                                          setStableEditingKey(null);
+                                          setStableEditValue('');
+                                        } else {
+                                          commitEdit(row.value);
+                                        }
+                                      }
+                                      if (e.key === 'Escape') {
+                                        if (activeTab === 'project') {
+                                          setStableEditingKey(null);
+                                          setStableEditValue('');
+                                        } else {
+                                          cancelEdit();
+                                        }
+                                      }
                                     }}
                                   />
-                                  <button onClick={() => commitEdit(row.value)}
+                                  <button onClick={() => {
+                                    if (activeTab === 'project') {
+                                      commitEdit(row.value, stableEditValue);
+                                      setStableEditingKey(null);
+                                      setStableEditValue('');
+                                    } else {
+                                      commitEdit(row.value);
+                                    }
+                                  }}
                                     className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
                                     <CheckCircle2 size={11} /> Lưu
                                   </button>
-                                  <button onClick={cancelEdit}
+                                  <button onClick={() => {
+                                    if (activeTab === 'project') {
+                                      setStableEditingKey(null);
+                                      setStableEditValue('');
+                                    } else {
+                                      cancelEdit();
+                                    }
+                                  }}
                                     className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded-lg font-semibold transition-colors">
                                     <X size={11} /> Hủy
                                   </button>
@@ -5672,7 +5709,14 @@ LƯU Ý:
                                 <div className="flex items-center justify-between group">
                                   <div 
                                     className="flex items-center gap-1.5 cursor-pointer flex-1" 
-                                    onClick={() => startEdit(row.value)}
+                                    onClick={() => {
+                                      if (activeTab === 'project') {
+                                        setStableEditingKey(row.value);
+                                        setStableEditValue(row.value);
+                                      } else {
+                                        startEdit(row.value);
+                                      }
+                                    }}
                                     title="Click để chỉnh sửa"
                                   >
                                     {isSaving ? (
