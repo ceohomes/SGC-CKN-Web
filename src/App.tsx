@@ -48,7 +48,8 @@ import {
   ArrowRight,
   Sparkles,
   CircleDot,
-  UserCheck
+  UserCheck,
+  Eye
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -2259,7 +2260,8 @@ export default function App() {
           if (!drillingMachinesRes.error && drillingMachinesRes.data && drillingMachinesRes.data.length > 0) {
             const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => ({
               id: r.id,
-              projectId: r.project_id,
+              // Normalize: null / undefined / 'global' / '' đều là chưa phân bổ
+              projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
               name: r.name,
               createdAt: r.created_at,
               createdBy: r.created_by || '',
@@ -5178,7 +5180,8 @@ LƯU Ý:
         if (supabase) {
           await supabase.from('app_drilling_machines').insert([{
             id: newMachine.id,
-            project_id: newMachine.projectId,
+            // Lưu null thay vì 'global' để Supabase nhận đúng FK
+            project_id: (newMachine.projectId && newMachine.projectId !== 'global') ? newMachine.projectId : null,
             name: newMachine.name,
             created_at: newMachine.createdAt,
             created_by: newMachine.createdBy,
@@ -5478,7 +5481,7 @@ LƯU Ý:
                           localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
                           if (supabase) {
                             await supabase.from('app_drilling_machines').insert(
-                              toAdd.map(m => ({ id: m.id, project_id: m.projectId, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
+                              toAdd.map(m => ({ id: m.id, project_id: (m.projectId && m.projectId !== 'global') ? m.projectId : null, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
                             );
                           }
                           showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
@@ -5611,18 +5614,18 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
-            <div className="flex gap-0 divide-x-2 divide-slate-300">
+          <div className="bg-white rounded-2xl border border-slate-500 shadow-md overflow-hidden">
+            <div className="flex gap-0 divide-x divide-slate-500">
               {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr style={{ background: activeTabData.headerBg }}>
-                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-12 border border-white/30">STT</th>
-                        <th className={cn("px-3 py-3 text-xs font-bold text-white text-left border border-white/30", activeTab === 'project' ? "w-[350px]" : "")}>{colHeader}</th>
-                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center border border-white/30">Hạng Mục</th>}
-                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-24 whitespace-nowrap border border-white/30">Số biên bản</th>
-                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 border border-white/30">Thao tác</th>}
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-12 border border-white/40">STT</th>
+                        <th className={cn("px-3 py-3 text-xs font-bold text-white text-left border border-white/40", activeTab === 'project' ? "w-[350px]" : "")}>{colHeader}</th>
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center border border-white/40">Hạng Mục</th>}
+                        <th className="px-3 py-3 text-xs font-bold text-white text-center w-24 whitespace-nowrap border border-white/40">Số biên bản</th>
+                        {activeTab === 'project' && <th className="px-3 py-3 text-xs font-bold text-white text-center w-20 border border-white/40">Thao tác</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -5633,8 +5636,8 @@ LƯU Ý:
                         const rowBg = globalIdx % 2 === 0 ? '#f1f5f9' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/50 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-b-2 border-r-2 border-slate-200">{globalIdx + 1}</td>
-                            <td className={cn("px-3 py-2.5 border-b-2 border-r-2 border-slate-200", activeTab === 'project' ? "w-[350px]" : "")}>
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-b border-r border-slate-400">{globalIdx + 1}</td>
+                            <td className={cn("px-3 py-2.5 border-b border-r border-slate-400", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -5660,29 +5663,31 @@ LƯU Ý:
                                 <div className="flex items-center justify-between group">
                                   <div 
                                     className="flex items-center gap-1.5 cursor-pointer flex-1" 
-                                    onClick={() => showReportsForItem(row.value)}
+                                    onClick={() => startEdit(row.value)}
+                                    title="Click để chỉnh sửa"
                                   >
                                     {isSaving ? (
                                       <span className="flex items-center gap-1.5 text-blue-600 text-xs">
                                         <Loader2 size={12} className="animate-spin" /> Đang lưu...
                                       </span>
                                     ) : (
-                                      <span className="text-xs text-slate-700 leading-snug group-hover:text-blue-600 transition-colors">{row.value}</span>
+                                      <span className="text-xs text-slate-900 font-medium leading-snug group-hover:text-blue-600 transition-colors">{row.value}</span>
                                     )}
                                   </div>
                                   {!isSaving && (
                                     <button 
-                                      onClick={(e) => { e.stopPropagation(); startEdit(row.value); }}
-                                      className="p-1 hover:bg-slate-100 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                      onClick={(e) => { e.stopPropagation(); showReportsForItem(row.value); }}
+                                      className="p-1 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                      title="Xem biên bản"
                                     >
-                                      <Edit2 size={11} className="text-blue-400" />
+                                      <Eye size={11} className="text-blue-400" />
                                     </button>
                                   )}
                                 </div>
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-3 py-2.5 border-b-2 border-r-2 border-slate-200">
+                              <td className="px-3 py-2.5 border-b border-r border-slate-400">
                                 <div className="flex flex-wrap gap-1 items-center">
                                   {items.filter(it => {
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
@@ -5715,7 +5720,7 @@ LƯU Ý:
                                 </div>
                               </td>
                             )}
-                            <td className="px-3 py-2.5 text-center border-b-2 border-r-2 border-slate-200">
+                            <td className="px-3 py-2.5 text-center border-b border-r border-slate-400">
                               {row.count > 0 ? (
                                 <button 
                                   onClick={() => showReportsForItem(row.value)}
@@ -5730,7 +5735,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-2 py-2.5 text-center border-b-2 border-r-2 border-slate-200">
+                              <td className="px-2 py-2.5 text-center border-b border-r border-slate-400">
                                 {row.count === 0 && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
@@ -5783,7 +5788,7 @@ LƯU Ý:
             setDrillingMachines(updated);
             localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
             if (supabase) {
-              await supabase.from('app_drilling_machines').update({ project_id: newProjectId }).eq('id', machineId);
+              await supabase.from('app_drilling_machines').update({ project_id: (newProjectId && newProjectId !== 'global') ? newProjectId : null }).eq('id', machineId);
             }
           };
 
@@ -5810,9 +5815,9 @@ LƯU Ý:
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`flex-shrink-0 w-56 bg-slate-50 border-2 rounded-2xl overflow-hidden transition-all shadow-md ${snapshot.isDraggingOver ? 'border-amber-400 bg-amber-50/50 shadow-amber-200' : 'border-slate-300 shadow-sm'}`}
+                        className={`flex-shrink-0 w-56 bg-slate-50 border rounded-2xl overflow-hidden transition-all shadow-sm ${snapshot.isDraggingOver ? 'border-amber-500 bg-amber-50/50 shadow-amber-200' : 'border-slate-500 shadow-sm'}`}
                       >
-                        <div className="px-3 py-2.5 bg-slate-200 border-b-2 border-slate-300 flex items-center justify-between">
+                        <div className="px-3 py-2.5 bg-slate-200 border-b border-slate-500 flex items-center justify-between">
                           <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">Chưa phân bổ</span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-300 text-slate-700">{unassignedMachines.length}</span>
                         </div>
@@ -5824,7 +5829,7 @@ LƯU Ý:
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
-                                  className={`bg-white px-3 py-2 rounded-xl border-2 shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-400 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-300 hover:border-amber-400 hover:shadow-md'}`}
+                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-500 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-500 hover:border-amber-500 hover:shadow-md'}`}
                                 >
                                   <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
                                   {machine.name}
@@ -5858,9 +5863,9 @@ LƯU Ý:
                           <div
                             ref={provided.innerRef}
                             {...provided.droppableProps}
-                            className={`flex-shrink-0 min-w-[14rem] max-w-xs border-2 rounded-2xl overflow-hidden transition-all bg-white shadow-md ${snapshot.isDraggingOver ? `${c.drag} border-2 shadow-lg` : 'border-slate-300 shadow-sm'}`}
+                            className={`flex-shrink-0 min-w-[14rem] max-w-xs border rounded-2xl overflow-hidden transition-all bg-white shadow-sm ${snapshot.isDraggingOver ? `${c.drag} shadow-md` : 'border-slate-500 shadow-sm'}`}
                           >
-                            <div className={`px-3 py-2.5 border-b-2 flex items-center justify-between gap-2 ${c.header}`}>
+                            <div className={`px-3 py-2.5 border-b border-slate-400 flex items-center justify-between gap-2 ${c.header}`}>
                               <span className={`text-[11px] font-black uppercase tracking-wider leading-tight ${c.text}`}>{proj.name}</span>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${c.badge}`}>{projMachines.length}</span>
                             </div>
@@ -5872,7 +5877,7 @@ LƯU Ý:
                                       ref={provided.innerRef}
                                       {...provided.draggableProps}
                                       {...provided.dragHandleProps}
-                                      className={`bg-white px-3 py-2 rounded-xl border-2 shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-300 hover:border-blue-400 hover:shadow-md'}`}
+                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-500 hover:border-blue-500 hover:shadow-md'}`}
                                     >
                                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
                                       {machine.name}
