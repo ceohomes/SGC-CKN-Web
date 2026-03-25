@@ -5649,7 +5649,7 @@ LƯU Ý:
                         const rowBg = globalIdx % 2 === 0 ? '#f1f5f9' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/50 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border-b border-r border-slate-400">{globalIdx + 1}</td>
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-900 font-mono border-b border-r border-slate-400">{globalIdx + 1}</td>
                             <td className={cn("px-3 py-2.5 border-b border-r border-slate-400", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
@@ -5742,7 +5742,7 @@ LƯU Ý:
                                     title="Quản lý hạng mục"
                                   >
                                     <Layers size={10} />
-                                    <span>Hạng mục</span>
+                                    <span className="text-slate-900">Hạng mục</span>
                                     <span className="bg-white/80 text-slate-900 rounded px-1 font-black">{items.filter(it => {
                                       const proj = projects.find(p => p.name.trim() === row.value.trim());
                                       return it.projectId === proj?.id;
