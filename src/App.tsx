@@ -5633,8 +5633,8 @@ LƯU Ý:
                         const rowBg = globalIdx % 2 === 0 ? '#f8fafc' : '#ffffff';
                         return (
                           <tr key={row.value} style={{ background: rowBg }} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-200">{globalIdx + 1}</td>
-                            <td className={cn("px-3 py-2.5 border border-slate-200", activeTab === 'project' ? "w-[350px]" : "")}>
+                            <td className="px-3 py-2.5 text-xs text-center text-slate-400 font-mono border border-slate-700">{globalIdx + 1}</td>
+                            <td className={cn("px-3 py-2.5 border border-slate-700", activeTab === 'project' ? "w-[350px]" : "")}>
                               {isEditing ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -5682,7 +5682,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-3 py-2.5 border border-slate-200">
+                              <td className="px-3 py-2.5 border border-slate-700">
                                 <div className="flex flex-wrap gap-1 items-center">
                                   {items.filter(it => {
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
@@ -5715,7 +5715,7 @@ LƯU Ý:
                                 </div>
                               </td>
                             )}
-                            <td className="px-3 py-2.5 text-center border border-slate-200">
+                            <td className="px-3 py-2.5 text-center border border-slate-700">
                               {row.count > 0 ? (
                                 <button 
                                   onClick={() => showReportsForItem(row.value)}
@@ -5730,7 +5730,7 @@ LƯU Ý:
                               )}
                             </td>
                             {activeTab === 'project' && (
-                              <td className="px-2 py-2.5 text-center border border-slate-200">
+                              <td className="px-2 py-2.5 text-center border border-slate-700">
                                 {row.count === 0 && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
