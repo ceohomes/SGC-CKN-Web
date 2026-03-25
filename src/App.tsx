@@ -2080,6 +2080,9 @@ export default function App() {
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [showDiameterDropdown, setShowDiameterDropdown] = useState(false);
   const diameterDropdownRef = useRef<HTMLDivElement>(null);
+  const [filterMachine, setFilterMachine] = useState('');
+  const [showMachineDropdown, setShowMachineDropdown] = useState(false);
+  const machineDropdownRef = useRef<HTMLDivElement>(null);
 
   // Đóng dropdown khi click ngoài
   useEffect(() => {
@@ -2087,6 +2090,7 @@ export default function App() {
       if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) setShowProjectDropdown(false);
       if (itemDropdownRef.current && !itemDropdownRef.current.contains(e.target as Node)) setShowItemDropdown(false);
       if (diameterDropdownRef.current && !diameterDropdownRef.current.contains(e.target as Node)) setShowDiameterDropdown(false);
+      if (machineDropdownRef.current && !machineDropdownRef.current.contains(e.target as Node)) setShowMachineDropdown(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -4465,17 +4469,17 @@ export default function App() {
             </div>
 
             {/* List */}
-            <div className="space-y-3">
+            <div className="space-y-1">
               {projectItems.length === 0 ? (
-                <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 shadow-sm">
-                  <Layers size={32} className="text-slate-300 mx-auto mb-2" />
+                <div className="py-8 text-center bg-slate-100 rounded-xl border border-dashed border-slate-300">
+                  <Layers size={24} className="text-slate-300 mx-auto mb-1" />
                   <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Chưa có hạng mục nào</p>
                 </div>
               ) : (
                 projectItems.map((it, idx) => (
-                  <div key={it.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-emerald-400 hover:shadow-md transition-all group shadow-sm">
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                  <div key={it.id} className="flex items-center justify-between px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg hover:border-emerald-400 hover:bg-slate-50 transition-all group">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-5 h-5 rounded-full bg-slate-300 flex items-center justify-center text-[9px] font-black text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
                         {idx + 1}
                       </div>
                       {editingItemId === it.id ? (
@@ -5660,9 +5664,10 @@ LƯU Ý:
                                     onChange={e => setStableEditValue(e.target.value)}
                                     onKeyDown={e => {
                                       if (e.key === 'Enter') {
-                                        commitEdit(row.value, stableEditValue);
+                                        const capturedVal = stableEditValue;
                                         setStableEditingKey(null);
                                         setStableEditValue('');
+                                        commitEdit(row.value, capturedVal);
                                       }
                                       if (e.key === 'Escape') {
                                         setStableEditingKey(null);
@@ -5671,9 +5676,10 @@ LƯU Ý:
                                     }}
                                   />
                                   <button onClick={() => {
-                                    commitEdit(row.value, stableEditValue);
+                                    const capturedVal = stableEditValue;
                                     setStableEditingKey(null);
                                     setStableEditValue('');
+                                    commitEdit(row.value, capturedVal);
                                   }}
                                     className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded-lg font-semibold transition-colors whitespace-nowrap">
                                     <CheckCircle2 size={11} /> Lưu
@@ -5834,6 +5840,32 @@ LƯU Ý:
             }
           };
 
+          const deleteMachine = async (machineId: string, machineName: string) => {
+            if (!window.confirm(`Xóa máy khoan "${machineName}"?`)) return;
+            const updated = drillingMachines.filter(m => m.id !== machineId);
+            setDrillingMachines(updated);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            if (supabase) {
+              const { error } = await supabase.from('app_drilling_machines').delete().eq('id', machineId);
+              if (error) showToast(`⚠️ Xóa thất bại: ${error.message}`, 'error');
+              else showToast(`✅ Đã xóa máy khoan "${machineName}"`, 'success', 2000);
+            }
+          };
+
+          const renameMachine = async (machineId: string, oldName: string) => {
+            const newName = window.prompt(`Đổi tên máy khoan:`, oldName);
+            if (!newName || newName.trim() === '' || newName.trim() === oldName) return;
+            const trimmed = newName.trim();
+            const updated = drillingMachines.map(m => m.id === machineId ? { ...m, name: trimmed } : m);
+            setDrillingMachines(updated);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            if (supabase) {
+              const { error } = await supabase.from('app_drilling_machines').update({ name: trimmed }).eq('id', machineId);
+              if (error) showToast(`⚠️ Đổi tên thất bại: ${error.message}`, 'error');
+              else showToast(`✅ Đã đổi tên thành "${trimmed}"`, 'success', 2000);
+            }
+          };
+
           const unassignedMachines = drillingMachines.filter(m => !m.projectId || m.projectId === 'global');
           const projectColumns = projects;
 
@@ -5900,10 +5932,14 @@ LƯU Ý:
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   {...provided.dragHandleProps}
-                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl border-amber-500 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-500 hover:border-amber-500 hover:shadow-md'}`}
+                                  className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all group ${snapshot.isDragging ? 'shadow-xl border-amber-500 ring-2 ring-amber-300/40 rotate-1' : 'border-slate-500 hover:border-amber-500 hover:shadow-md'}`}
                                 >
                                   <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
-                                  {machine.name}
+                                  <span className="flex-1 truncate">{machine.name}</span>
+                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                    <button onClick={() => renameMachine(machine.id, machine.name)} className="p-1 hover:bg-blue-100 text-blue-400 hover:text-blue-600 rounded transition-colors" title="Sửa tên"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                    <button onClick={() => deleteMachine(machine.id, machine.name)} className="p-1 hover:bg-red-100 text-red-400 hover:text-red-600 rounded transition-colors" title="Xóa"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                                  </div>
                                 </div>
                               )}
                             </Draggable>
@@ -5948,10 +5984,14 @@ LƯU Ý:
                                       ref={provided.innerRef}
                                       {...provided.draggableProps}
                                       {...provided.dragHandleProps}
-                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-500 hover:border-blue-500 hover:shadow-md'}`}
+                                      className={`bg-white px-3 py-2 rounded-xl border shadow-sm text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-grab transition-all group ${snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-300/40 rotate-1' : 'border-slate-500 hover:border-blue-500 hover:shadow-md'}`}
                                     >
                                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
-                                      {machine.name}
+                                      <span className="flex-1 truncate">{machine.name}</span>
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => renameMachine(machine.id, machine.name)} className="p-1 hover:bg-blue-100 text-blue-400 hover:text-blue-600 rounded transition-colors" title="Sửa tên"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                        <button onClick={() => deleteMachine(machine.id, machine.name)} className="p-1 hover:bg-red-100 text-red-400 hover:text-red-600 rounded transition-colors" title="Xóa"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                                      </div>
                                     </div>
                                   )}
                                 </Draggable>
@@ -6943,6 +6983,7 @@ LƯU Ý:
                 if (filterItem && !item.item?.toLowerCase().includes(filterItem.toLowerCase())) return false;
                 if (filterComponentName && !item.componentName?.toLowerCase().includes(filterComponentName.toLowerCase())) return false;
                 if (filterPileId && !item.pileId?.toLowerCase().includes(filterPileId.toLowerCase())) return false;
+                if (filterMachine && !item.reportNumber?.toLowerCase().includes(filterMachine.toLowerCase())) return false;
                 if (filterDiameter && !item.diameter?.toLowerCase().includes(filterDiameter.toLowerCase())) return false;
                 if (filterDateFrom) {
                   const from = parseFilterDate(filterDateFrom);
@@ -6957,13 +6998,13 @@ LƯU Ý:
                 return true;
               });
 
-              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterPileId || filterDiameter || filterDateFrom || filterDateTo || filterStt;
+              const hasActiveFilter = filterProject || filterItem || filterComponentName || filterPileId || filterDiameter || filterDateFrom || filterDateTo || filterStt || filterMachine;
 
               const resetFilters = () => {
                 setFilterProject(''); setFilterItem(''); setFilterComponentName('');
                 setFilterPileId(''); setFilterDiameter('');
                 setFilterDateFrom(''); setFilterDateTo('');
-                setFilterStt('');
+                setFilterStt(''); setFilterMachine('');
               };
 
               return (
@@ -7173,6 +7214,52 @@ LƯU Ý:
                           {filterPileId && <button onClick={() => setFilterPileId('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
                         </div>
                       </div>
+                      {/* Tên máy khoan - Dropdown + Search */}
+                      {(() => {
+                        const opts = [...new Set(visibleHistory.map(r => r.reportNumber).filter(Boolean))].sort((a,b) => a.localeCompare(b,'vi'));
+                        const matched = opts.filter(p => p.toLowerCase().includes(filterMachine.toLowerCase()));
+                        return (
+                          <div className="space-y-2 relative" ref={machineDropdownRef}>
+                            <label className="text-[11px] font-black text-black uppercase tracking-[0.15em] ml-1 font-sans">Tên máy khoan</label>
+                            <div className={cn("relative border rounded-xl transition-all bg-white hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/5", showMachineDropdown ? "border-blue-500 shadow-sm" : "border-slate-200")}>
+                              <Search size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                              <input value={filterMachine} onChange={e => { setFilterMachine(e.target.value); setShowMachineDropdown(true); }} onFocus={() => setShowMachineDropdown(true)}
+                                placeholder="Tìm kiếm máy khoan..."
+                                className="w-full pl-9 pr-14 py-2.5 text-[12px] bg-transparent outline-none rounded-xl text-slate-900 placeholder-slate-400 font-medium" />
+                              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                {filterMachine && <button onClick={() => { setFilterMachine(''); setShowMachineDropdown(false); }} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><X size={12} /></button>}
+                                <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                                <button onClick={() => setShowMachineDropdown(p => !p)} className="p-1 text-slate-400 hover:text-blue-600 transition-colors"><ChevronDown size={14} className={cn("transition-transform duration-300", showMachineDropdown && "rotate-180")} /></button>
+                              </div>
+                            </div>
+                            {showMachineDropdown && (
+                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-[200]">
+                                <button onClick={() => { setFilterMachine(''); setShowMachineDropdown(false); }} className={cn("w-full text-left px-3 py-2 text-[12px] font-bold transition-colors flex items-center gap-2", !filterMachine ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-50")}>
+                                  <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{!filterMachine && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                  Tất cả ({opts.length} máy khoan)
+                                </button>
+                                <div className="border-t border-slate-100 max-h-52 overflow-y-auto custom-scrollbar">
+                                  {matched.length === 0
+                                    ? <p className="text-center py-4 text-[12px] text-slate-400">Không tìm thấy</p>
+                                    : matched.map((p, i) => {
+                                        const kw = filterMachine.toLowerCase(); const idx = p.toLowerCase().indexOf(kw);
+                                        return (
+                                          <button key={i} onClick={() => { setFilterMachine(p); setShowMachineDropdown(false); }}
+                                            className={cn("w-full text-left px-3 py-2 text-[12px] transition-colors flex items-center gap-2", filterMachine === p ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700 hover:bg-slate-50")}>
+                                            <span className="w-3.5 h-3.5 rounded-full border-2 border-current flex items-center justify-center shrink-0">{filterMachine === p && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 block" />}</span>
+                                            <span className="truncate flex-1">{p.slice(0,idx)}{idx>=0&&<span className="bg-yellow-200 text-yellow-900 font-black rounded px-0.5">{p.slice(idx,idx+filterMachine.length)}</span>}{idx>=0?p.slice(idx+filterMachine.length):''}</span>
+                                            <span className="ml-auto text-[11px] font-black text-slate-400 shrink-0">{visibleHistory.filter(r => r.reportNumber === p).length}</span>
+                                          </button>
+                                        );
+                                      })
+                                  }
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Đường kính - Dropdown + Search */}
                       {(() => {
                         const opts = [...new Set(visibleHistory.map(r => r.diameter).filter(Boolean))].sort();
@@ -8994,13 +9081,13 @@ function SummaryView({
           <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1">
             <button
               onClick={() => setDashTab('overview')}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all border ${dashTab === 'overview' ? 'bg-[#1e3a8a] text-white shadow-md border-[#1e3a8a]' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'}`}
             >
               <span className="flex items-center gap-1.5"><BarChart3 size={12} /> Tổng quan</span>
             </button>
             <button
               onClick={() => setDashTab('weekly')}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${dashTab === 'weekly' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all border ${dashTab === 'weekly' ? 'bg-orange-500 text-white shadow-md border-orange-500' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300 hover:text-orange-600'}`}
             >
               <span className="flex items-center gap-1.5"><Calendar size={12} /> Báo cáo tuần</span>
             </button>
