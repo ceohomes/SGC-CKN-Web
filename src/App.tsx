@@ -5723,7 +5723,7 @@ LƯU Ý:
                                     const proj = projects.find(p => p.name.trim() === row.value.trim());
                                     return it.projectId === proj?.id;
                                   }).slice(0, 5).map(it => (
-                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100 normal-case">
+                                    <span key={it.id} className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-slate-900 text-[11px] font-bold border border-emerald-100 normal-case">
                                       {it.name}
                                     </span>
                                   ))}
@@ -5743,7 +5743,7 @@ LƯU Ý:
                                   >
                                     <Layers size={10} />
                                     <span>Hạng mục</span>
-                                    <span className="bg-white/30 text-white rounded px-1 font-black">{items.filter(it => {
+                                    <span className="bg-white/80 text-slate-900 rounded px-1 font-black">{items.filter(it => {
                                       const proj = projects.find(p => p.name.trim() === row.value.trim());
                                       return it.projectId === proj?.id;
                                     }).length}</span>
