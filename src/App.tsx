@@ -5738,11 +5738,12 @@ LƯU Ý:
                                       const proj = projects.find(p => p.name.trim() === row.value.trim());
                                       if (proj) setManagingItemsProject(proj);
                                     }}
-                                    className="ml-auto p-1 hover:bg-emerald-100 text-emerald-600 rounded-lg transition-colors flex items-center gap-1"
+                                    className="ml-auto px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-bold shadow-sm"
                                     title="Quản lý hạng mục"
                                   >
                                     <Layers size={10} />
-                                    <span className="text-[10px] font-black">{items.filter(it => {
+                                    <span>Hạng mục</span>
+                                    <span className="bg-white/30 text-white rounded px-1 font-black">{items.filter(it => {
                                       const proj = projects.find(p => p.name.trim() === row.value.trim());
                                       return it.projectId === proj?.id;
                                     }).length}</span>
