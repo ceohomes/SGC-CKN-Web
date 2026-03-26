@@ -7344,20 +7344,7 @@ LƯU Ý:
               <span className="font-medium text-sm">Tách file PDF</span>
             </button>
 
-            {currentUser?.role === 'admin' && (
-            <button 
-              onClick={() => { setActiveSheet('pile-registry'); setIsSidebarOpen(false); }}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
-                activeSheet === 'pile-registry' 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
-                  : "hover:bg-white/10 text-blue-200"
-              )}
-            >
-              <ListChecks size={18} className={activeSheet === 'pile-registry' ? "text-white" : "text-blue-300 group-hover:text-white"} />
-              <span className="font-medium text-sm">Danh sách cọc</span>
-            </button>
-            )}
+
 
             <button 
               onClick={() => { setActiveSheet('account-config'); setIsSidebarOpen(false); }}
@@ -7755,7 +7742,7 @@ LƯU Ý:
                     {currentUser?.role === 'admin' && (
                       <button
                         onClick={() => setActiveSheet('pile-registry')}
-                        className="flex items-center gap-2.5 px-5 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-slate-200 bg-white text-[#1e3a8a] hover:bg-blue-50 hover:border-blue-300 shadow-md shadow-slate-200/50 active:scale-95"
+                        className="flex items-center gap-2.5 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-white/10 text-white shadow-lg shadow-indigo-500/30 active:scale-95 bg-gradient-to-br from-indigo-500 to-indigo-700 hover:from-indigo-600 hover:to-indigo-800"
                       >
                         <ListChecks size={16} strokeWidth={2.5} />
                         Danh sách cọc
@@ -9451,42 +9438,34 @@ function PileRegistryView({
   const [loading, setLoading] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsePreview, setParsePreview] = useState<{
-    raw: string; canonical: string; item: string; 
+    raw: string; canonical: string; item: string;
     status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db';
   }[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterItem, setFilterItem] = useState('');
-  const [activeTab, setActiveTab] = useState<'registry' | 'analysis'>('registry');
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
-  // Load piles từ Supabase khi chọn dự án
   useEffect(() => {
     if (!selectedProjectId) { setPiles([]); return; }
     setLoading(true);
-    const loadPiles = async () => {
+    const load = async () => {
       try {
         if (supabase) {
-          const { data, error } = await (supabase as any)
-            .from('app_pile_registry')
-            .select('*')
-            .eq('project_id', selectedProjectId)
-            .order('item', { ascending: true });
-          if (!error && data) { setPiles(data); }
+          const { data, error } = await supabase.from('app_pile_registry').select('*').eq('project_id', selectedProjectId).order('item', { ascending: true });
+          if (!error && data) setPiles(data);
+          else setPiles([]);
         } else {
           const saved = localStorage.getItem(`pile_registry_${selectedProjectId}`);
-          if (saved) setPiles(JSON.parse(saved));
-          else setPiles([]);
+          setPiles(saved ? JSON.parse(saved) : []);
         }
       } catch { setPiles([]); }
       setLoading(false);
     };
-    loadPiles();
+    load();
   }, [selectedProjectId, supabase]);
 
-  // Parse paste text → preview
   const handleParse = () => {
     if (!pasteText.trim()) return;
     const lines = pasteText.trim().split('\n').filter(l => l.trim());
@@ -9503,18 +9482,17 @@ function PileRegistryView({
       else if (seenInPaste.has(canonical)) status = 'duplicate_in_paste';
       seenInPaste.add(canonical);
       return { raw, canonical, item, status };
-    }).filter(Boolean) as typeof parsePreview;
+    }).filter(Boolean) as any[];
     setParsePreview(parsed);
     setSaveMsg(null);
   };
 
-  // Lưu các cọc "new" vào DB
   const handleSave = async () => {
     if (!parsePreview || !selectedProjectId) return;
     const toSave = parsePreview.filter(p => p.status === 'new');
-    if (toSave.length === 0) { setSaveMsg('Không có cọc mới để lưu.'); return; }
+    if (!toSave.length) { setSaveMsg('Không có cọc mới để lưu.'); return; }
     setSaving(true);
-    const newEntries: Omit<PileEntry, 'id'>[] = toSave.map(p => ({
+    const newEntries = toSave.map(p => ({
       project_id: selectedProjectId,
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
@@ -9524,21 +9502,17 @@ function PileRegistryView({
     }));
     try {
       if (supabase) {
-        const { error } = await (supabase as any).from('app_pile_registry').insert(newEntries);
+        const { error } = await supabase.from('app_pile_registry').insert(newEntries);
         if (error) throw error;
-        // Reload
-        const { data } = await (supabase as any)
-          .from('app_pile_registry').select('*')
-          .eq('project_id', selectedProjectId).order('item');
+        const { data } = await supabase.from('app_pile_registry').select('*').eq('project_id', selectedProjectId).order('item');
         if (data) setPiles(data);
       } else {
-        // Fallback localStorage
-        const fakeEntries: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}` }));
-        const updated = [...piles, ...fakeEntries];
+        const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}` }));
+        const updated = [...piles, ...fakes];
         setPiles(updated);
         localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
       }
-      setSaveMsg(`✓ Đã lưu ${toSave.length} cọc mới thành công!`);
+      setSaveMsg(`✓ Đã lưu ${toSave.length} cọc mới!`);
       setPasteText('');
       setParsePreview(null);
     } catch (err: any) {
@@ -9547,13 +9521,11 @@ function PileRegistryView({
     setSaving(false);
   };
 
-  // Xóa 1 cọc
   const handleDelete = async (id: string) => {
     if (!window.confirm('Xóa cọc này khỏi danh sách?')) return;
     try {
-      if (supabase) {
-        await (supabase as any).from('app_pile_registry').delete().eq('id', id);
-      } else {
+      if (supabase) await supabase.from('app_pile_registry').delete().eq('id', id);
+      else {
         const updated = piles.filter(p => p.id !== id);
         localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
       }
@@ -9562,200 +9534,226 @@ function PileRegistryView({
   };
 
   // Phân tích đối chiếu với biên bản
-  const analysisData = React.useMemo(() => {
-    if (!selectedProjectId || piles.length === 0) return null;
-    const projectHistory = history.filter(h => h.project === selectedProject?.name);
+  const analysis = React.useMemo(() => {
+    if (!selectedProjectId || !piles.length) return null;
+    const projHistory = history.filter(h => h.project === selectedProject?.name);
     const registryCanonicals = new Set(piles.map(p => p.pile_code_canonical));
-    const registryMap = new Map(piles.map(p => [p.pile_code_canonical, p]));
-
-    // Cọc trong biên bản
-    const pilesInReports = new Map<string, { raw: string; canonical: string; count: number; reports: string[] }>();
-    projectHistory.forEach(h => {
-      const raw = h.pileId;
-      const canonical = normalizePileCode(raw);
-      if (!pilesInReports.has(canonical)) {
-        pilesInReports.set(canonical, { raw, canonical, count: 0, reports: [] });
-      }
-      const entry = pilesInReports.get(canonical)!;
-      entry.count++;
-      if (!entry.reports.includes(h.reportNumber)) entry.reports.push(h.reportNumber);
+    const pilesInReports = new Map<string, { raw: string; count: number }>();
+    projHistory.forEach(h => {
+      const canonical = normalizePileCode(h.pileId);
+      if (!pilesInReports.has(canonical)) pilesInReports.set(canonical, { raw: h.pileId, count: 0 });
+      pilesInReports.get(canonical)!.count++;
     });
-
-    // Cọc trong biên bản nhưng KHÔNG có trong registry
-    const unknownPiles = Array.from(pilesInReports.values()).filter(p => !registryCanonicals.has(p.canonical));
-    
-    // Cọc trong registry đã có biên bản
-    const coveredPiles = piles.filter(p => pilesInReports.has(p.pile_code_canonical));
-    
-    // Cọc trong registry chưa có biên bản
-    const pendingPiles = piles.filter(p => !pilesInReports.has(p.pile_code_canonical));
-
-    // Cọc có nhiều hơn 1 biên bản (trùng biên bản)
-    const duplicateReportPiles = Array.from(pilesInReports.values()).filter(p => p.count > 1 && registryCanonicals.has(p.canonical));
-
-    // Thống kê theo hạng mục
-    const itemStats = new Map<string, { total: number; done: number }>();
-    piles.forEach(p => {
-      const item = p.item || '(Chưa phân hạng mục)';
-      if (!itemStats.has(item)) itemStats.set(item, { total: 0, done: 0 });
-      itemStats.get(item)!.total++;
-      if (pilesInReports.has(p.pile_code_canonical)) itemStats.get(item)!.done++;
-    });
-
-    return { unknownPiles, coveredPiles, pendingPiles, duplicateReportPiles, itemStats, pilesInReports };
+    const unknownPiles = Array.from(pilesInReports.entries()).filter(([c]) => !registryCanonicals.has(c));
+    const duplicateReportPiles = Array.from(pilesInReports.entries()).filter(([c, v]) => v.count > 1 && registryCanonicals.has(c));
+    return { pilesInReports, unknownPiles, duplicateReportPiles };
   }, [piles, history, selectedProjectId, selectedProject]);
-
-  const items = Array.from(new Set(piles.map(p => p.item).filter(Boolean)));
-  const filteredPiles = piles.filter(p => {
-    const matchSearch = !searchTerm || 
-      p.pile_code_raw.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.pile_code_canonical.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchItem = !filterItem || p.item === filterItem;
-    return matchSearch && matchItem;
-  });
 
   const newCount = parsePreview?.filter(p => p.status === 'new').length ?? 0;
   const dupDbCount = parsePreview?.filter(p => p.status === 'duplicate_in_db').length ?? 0;
   const dupPasteCount = parsePreview?.filter(p => p.status === 'duplicate_in_paste').length ?? 0;
 
+  const filteredPiles = piles.filter(p =>
+    !searchTerm ||
+    p.pile_code_raw.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.pile_code_canonical.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.item || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const coveredCount = piles.filter(p => analysis?.pilesInReports.has(p.pile_code_canonical)).length;
+
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-          <ListChecks className="text-white w-5 h-5" />
+    <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 80px)' }}>
+      {/* Header bar */}
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 bg-white">
+        <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
+          <ListChecks className="text-white w-4 h-4" />
         </div>
-        <div>
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Danh sách cọc</h1>
-          <p className="text-xs text-slate-500">Quản lý & đối chiếu cọc theo dự án</p>
+        <div className="flex-1">
+          <h1 className="text-base font-black text-slate-800 uppercase tracking-tight">Danh sách cọc</h1>
+          <p className="text-[11px] text-slate-400">Quản lý & đối chiếu cọc theo dự án</p>
         </div>
+        {/* Stats inline nếu đã chọn dự án */}
+        {selectedProjectId && (
+          <div className="flex items-center gap-3">
+            {[
+              { label: 'Tổng cọc', value: piles.length, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+              { label: 'Có biên bản', value: coveredCount, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+              { label: 'Chưa có', value: piles.length - coveredCount, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+              { label: 'Cọc lạ', value: analysis?.unknownPiles.length ?? 0, cls: (analysis?.unknownPiles.length ?? 0) > 0 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-400 border-slate-100' },
+            ].map(s => (
+              <div key={s.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${s.cls}`}>
+                <span className="text-base font-black">{s.value}</span>
+                <span className="font-medium opacity-80">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Chọn dự án */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-5 shadow-sm">
-        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Chọn dự án</label>
-        <select
-          value={selectedProjectId}
-          onChange={e => { setSelectedProjectId(e.target.value); setParsePreview(null); setPasteText(''); setSearchTerm(''); setFilterItem(''); }}
-          className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">-- Chọn dự án --</option>
-          {projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {!selectedProjectId && (
-        <div className="flex flex-col items-center py-24 text-slate-400">
-          <ClipboardList size={48} className="mb-4 opacity-30" />
-          <p className="text-sm">Chọn dự án để xem và quản lý danh sách cọc</p>
+      {/* Alerts */}
+      {(analysis?.unknownPiles.length ?? 0) > 0 && (
+        <div className="mx-6 mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <AlertTriangle className="text-red-500 w-4 h-4 flex-shrink-0" />
+          <p className="text-sm font-bold text-red-700">
+            ⚠ {analysis!.unknownPiles.length} cọc trong biên bản KHÔNG có trong danh sách dự án này!
+          </p>
+        </div>
+      )}
+      {(analysis?.duplicateReportPiles.length ?? 0) > 0 && (
+        <div className="mx-6 mt-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <AlertTriangle className="text-amber-500 w-4 h-4 flex-shrink-0" />
+          <p className="text-sm font-bold text-amber-700">
+            {analysis!.duplicateReportPiles.length} cọc có nhiều hơn 1 biên bản (nghi trùng lặp)
+          </p>
         </div>
       )}
 
-      {selectedProjectId && (
-        <>
-          {/* Stats tóm tắt */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-            {[
-              { label: 'Tổng số cọc', value: piles.length, color: 'bg-blue-50 text-blue-700 border-blue-100' },
-              { label: 'Đã có biên bản', value: analysisData?.coveredPiles.length ?? 0, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-              { label: 'Chưa có biên bản', value: analysisData?.pendingPiles.length ?? 0, color: 'bg-amber-50 text-amber-700 border-amber-100' },
-              { label: 'Cọc lạ (ngoài DS)', value: analysisData?.unknownPiles.length ?? 0, color: 'bg-red-50 text-red-700 border-red-100' },
-            ].map(stat => (
-              <div key={stat.label} className={`rounded-2xl border p-4 ${stat.color}`}>
-                <p className="text-2xl font-black">{stat.value}</p>
-                <p className="text-xs font-medium mt-1 opacity-80">{stat.label}</p>
-              </div>
-            ))}
+      {/* Main 2-col layout */}
+      <div className="flex flex-1 gap-0 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+
+        {/* ── CỘT TRÁI: Bảng danh sách cọc ── */}
+        <div className="flex flex-col border-r border-slate-200 bg-white" style={{ width: '420px', minWidth: '320px' }}>
+          {/* Toolbar tìm kiếm */}
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Tìm cọc..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">{filteredPiles.length}/{piles.length} cọc</span>
           </div>
 
-          {/* Cảnh báo nếu có cọc lạ hoặc biên bản trùng */}
-          {(analysisData?.unknownPiles.length ?? 0) > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
-              <AlertTriangle className="text-red-500 w-5 h-5 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-bold text-red-700">Phát hiện {analysisData!.unknownPiles.length} cọc trong biên bản KHÔNG có trong danh sách dự án!</p>
-                <p className="text-xs text-red-500 mt-1">Xem chi tiết trong tab "Phân tích đối chiếu"</p>
+          {/* Bảng */}
+          <div className="flex-1 overflow-y-auto">
+            {!selectedProjectId ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-300">
+                <ClipboardList size={40} className="mb-3 opacity-40" />
+                <p className="text-sm">Chọn dự án bên phải</p>
               </div>
-            </div>
-          )}
-          {(analysisData?.duplicateReportPiles.length ?? 0) > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
-              <AlertTriangle className="text-amber-500 w-5 h-5 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-bold text-amber-700">{analysisData!.duplicateReportPiles.length} cọc có nhiều hơn 1 biên bản (có thể trùng lặp)</p>
-                <p className="text-xs text-amber-500 mt-1">Xem chi tiết trong tab "Phân tích đối chiếu"</p>
+            ) : loading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-indigo-400 w-6 h-6" />
               </div>
-            </div>
-          )}
+            ) : (
+              <table className="w-full text-sm border-collapse">
+                <thead className="sticky top-0 z-10">
+                  <tr style={{ background: '#1e3a8a' }}>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider w-10">STT</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider">Tên cọc</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider">Hạng mục</th>
+                    <th className="px-2 py-2.5 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPiles.length === 0 ? (
+                    <tr><td colSpan={4} className="text-center py-12 text-slate-400 text-sm">
+                      {piles.length === 0 ? 'Chưa có cọc nào. Nhập danh sách ở bên phải.' : 'Không tìm thấy cọc phù hợp'}
+                    </td></tr>
+                  ) : filteredPiles.map((pile, i) => {
+                    const hasBB = analysis?.pilesInReports.has(pile.pile_code_canonical);
+                    const bbCount = analysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
+                    const isMulti = bbCount > 1;
+                    return (
+                      <tr key={pile.id} className={cn(
+                        'border-b border-slate-100 hover:bg-indigo-50/40 transition-colors',
+                        isMulti ? 'bg-amber-50/40' : ''
+                      )}>
+                        <td className="px-3 py-2 text-[11px] text-slate-400 font-medium">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-slate-800 text-[12px]">{pile.pile_code_raw}</span>
+                            {hasBB && (
+                              <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                                isMulti ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
+                                {bbCount}BB
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-[11px] text-slate-500 max-w-[120px] truncate">{pile.item || '—'}</td>
+                        <td className="px-2 py-2">
+                          <button onClick={() => handleDelete(pile.id)}
+                            className="p-1 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded transition-all">
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mb-4">
-            {[
-              { id: 'registry', label: 'Danh sách cọc', icon: <ListChecks size={14}/> },
-              { id: 'analysis', label: 'Phân tích đối chiếu', icon: <BarChart3 size={14}/> },
-            ].map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                className={cn('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border',
-                  activeTab === tab.id
-                    ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] shadow'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300')}>
-                {tab.icon}{tab.label}
-              </button>
-            ))}
+        {/* ── CỘT PHẢI: Panel chọn dự án + nhập cọc ── */}
+        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 p-5 gap-4">
+
+          {/* Chọn dự án */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+            <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên dự án</label>
+            <select
+              value={selectedProjectId}
+              onChange={e => { setSelectedProjectId(e.target.value); setParsePreview(null); setPasteText(''); setSaveMsg(null); setSearchTerm(''); }}
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="">-- Chọn dự án --</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
 
-          {/* ── TAB 1: DANH SÁCH CỌC ── */}
-          {activeTab === 'registry' && (
-            <div className="space-y-5">
-              {/* Nhập cọc mới */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <Plus size={14} className="text-blue-500"/> Thêm cọc mới
+          {selectedProjectId && (
+            <>
+              {/* Nhập cọc */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <Plus size={12} className="text-indigo-500" /> Thêm cọc mới
                 </h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  Copy từ Excel và dán vào đây. Cột 1: Tên cọc, Cột 2: Hạng mục (cách nhau bằng Tab). Nếu chỉ có 1 cột thì chỉ cần dán tên cọc.
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Copy từ Excel dán vào đây. Cột 1: <strong>Tên cọc</strong>, Cột 2: <strong>Hạng mục</strong> (cách nhau bằng Tab). Có thể dán 1 cột hoặc 2 cột.
                 </p>
                 <textarea
                   value={pasteText}
                   onChange={e => { setPasteText(e.target.value); setParsePreview(null); }}
-                  placeholder={"P1-01\tHạng mục A\nP1-02\tHạng mục A\nP2.1\tHạng mục B\n..."}
-                  rows={6}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+                  placeholder={"P1-01\tHạng mục A\nP1-02\tHạng mục A\nP2.1\tHạng mục B"}
+                  rows={5}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-mono text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-y"
                 />
-                <div className="flex gap-3 mt-3">
-                  <button
-                    onClick={handleParse}
-                    disabled={!pasteText.trim()}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-40 transition-all"
-                  >
-                    Kiểm tra & Preview
+                <div className="flex items-center gap-2 mt-2">
+                  <button onClick={handleParse} disabled={!pasteText.trim()}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-wide hover:bg-indigo-700 disabled:opacity-40 transition-all">
+                    Kiểm tra
                   </button>
                   {pasteText && (
                     <button onClick={() => { setPasteText(''); setParsePreview(null); setSaveMsg(null); }}
-                      className="px-4 py-2 border border-slate-200 text-slate-500 rounded-xl text-sm hover:bg-slate-50">
+                      className="px-3 py-2 border border-slate-200 text-slate-500 rounded-xl text-xs hover:bg-slate-50">
                       Xóa
                     </button>
                   )}
                 </div>
 
-                {/* Preview kết quả parse */}
+                {/* Preview */}
                 {parsePreview && (
-                  <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
-                    <div className="flex gap-4 px-4 py-3 bg-slate-50 border-b border-slate-200">
-                      <span className="text-xs font-bold text-emerald-600">✓ {newCount} cọc mới</span>
-                      {dupDbCount > 0 && <span className="text-xs font-bold text-red-500">✗ {dupDbCount} đã có trong DB</span>}
-                      {dupPasteCount > 0 && <span className="text-xs font-bold text-amber-500">⚠ {dupPasteCount} trùng trong danh sách dán</span>}
+                  <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="flex gap-3 px-3 py-2 bg-slate-50 border-b border-slate-100 flex-wrap">
+                      <span className="text-[11px] font-bold text-emerald-600">✓ {newCount} mới</span>
+                      {dupDbCount > 0 && <span className="text-[11px] font-bold text-red-500">✗ {dupDbCount} đã có trong DB</span>}
+                      {dupPasteCount > 0 && <span className="text-[11px] font-bold text-amber-500">⚠ {dupPasteCount} trùng trong danh sách</span>}
                     </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      <table className="w-full text-xs">
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full text-[11px]">
                         <thead className="sticky top-0 bg-slate-100">
                           <tr>
-                            <th className="px-3 py-2 text-left font-bold text-slate-600">Mã gốc</th>
-                            <th className="px-3 py-2 text-left font-bold text-slate-600">Mã chuẩn hóa</th>
-                            <th className="px-3 py-2 text-left font-bold text-slate-600">Hạng mục</th>
-                            <th className="px-3 py-2 text-left font-bold text-slate-600">Trạng thái</th>
+                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã gốc</th>
+                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã chuẩn</th>
+                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Hạng mục</th>
+                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Trạng thái</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -9763,13 +9761,13 @@ function PileRegistryView({
                             <tr key={i} className={cn('border-t border-slate-100',
                               row.status === 'duplicate_in_db' ? 'bg-red-50' :
                               row.status === 'duplicate_in_paste' ? 'bg-amber-50' : '')}>
-                              <td className="px-3 py-2 font-mono">{row.raw}</td>
-                              <td className="px-3 py-2 font-mono font-bold text-blue-700">{row.canonical}</td>
-                              <td className="px-3 py-2 text-slate-600">{row.item || '—'}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-3 py-1.5 font-mono">{row.raw}</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-indigo-700">{row.canonical}</td>
+                              <td className="px-3 py-1.5 text-slate-500">{row.item || '—'}</td>
+                              <td className="px-3 py-1.5">
                                 {row.status === 'new' && <span className="text-emerald-600 font-bold">✓ Mới</span>}
-                                {row.status === 'duplicate_in_db' && <span className="text-red-500 font-bold">✗ Đã có trong DB</span>}
-                                {row.status === 'duplicate_in_paste' && <span className="text-amber-600 font-bold">⚠ Trùng ở trên</span>}
+                                {row.status === 'duplicate_in_db' && <span className="text-red-500 font-bold">✗ Có rồi</span>}
+                                {row.status === 'duplicate_in_paste' && <span className="text-amber-600 font-bold">⚠ Trùng</span>}
                               </td>
                             </tr>
                           ))}
@@ -9777,219 +9775,85 @@ function PileRegistryView({
                       </table>
                     </div>
                     {newCount > 0 && (
-                      <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center gap-3">
+                      <div className="px-3 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
                         <button onClick={handleSave} disabled={saving}
-                          className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center gap-2">
-                          {saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}
+                          className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wide hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
+                          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                           Lưu {newCount} cọc mới
                         </button>
                         {saveMsg && <span className={cn('text-xs font-bold', saveMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500')}>{saveMsg}</span>}
                       </div>
                     )}
-                    {newCount === 0 && saveMsg && (
-                      <div className="px-4 py-3 border-t border-slate-200 bg-slate-50">
-                        <span className="text-xs font-bold text-amber-600">{saveMsg}</span>
-                      </div>
-                    )}
                   </div>
+                )}
+                {saveMsg && !parsePreview && (
+                  <p className={cn('mt-2 text-xs font-bold', saveMsg.startsWith('✓') ? 'text-emerald-600' : 'text-amber-600')}>{saveMsg}</p>
                 )}
               </div>
 
-              {/* Danh sách cọc hiện tại */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
-                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">
-                    Danh sách hiện tại — {piles.length} cọc
-                  </h3>
-                  <div className="flex gap-2">
-                    <div className="relative">
-                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
-                      <input type="text" placeholder="Tìm cọc..." value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs w-40 focus:outline-none focus:ring-2 focus:ring-blue-400"/>
-                    </div>
-                    <select value={filterItem} onChange={e => setFilterItem(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="">Tất cả hạng mục</option>
-                      {items.map(it => <option key={it} value={it}>{it}</option>)}
-                    </select>
+              {/* Cọc lạ */}
+              {(analysis?.unknownPiles.length ?? 0) > 0 && (
+                <div className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
+                    <AlertTriangle size={14} className="text-red-500" />
+                    <span className="text-xs font-black text-red-700 uppercase tracking-wide">
+                      Cọc lạ trong biên bản ({analysis!.unknownPiles.length})
+                    </span>
                   </div>
-                </div>
-
-                {loading ? (
-                  <div className="flex items-center justify-center py-16">
-                    <Loader2 className="animate-spin text-blue-500 w-6 h-6"/>
-                  </div>
-                ) : piles.length === 0 ? (
-                  <div className="flex flex-col items-center py-16 text-slate-400">
-                    <ClipboardList size={36} className="mb-3 opacity-30"/>
-                    <p className="text-sm">Chưa có cọc nào. Dán danh sách ở trên để bắt đầu.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-200">
+                  <div className="max-h-40 overflow-y-auto">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-red-50/50 sticky top-0">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">STT</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã gốc</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã chuẩn hóa</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Hạng mục</th>
-                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Biên bản</th>
-                          <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase">Xóa</th>
+                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã cọc (trong biên bản)</th>
+                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Số BB</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredPiles.map((pile, i) => {
-                          const hasBienBan = analysisData?.pilesInReports.has(pile.pile_code_canonical);
-                          const bienBanCount = analysisData?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
-                          const isMulti = bienBanCount > 1;
-                          return (
-                            <tr key={pile.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-2.5 text-slate-400 text-xs">{i + 1}</td>
-                              <td className="px-4 py-2.5 font-mono text-slate-700">{pile.pile_code_raw}</td>
-                              <td className="px-4 py-2.5 font-mono font-bold text-blue-700">{pile.pile_code_canonical}</td>
-                              <td className="px-4 py-2.5 text-slate-600">{pile.item || '—'}</td>
-                              <td className="px-4 py-2.5">
-                                {hasBienBan ? (
-                                  <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold',
-                                    isMulti ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
-                                    {isMulti ? <AlertTriangle size={10}/> : <CheckCircle size={10}/>}
-                                    {bienBanCount} biên bản
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-400">
-                                    Chưa có
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
-                                <button onClick={() => handleDelete(pile.id)}
-                                  className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                                  <Trash2 size={13}/>
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {filteredPiles.length === 0 && (
-                      <div className="py-8 text-center text-slate-400 text-sm">Không tìm thấy cọc phù hợp</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── TAB 2: PHÂN TÍCH ĐỐI CHIẾU ── */}
-          {activeTab === 'analysis' && (
-            <div className="space-y-5">
-              {/* Tiến độ theo hạng mục */}
-              {analysisData && (
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Tiến độ theo hạng mục</h3>
-                  {Array.from(analysisData.itemStats.entries()).length === 0 ? (
-                    <p className="text-sm text-slate-400">Chưa có dữ liệu</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {Array.from(analysisData.itemStats.entries()).sort((a, b) => b[1].total - a[1].total).map(([item, stat]) => {
-                        const pct = stat.total > 0 ? Math.round(stat.done / stat.total * 100) : 0;
-                        return (
-                          <div key={item}>
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-sm font-medium text-slate-700">{item}</span>
-                              <span className="text-xs font-bold text-slate-500">{stat.done}/{stat.total} — {pct}%</span>
-                            </div>
-                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                              <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : pct > 50 ? 'bg-blue-500' : 'bg-amber-400')}
-                                style={{ width: `${pct}%` }}/>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Cọc lạ — ngoài danh sách */}
-              {analysisData && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className={cn('px-5 py-4 border-b flex items-center gap-2',
-                    analysisData.unknownPiles.length > 0 ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100')}>
-                    <AlertTriangle size={16} className={analysisData.unknownPiles.length > 0 ? 'text-red-500' : 'text-slate-300'}/>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">
-                      Cọc trong biên bản nhưng không có trong danh sách ({analysisData.unknownPiles.length})
-                    </h3>
-                  </div>
-                  {analysisData.unknownPiles.length === 0 ? (
-                    <div className="flex items-center gap-2 px-5 py-8 text-emerald-600">
-                      <CheckCircle size={18}/><span className="text-sm font-medium">Tất cả cọc trong biên bản đều nằm trong danh sách dự án.</span>
-                    </div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-100">
-                        <tr>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã cọc (trong biên bản)</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã chuẩn hóa</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Số biên bản</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analysisData.unknownPiles.map((p, i) => (
-                          <tr key={i} className="border-b border-red-50 bg-red-50/30 hover:bg-red-50 transition-colors">
-                            <td className="px-4 py-2.5 font-mono font-bold text-red-700">{p.raw}</td>
-                            <td className="px-4 py-2.5 font-mono text-red-500">{p.canonical}</td>
-                            <td className="px-4 py-2.5 text-slate-600">{p.count}</td>
+                        {analysis!.unknownPiles.map(([canonical, info], i) => (
+                          <tr key={i} className="border-t border-red-50 hover:bg-red-50/40">
+                            <td className="px-3 py-1.5 font-mono font-bold text-red-700">{info.raw}</td>
+                            <td className="px-3 py-1.5 text-slate-500">{info.count}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  )}
+                  </div>
                 </div>
               )}
 
-              {/* Cọc có nhiều biên bản */}
-              {analysisData && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className={cn('px-5 py-4 border-b flex items-center gap-2',
-                    analysisData.duplicateReportPiles.length > 0 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100')}>
-                    <AlertTriangle size={16} className={analysisData.duplicateReportPiles.length > 0 ? 'text-amber-500' : 'text-slate-300'}/>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">
-                      Cọc có nhiều hơn 1 biên bản ({analysisData.duplicateReportPiles.length})
-                    </h3>
+              {/* Cọc nhiều biên bản */}
+              {(analysis?.duplicateReportPiles.length ?? 0) > 0 && (
+                <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+                    <AlertTriangle size={14} className="text-amber-500" />
+                    <span className="text-xs font-black text-amber-700 uppercase tracking-wide">
+                      Cọc có nhiều hơn 1 biên bản ({analysis!.duplicateReportPiles.length})
+                    </span>
                   </div>
-                  {analysisData.duplicateReportPiles.length === 0 ? (
-                    <div className="flex items-center gap-2 px-5 py-8 text-emerald-600">
-                      <CheckCircle size={18}/><span className="text-sm font-medium">Không có cọc nào bị trùng biên bản.</span>
-                    </div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead className="bg-slate-50 border-b border-slate-100">
+                  <div className="max-h-40 overflow-y-auto">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-amber-50/50 sticky top-0">
                         <tr>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã cọc</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Số biên bản</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã biên bản</th>
+                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã cọc</th>
+                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Số BB</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {analysisData.duplicateReportPiles.map((p, i) => (
-                          <tr key={i} className="border-b border-amber-50 bg-amber-50/30 hover:bg-amber-50 transition-colors">
-                            <td className="px-4 py-2.5 font-mono font-bold text-amber-700">{p.raw}</td>
-                            <td className="px-4 py-2.5"><span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">{p.count}</span></td>
-                            <td className="px-4 py-2.5 text-slate-600 text-xs">{p.reports.join(', ')}</td>
+                        {analysis!.duplicateReportPiles.map(([canonical, info], i) => (
+                          <tr key={i} className="border-t border-amber-50 hover:bg-amber-50/40">
+                            <td className="px-3 py-1.5 font-mono font-bold text-amber-700">{info.raw}</td>
+                            <td className="px-3 py-1.5"><span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">{info.count}</span></td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  )}
+                  </div>
                 </div>
               )}
-            </div>
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
