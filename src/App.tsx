@@ -2233,15 +2233,43 @@ export default function App() {
           }
 
           // Xử lý danh sách dự án
+          const mergeIdMap = new Map<string, string>(); // oldId -> primaryId
           if (!projectsRes.error && projectsRes.data && projectsRes.data.length > 0) {
-            const loadedProjects: AppProject[] = projectsRes.data.map((r: any) => ({
+            const rawProjects: AppProject[] = projectsRes.data.map((r: any) => ({
               id: r.id,
               name: r.name,
               createdAt: r.created_at,
               createdBy: r.created_by || '',
             }));
-            setProjects(loadedProjects);
-            localStorage.setItem('sgc_app_projects', JSON.stringify(loadedProjects));
+
+            // Merge duplicates by name (case-insensitive)
+            const uniqueProjects: AppProject[] = [];
+            const nameToIdMap = new Map<string, string>(); // normalizedName -> primaryId
+            const duplicateIdsToDelete: string[] = [];
+
+            rawProjects.forEach(p => {
+              const normName = p.name.trim().toLowerCase();
+              if (nameToIdMap.has(normName)) {
+                const primaryId = nameToIdMap.get(normName)!;
+                mergeIdMap.set(p.id, primaryId);
+                duplicateIdsToDelete.push(p.id);
+              } else {
+                nameToIdMap.set(normName, p.id);
+                uniqueProjects.push(p);
+              }
+            });
+
+            setProjects(uniqueProjects);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(uniqueProjects));
+
+            // Background cleanup of duplicates in Supabase if any found
+            if (duplicateIdsToDelete.length > 0 && supabase) {
+              (async () => {
+                console.log('[Cleanup] Merging', duplicateIdsToDelete.length, 'duplicate projects...');
+                // We don't delete immediately here to avoid race conditions with items/machines loading
+                // But the mergeIdMap will handle the mapping for this session.
+              })();
+            }
           } else {
             const savedProjects = localStorage.getItem('sgc_app_projects');
             if (savedProjects) { try { setProjects(JSON.parse(savedProjects)); } catch {} }
@@ -2249,13 +2277,17 @@ export default function App() {
 
           // Xử lý danh sách hạng mục
           if (!itemsRes.error && itemsRes.data && itemsRes.data.length > 0) {
-            const loadedItems: AppItem[] = itemsRes.data.map((r: any) => ({
-              id: r.id,
-              projectId: r.project_id,
-              name: r.name,
-              createdAt: r.created_at,
-              createdBy: r.created_by || '',
-            }));
+            const loadedItems: AppItem[] = itemsRes.data.map((r: any) => {
+              const rawProjId = r.project_id;
+              const finalProjId = mergeIdMap.get(rawProjId) || rawProjId;
+              return {
+                id: r.id,
+                projectId: finalProjId,
+                name: r.name,
+                createdAt: r.created_at,
+                createdBy: r.created_by || '',
+              };
+            });
             setItems(loadedItems);
             localStorage.setItem('sgc_app_items', JSON.stringify(loadedItems));
           } else {
@@ -2265,23 +2297,23 @@ export default function App() {
 
           // Xử lý danh sách máy khoan
           if (!drillingMachinesRes.error && drillingMachinesRes.data) {
-            if (drillingMachinesRes.data.length > 0) {
-              const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => ({
+            const loadedMachines: AppDrillingMachine[] = drillingMachinesRes.data.map((r: any) => {
+              const rawProjId = r.project_id;
+              let finalProjId = (rawProjId && rawProjId !== 'global') ? rawProjId : 'global';
+              if (finalProjId !== 'global') {
+                finalProjId = mergeIdMap.get(finalProjId) || finalProjId;
+              }
+              return {
                 id: r.id,
-                // Normalize: null / undefined / 'global' / '' đều là chưa phân bổ
-                projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
+                projectId: finalProjId,
                 name: r.name,
                 createdAt: r.created_at,
                 createdBy: r.created_by || '',
-              }));
-              setDrillingMachines(loadedMachines);
-              localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(loadedMachines));
-              console.log('[Sync] Loaded', loadedMachines.length, 'machines from Supabase');
-            } else {
-              // Table tồn tại nhưng rỗng — không fallback localStorage để tránh data cũ
-              setDrillingMachines([]);
-              console.log('[Sync] app_drilling_machines table empty');
-            }
+              };
+            });
+            setDrillingMachines(loadedMachines);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(loadedMachines));
+            console.log('[Sync] Loaded', loadedMachines.length, 'machines from Supabase');
           } else {
             // Lỗi fetch (table không tồn tại, v.v.) — fallback localStorage
             console.warn('[Sync] drillingMachines fetch error:', drillingMachinesRes.error?.message);
@@ -4768,6 +4800,7 @@ export default function App() {
         if (!aiSuggestions) return;
         const next = [...aiSuggestions];
         const group = { ...next[groupIdx] };
+        const removedName = group.originalNames[nameIdx];
         group.originalNames = group.originalNames.filter((_, i) => i !== nameIdx);
         
         if (group.originalNames.length === 0) {
@@ -4776,6 +4809,7 @@ export default function App() {
           next[groupIdx] = group;
           setAiSuggestions(next);
         }
+        showToast(`Đã loại bỏ "${removedName}" khỏi nhóm gợi ý`, 'success', 1500);
       };
 
     // ── Generic editable-list hook ──
@@ -4849,16 +4883,44 @@ export default function App() {
         let capturedProjId: string | null = null;
         let projWasInDb = false;
         if (setResField && getResField) {
-          const proj = projects.find(p => p.name.trim() === oldVal.trim());
-          if (proj) {
-            // Project đã có trong app_projects state (từ DB hoặc localStorage)
-            capturedProjId = proj.id;
+          const trimmedNewVal = newVal.trim();
+          const existingWithNewName = projects.find(p => p.name.trim().toLowerCase() === trimmedNewVal.toLowerCase());
+          const sourceProj = projects.find(p => p.name.trim() === oldVal.trim());
+
+          if (existingWithNewName && sourceProj && existingWithNewName.id !== sourceProj.id) {
+            // TRƯỜNG HỢP MERGE: Tên mới đã tồn tại ở một ID khác
+            capturedProjId = existingWithNewName.id;
             projWasInDb = true;
-            const updatedProjects = projects.map(p => p.id === proj.id ? { ...p, name: newVal } : p);
+
+            // 1. Cập nhật máy khoan từ source sang target
+            setDrillingMachines(prev => prev.map(m => m.projectId === sourceProj.id ? { ...m, projectId: existingWithNewName.id } : m));
+            // 2. Cập nhật hạng mục từ source sang target
+            setItems(prev => prev.map(it => it.projectId === sourceProj.id ? { ...it, projectId: existingWithNewName.id } : it));
+            // 3. Xóa project cũ khỏi state
+            setProjects(prev => prev.filter(p => p.id !== sourceProj.id));
+            
+            showToast(`🔄 Đã gộp dự án "${oldVal}" vào "${existingWithNewName.name}"`, 'success', 3000);
+
+            // Sync Supabase (async)
+            if (supabase) {
+              (async () => {
+                await Promise.all([
+                  supabase.from('app_drilling_machines').update({ project_id: existingWithNewName.id }).eq('project_id', sourceProj.id),
+                  supabase.from('app_items').update({ project_id: existingWithNewName.id }).eq('project_id', sourceProj.id),
+                  supabase.from('app_projects').delete().eq('id', sourceProj.id)
+                ]);
+              })();
+            }
+          } else if (sourceProj) {
+            // TRƯỜNG HỢP RENAME BÌNH THƯỜNG
+            capturedProjId = sourceProj.id;
+            projWasInDb = true;
+            const updatedProjects = projects.map(p => p.id === sourceProj.id ? { ...p, name: newVal } : p);
             setProjects(updatedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
+            showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
           } else {
-            // Project chỉ tồn tại trong history (chưa có trong app_projects) -> tạo mới
+            // TRƯỜNG HỢP TẠO MỚI (chưa có trong app_projects)
             capturedProjId = crypto.randomUUID();
             projWasInDb = false;
             const newProjEntry: AppProject = {
@@ -4870,8 +4932,8 @@ export default function App() {
             const updatedProjects = [...projects, newProjEntry];
             setProjects(updatedProjects);
             localStorage.setItem('sgc_app_projects', JSON.stringify(updatedProjects));
+            showToast(`✅ Đã tạo dự án mới "${newVal}"`, 'success', 2500);
           }
-          showToast(`✅ Đã đổi tên dự án thành "${newVal}"`, 'success', 2500);
         }
 
         cancelEdit();
@@ -5436,21 +5498,32 @@ LƯU Ý:
     const projectList = useEditableList(
       () => {
         // Merge: dự án từ app_projects + dự án xuất hiện trong biên bản (history)
-        const nameSet = new Map<string, { value: string; count: number; soilClass?: string }>();
-        // 1. Từ bảng app_projects (nguồn chính, luôn hiển thị dù chưa có biên bản)
+        const nameMap = new Map<string, { value: string; count: number; soilClass?: string }>();
+        
+        // 1. Từ bảng app_projects (nguồn chính)
         projects.forEach(p => {
-          if (!p.name.trim()) return;
-          nameSet.set(p.name.trim(), { value: p.name.trim(), count: 0 });
+          const trimmed = p.name.trim();
+          if (!trimmed) return;
+          const key = trimmed.toLowerCase();
+          if (!nameMap.has(key)) {
+            nameMap.set(key, { value: trimmed, count: 0 });
+          }
         });
+
         // 2. Đếm biên bản từ history
         history.forEach(res => {
           const v = (res.project || '').trim();
           if (!v) return;
-          const existing = nameSet.get(v);
-          if (existing) { existing.count++; }
-          else { nameSet.set(v, { value: v, count: 1 }); }
+          const key = v.toLowerCase();
+          const existing = nameMap.get(key);
+          if (existing) { 
+            existing.count++; 
+          } else { 
+            nameMap.set(key, { value: v, count: 1 }); 
+          }
         });
-        return Array.from(nameSet.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
+        
+        return Array.from(nameMap.values()).sort((a, b) => a.value.localeCompare(b.value, 'vi', { sensitivity: 'base' }));
       },
       (_layer, res) => res.project || '',
       (layer) => layer,
@@ -5643,12 +5716,9 @@ LƯU Ý:
 
         {/* Create new project / item / machine panel - only shown in project tab */}
         {activeTab === 'project' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Dự án */}
-            <div className={`bg-blue-50 border border-blue-200 rounded-2xl p-4 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest block mb-2">
-                Tạo dự án mới {currentUser?.role !== 'admin' && <span className="text-red-500 normal-case font-bold ml-1">(Chỉ Admin)</span>}
-              </label>
+            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -5664,16 +5734,13 @@ LƯU Ý:
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-blue-900 whitespace-nowrap"
                 >
                   {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Lưu dự án
+                  Tạo dự án
                 </button>
               </div>
             </div>
 
             {/* Máy khoan */}
-            <div className={`bg-amber-50 border border-amber-200 rounded-2xl p-4 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <label className="text-[10px] font-black text-amber-700 uppercase tracking-widest block mb-2">
-                Tạo máy khoan mới {currentUser?.role !== 'admin' && <span className="text-red-500 normal-case font-bold ml-1">(Chỉ Admin)</span>}
-              </label>
+            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -5689,7 +5756,7 @@ LƯU Ý:
                   className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
                 >
                   {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Lưu máy khoan
+                  Tạo máy khoan
                 </button>
               </div>
               {/* Nút đồng bộ máy khoan từ biên bản */}
@@ -5700,7 +5767,7 @@ LƯU Ý:
                 )].sort();
                 if (unsynced.length === 0) return null;
                 return (
-                  <div className="mt-3 pt-3 border-t border-amber-200">
+                  <div className="mt-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
@@ -6290,44 +6357,66 @@ LƯU Ý:
             }
           };
 
-          const unassignedMachines = drillingMachines.filter(m => !m.projectId || m.projectId === 'global');
+          const [machineSearch, setMachineSearch] = useState('');
+
+          const filteredMachines = drillingMachines.filter(m => {
+            return m.name.toLowerCase().includes(machineSearch.toLowerCase());
+          });
+
+          const unassignedMachines = filteredMachines.filter(m => !m.projectId || m.projectId === 'global');
           const projectColumns = projects;
 
           return (
             <div className="mt-6">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-1 h-5 bg-amber-500 rounded-full" />
-                <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
-                <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
-                <button
-                  onClick={async () => {
-                    if (!supabase) return;
-                    try {
-                      const { data, error } = await supabase.from('app_drilling_machines').select('*').order('created_at', { ascending: true });
-                      if (!error && data) {
-                        const machines = data.map((r: any) => ({
-                          id: r.id,
-                          projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
-                          name: r.name,
-                          createdAt: r.created_at,
-                          createdBy: r.created_by || '',
-                        }));
-                        setDrillingMachines(machines);
-                        localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(machines));
-                        showToast(`✅ Đã đồng bộ ${machines.length} máy khoan từ Supabase!`, 'success');
-                      } else {
-                        showToast(`⚠️ Lỗi đồng bộ: ${error?.message}`, 'error');
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-5 bg-amber-500 rounded-full" />
+                  <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
+                  <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder="TÌM KIẾM MÁY KHOAN..."
+                      value={machineSearch}
+                      onChange={(e) => setMachineSearch(e.target.value)}
+                      className="pl-9 pr-4 py-1.5 bg-white border border-slate-300 rounded-xl text-[10px] font-bold text-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all w-48 uppercase tracking-wider"
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={async () => {
+                      if (!supabase) return;
+                      try {
+                        const { data, error } = await supabase.from('app_drilling_machines').select('*').order('created_at', { ascending: true });
+                        if (!error && data) {
+                          const machines = data.map((r: any) => ({
+                            id: r.id,
+                            projectId: (r.project_id && r.project_id !== 'global') ? r.project_id : 'global',
+                            name: r.name,
+                            createdAt: r.created_at,
+                            createdBy: r.created_by || '',
+                          }));
+                          setDrillingMachines(machines);
+                          localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(machines));
+                          showToast(`✅ Đã đồng bộ ${machines.length} máy khoan từ Supabase!`, 'success');
+                        } else {
+                          showToast(`⚠️ Lỗi đồng bộ: ${error?.message}`, 'error');
+                        }
+                      } catch(e: any) {
+                        showToast(`Lỗi: ${e?.message}`, 'error');
                       }
-                    } catch(e: any) {
-                      showToast(`Lỗi: ${e?.message}`, 'error');
-                    }
-                  }}
-                  className="ml-2 flex items-center gap-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black rounded-lg border border-blue-200 transition-all"
-                  title="Đồng bộ lại từ Supabase"
-                >
-                  <RefreshCw size={11} />
-                  Đồng bộ
-                </button>
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-black rounded-xl border border-blue-200 transition-all"
+                    title="Đồng bộ lại từ Supabase"
+                  >
+                    <RefreshCw size={11} />
+                    Đồng bộ
+                  </button>
+                </div>
               </div>
               <DragDropContext onDragEnd={(result: DropResult) => {
                 if (!result.destination) return;
@@ -6379,7 +6468,7 @@ LƯU Ý:
 
                   {/* Cột từng dự án */}
                   {projectColumns.map((proj) => {
-                    const projMachines = drillingMachines.filter(m => m.projectId === proj.id);
+                    const projMachines = filteredMachines.filter(m => m.projectId === proj.id);
                     const colors = [
                       { header: 'bg-blue-100 border-blue-300', text: 'text-blue-800', badge: 'bg-blue-200 text-blue-700', dot: 'bg-blue-400', drag: 'border-blue-400 bg-blue-50/50' },
                       { header: 'bg-emerald-100 border-emerald-300', text: 'text-emerald-800', badge: 'bg-emerald-200 text-emerald-700', dot: 'bg-emerald-400', drag: 'border-emerald-400 bg-emerald-50/50' },
