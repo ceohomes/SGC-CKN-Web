@@ -9409,6 +9409,7 @@ interface PileEntry {
   pile_code_raw: string;
   pile_code_canonical: string;
   item: string;
+  diameter: string;
   created_at: string;
   created_by: string;
 }
@@ -9445,18 +9446,25 @@ function PileRegistryView({
   const [searchTerm, setSearchTerm] = useState('');
   const [projectSearches, setProjectSearches] = useState<Record<string, string>>({});
   const [editingPile, setEditingPile] = useState<PileEntry | null>(null);
-  const [editForm, setEditForm] = useState({ stt: '', raw: '', item: '' });
+  const [editForm, setEditForm] = useState({ stt: '', raw: '', item: '', diameter: '' });
+
+  // Compute diameter options from history + localStorage
+  const diameterOptions = React.useMemo(() => {
+    const fromHistory = (Array.isArray(history) ? history : []).map((r: any) => (r.diameter || '').trim()).filter(Boolean);
+    const fromStorage: string[] = (() => { try { return JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'); } catch { return []; } })();
+    return [...new Set([...fromHistory, ...fromStorage])].sort((a, b) => (parseInt(a.replace(/\D/g,'')) || 0) - (parseInt(b.replace(/\D/g,'')) || 0));
+  }, [history]);
   
   // (themes replaced by modernThemes below)
   
   // State cho modal thêm cọc
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addProjectId, setAddProjectId] = useState('');
-  const [gridRows, setGridRows] = useState<{stt: string, name: string, item: string}[]>(
-    Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '' }))
+  const [gridRows, setGridRows] = useState<{stt: string, name: string, item: string, diameter: string}[]>(
+    Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '', diameter: '' }))
   );
   const [parsePreview, setParsePreview] = useState<{
-    stt: string; raw: string; canonical: string; item: string;
+    stt: string; raw: string; canonical: string; item: string; diameter: string;
     status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db';
   }[] | null>(null);
   const [saving, setSaving] = useState(false);
@@ -9487,7 +9495,7 @@ function PileRegistryView({
     loadAllPiles();
   }, [loadAllPiles]);
 
-  const handleGridPaste = (e: React.ClipboardEvent, rowIndex: number, colKey: 'stt' | 'name' | 'item') => {
+  const handleGridPaste = (e: React.ClipboardEvent, rowIndex: number, colKey: 'stt' | 'name' | 'item' | 'diameter') => {
     e.preventDefault();
     const text = e.clipboardData.getData('text');
     const rows = text.split(/\r?\n/).filter(r => r.trim() !== '');
@@ -9496,17 +9504,18 @@ function PileRegistryView({
     rows.forEach((row, rIdx) => {
       const targetRowIdx = rowIndex + rIdx;
       if (targetRowIdx >= newGrid.length) {
-        newGrid.push({ stt: String(targetRowIdx + 1), name: '', item: '' });
+        newGrid.push({ stt: String(targetRowIdx + 1), name: '', item: '', diameter: '' });
       }
       
       const cols = row.split('\t');
-      const startColIdx = colKey === 'stt' ? 0 : colKey === 'name' ? 1 : 2;
+      const startColIdx = colKey === 'stt' ? 0 : colKey === 'name' ? 1 : colKey === 'diameter' ? 2 : 3;
       
       cols.forEach((val, cIdx) => {
         const targetColIdx = startColIdx + cIdx;
         if (targetColIdx === 0) newGrid[targetRowIdx].stt = val.trim();
         if (targetColIdx === 1) newGrid[targetRowIdx].name = val.trim();
-        if (targetColIdx === 2) newGrid[targetRowIdx].item = val.trim();
+        if (targetColIdx === 2) newGrid[targetRowIdx].diameter = val.trim();
+        if (targetColIdx === 3) newGrid[targetRowIdx].item = val.trim();
       });
     });
     
@@ -9514,7 +9523,21 @@ function PileRegistryView({
     setParsePreview(null);
   };
 
-  const updateGridCell = (rowIndex: number, colKey: 'stt' | 'name' | 'item', value: string) => {
+  const handleGridKeyDown = (e: React.KeyboardEvent, rowIndex: number, colKey: 'name' | 'diameter') => {
+    // Ctrl+D: copy value from row above
+    if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+      e.preventDefault();
+      if (rowIndex === 0) return;
+      const above = gridRows[rowIndex - 1][colKey];
+      if (!above) return;
+      const newGrid = [...gridRows];
+      newGrid[rowIndex] = { ...newGrid[rowIndex], [colKey]: above };
+      setGridRows(newGrid);
+      setParsePreview(null);
+    }
+  };
+
+  const updateGridCell = (rowIndex: number, colKey: 'stt' | 'name' | 'item' | 'diameter', value: string) => {
     const newGrid = [...gridRows];
     newGrid[rowIndex][colKey] = value;
     setGridRows(newGrid);
@@ -9522,7 +9545,7 @@ function PileRegistryView({
   };
 
   const addGridRow = () => {
-    setGridRows(prev => [...prev, { stt: String(prev.length + 1), name: '', item: '' }]);
+    setGridRows(prev => [...prev, { stt: String(prev.length + 1), name: '', item: '', diameter: '' }]);
   };
 
   const handleParse = () => {
@@ -9544,7 +9567,7 @@ function PileRegistryView({
         else if (seenInPaste.has(canonical)) status = 'duplicate_in_paste';
         seenInPaste.add(canonical);
         
-        return { stt, raw, canonical, item, status };
+        return { stt, raw, canonical, item, diameter: row.diameter.trim(), status };
       });
     
     setParsePreview(parsed);
@@ -9563,6 +9586,7 @@ function PileRegistryView({
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
       item: p.item,
+      diameter: p.diameter || '',
       created_at: new Date().toISOString(),
       created_by: currentUser?.fullName || 'Admin',
     }));
@@ -9574,7 +9598,7 @@ function PileRegistryView({
           throw error;
         }
       } else {
-        const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}` }));
+        const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}`, diameter: e.diameter || '' }));
         const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${addProjectId}`) || '[]');
         localStorage.setItem(`pile_registry_${addProjectId}`, JSON.stringify([...currentLocal, ...fakes]));
       }
@@ -9582,7 +9606,7 @@ function PileRegistryView({
       setSaveMsg(`✓ Đã lưu ${toSave.length} cọc mới!`);
       setTimeout(() => {
         setIsAddModalOpen(false);
-        setGridRows(Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '' })));
+        setGridRows(Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '', diameter: '' })));
         setParsePreview(null);
         setSaveMsg('');
       }, 1500);
@@ -9617,7 +9641,7 @@ function PileRegistryView({
 
   const startEdit = (pile: PileEntry) => {
     setEditingPile(pile);
-    setEditForm({ stt: pile.stt || '', raw: pile.pile_code_raw, item: pile.item || '' });
+    setEditForm({ stt: pile.stt || '', raw: pile.pile_code_raw, item: pile.item || '', diameter: pile.diameter || '' });
   };
 
   const handleUpdate = async () => {
@@ -9629,7 +9653,8 @@ function PileRegistryView({
           stt: editForm.stt,
           pile_code_raw: editForm.raw,
           pile_code_canonical: canonical,
-          item: editForm.item
+          item: editForm.item,
+          diameter: editForm.diameter,
         }).eq('id', editingPile.id);
         if (error) {
           console.error("Supabase Update Error:", error);
@@ -9642,7 +9667,8 @@ function PileRegistryView({
           stt: editForm.stt,
           pile_code_raw: editForm.raw,
           pile_code_canonical: canonical,
-          item: editForm.item
+          item: editForm.item,
+          diameter: editForm.diameter,
         } : p);
         localStorage.setItem(`pile_registry_${editingPile.project_id}`, JSON.stringify(updated));
       }
@@ -9651,7 +9677,8 @@ function PileRegistryView({
         stt: editForm.stt,
         pile_code_raw: editForm.raw,
         pile_code_canonical: canonical,
-        item: editForm.item
+        item: editForm.item,
+        diameter: editForm.diameter,
       } : p));
       setEditingPile(null);
     } catch (err: any) {
@@ -9932,160 +9959,113 @@ function PileRegistryView({
 
                   {/* ── Pile Grid Body ── */}
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                    {/* Column headers */}
+                    <div style={{
+                      display:'grid', gridTemplateColumns:'1fr 80px',
+                      background: mt.accentLight,
+                      borderBottom:`1px solid ${mt.accentBorder}`,
+                      padding:'4px 0',
+                    }}>
+                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px', padding:'0 12px' }}>Tên cọc</div>
+                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px', padding:'0 8px' }}>Đường kính</div>
+                    </div>
                     {filtered.length === 0 ? (
                       <div style={{ padding:'32px 16px', textAlign:'center', color:'#cbd5e1', fontSize:12, fontStyle:'italic' }}>
                         Chưa có dữ liệu cọc
                       </div>
                     ) : (
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 20px 1fr' }}>
+                      <div>
                         {filtered.map((pile, idx) => {
                           const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
                           const isMulti = bbCount > 1;
-                          const isRight = idx % 2 === 1;
-                          const isLastPair = idx >= filtered.length - (filtered.length % 2 === 0 ? 2 : 1);
-
-                          // Render pile icon column between left and right items
-                          const pileIconCell = idx % 2 === 0 ? (
-                            <div key={`icon-${idx}`} style={{
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              borderBottom: `1px solid #e8ecf0`,
-                              background: '#f4f6f9',
-                            }}>
-                              <svg width="14" height="20" viewBox="0 0 14 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.3 }}>
-                                {/* Pile/post icon: rectangular shaft + cap on top */}
-                                <rect x="5" y="4" width="4" height="13" rx="1" fill={mt.accent}/>
-                                <rect x="2" y="2" width="10" height="3" rx="1.5" fill={mt.accent}/>
-                                <path d="M6 17 L7 20 L8 17" fill={mt.accent}/>
-                              </svg>
-                            </div>
-                          ) : null;
 
                           return (
-                            <React.Fragment key={pile.id}>
-                              {!isRight && (
-                                <div
-                                  className="group"
-                                  style={{
-                                    position:'relative',
-                                    minHeight: 40,
-                                    display:'flex', alignItems:'center',
-                                    padding:'0 12px',
-                                    background: isMulti ? '#fffbeb' : '#f4f6f9',
-                                    borderBottom: `1px solid #e8ecf0`,
-                                    transition:'background 0.12s',
-                                    cursor:'default',
-                                  }}
-                                  onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
-                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
-                                >
-                                  <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:32 }}>
-                                    <div style={{
-                                      width:3, height:18, borderRadius:2, flexShrink:0,
-                                      background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
-                                    }} />
-                                    <span style={{
-                                      fontSize:11, fontWeight:700, color:'#1e293b',
-                                      textTransform:'uppercase', letterSpacing:'0.3px',
-                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                    }}>
-                                      {pile.pile_code_raw}
-                                    </span>
-                                    {bbCount > 0 && (
-                                      <div style={{
-                                        flexShrink:0, padding:'1px 6px', borderRadius:999,
-                                        fontSize:9, fontWeight:800, textTransform:'uppercase',
-                                        background: isMulti ? '#fef3c7' : mt.badgeBg,
-                                        color: isMulti ? '#92400e' : mt.badgeText,
-                                      }}>
-                                        {bbCount}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="opacity-0 group-hover:opacity-100" style={{
-                                    position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                                    display:'flex', alignItems:'center', gap:1, transition:'opacity 0.15s',
-                                  }}>
-                                    <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; }}
-                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
-                                      <Edit2 size={11} />
-                                    </button>
-                                    <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
-                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
-                                      <Trash2 size={11} />
-                                    </button>
-                                  </div>
+                            <div
+                              key={pile.id}
+                              className="group"
+                              style={{
+                                display:'grid', gridTemplateColumns:'1fr 80px',
+                                minHeight: 38,
+                                background: isMulti ? '#fffbeb' : '#f4f6f9',
+                                borderBottom:`1px solid #e8ecf0`,
+                                transition:'background 0.12s',
+                              }}
+                              onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
+                            >
+                              {/* Col 1: Tên cọc */}
+                              <div style={{ display:'flex', alignItems:'center', gap:6, padding:'0 12px', overflow:'hidden', position:'relative' }}>
+                                <div style={{
+                                  width:3, height:16, borderRadius:2, flexShrink:0,
+                                  background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
+                                }} />
+                                <span style={{
+                                  fontSize:11, fontWeight:700, color:'#1e293b',
+                                  textTransform:'uppercase', letterSpacing:'0.3px',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
+                                }}>
+                                  {pile.pile_code_raw}
+                                </span>
+                                {bbCount > 0 && (
+                                  <div style={{
+                                    flexShrink:0, padding:'1px 5px', borderRadius:999,
+                                    fontSize:9, fontWeight:800,
+                                    background: isMulti ? '#fef3c7' : mt.badgeBg,
+                                    color: isMulti ? '#92400e' : mt.badgeText,
+                                  }}>{bbCount}</div>
+                                )}
+                                {/* Hover actions */}
+                                <div className="opacity-0 group-hover:opacity-100" style={{
+                                  position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
+                                  display:'flex', gap:1, background: isMulti ? '#fffbeb' : mt.rowHover,
+                                  borderRadius:6, padding:'1px',
+                                  transition:'opacity 0.15s',
+                                }}>
+                                  <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                    onMouseEnter={e => (e.currentTarget.style.color = mt.accentText)}
+                                    onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                    <Edit2 size={10} />
+                                  </button>
+                                  <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                    onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                                    onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                    <Trash2 size={10} />
+                                  </button>
                                 </div>
-                              )}
-                              {/* Pile icon divider column */}
-                              {!isRight && pileIconCell}
-                              {/* Right column item - find the next pile */}
-                              {!isRight && (() => {
-                                const rightPile = filtered[idx + 1];
-                                if (!rightPile) {
-                                  return <div style={{ background:'#f4f6f9', borderBottom:'1px solid #e8ecf0' }} />;
-                                }
-                                const rbbCount = projAnalysis?.pilesInReports.get(rightPile.pile_code_canonical)?.count ?? 0;
-                                const rIsMulti = rbbCount > 1;
-                                return (
-                                  <div
-                                    className="group"
-                                    style={{
-                                      position:'relative',
-                                      minHeight: 40,
-                                      display:'flex', alignItems:'center',
-                                      padding:'0 12px',
-                                      background: rIsMulti ? '#fffbeb' : '#f4f6f9',
-                                      borderBottom: `1px solid #e8ecf0`,
-                                      transition:'background 0.12s',
-                                      cursor:'default',
-                                    }}
-                                    onMouseEnter={e => { if (!rIsMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
-                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = rIsMulti ? '#fffbeb' : '#f4f6f9'; }}
-                                  >
-                                    <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:32 }}>
-                                      <div style={{
-                                        width:3, height:18, borderRadius:2, flexShrink:0,
-                                        background: rbbCount > 0 ? (rIsMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
-                                      }} />
-                                      <span style={{
-                                        fontSize:11, fontWeight:700, color:'#1e293b',
-                                        textTransform:'uppercase', letterSpacing:'0.3px',
-                                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                      }}>
-                                        {rightPile.pile_code_raw}
-                                      </span>
-                                      {rbbCount > 0 && (
-                                        <div style={{
-                                          flexShrink:0, padding:'1px 6px', borderRadius:999,
-                                          fontSize:9, fontWeight:800, textTransform:'uppercase',
-                                          background: rIsMulti ? '#fef3c7' : mt.badgeBg,
-                                          color: rIsMulti ? '#92400e' : mt.badgeText,
-                                        }}>
-                                          {rbbCount}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="opacity-0 group-hover:opacity-100" style={{
-                                      position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                                      display:'flex', alignItems:'center', gap:1, transition:'opacity 0.15s',
-                                    }}>
-                                      <button onClick={() => startEdit(rightPile)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
-                                        <Edit2 size={11} />
-                                      </button>
-                                      <button onClick={() => handleDelete(rightPile.id, project.id)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                            </React.Fragment>
+                              </div>
+
+                              {/* Col 2: Đường kính — inline select */}
+                              <div style={{ display:'flex', alignItems:'center', padding:'0 6px', borderLeft:`1px solid #e8ecf0` }}>
+                                <select
+                                  value={pile.diameter || ''}
+                                  onChange={async (e) => {
+                                    const newDia = e.target.value;
+                                    // Optimistic UI update
+                                    setAllPiles(prev => prev.map(p => p.id === pile.id ? { ...p, diameter: newDia } : p));
+                                    try {
+                                      if (supabase) {
+                                        await supabase.from('app_pile_registry').update({ diameter: newDia }).eq('id', pile.id);
+                                      } else {
+                                        const loc = JSON.parse(localStorage.getItem(`pile_registry_${project.id}`) || '[]');
+                                        localStorage.setItem(`pile_registry_${project.id}`, JSON.stringify(loc.map((p: any) => p.id === pile.id ? { ...p, diameter: newDia } : p)));
+                                      }
+                                    } catch (err) { console.error('Diameter update error:', err); }
+                                  }}
+                                  style={{
+                                    width:'100%', height:26, fontSize:10, fontWeight:700,
+                                    color: pile.diameter ? mt.accentText : '#94a3b8',
+                                    background:'transparent', border:'none', outline:'none',
+                                    cursor:'pointer', padding:'0 2px',
+                                    appearance:'none', WebkitAppearance:'none',
+                                  }}
+                                >
+                                  <option value="">—</option>
+                                  {diameterOptions.map(d => (
+                                    <option key={d} value={d}>{d}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
@@ -10207,30 +10187,59 @@ function PileRegistryView({
                       overflow:'hidden', background:'white',
                       boxShadow:'0 1px 4px rgba(0,0,0,0.05)'
                     }}>
-                      <div style={{ background:mt2.accentLight, borderBottom:`1px solid ${mt2.accentBorder}`, padding:'8px 16px' }}>
-                        <span style={{ fontSize:11, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px' }}>Tên cọc</span>
+                      {/* Table header */}
+                      <div style={{ display:'grid', gridTemplateColumns:'36px 1fr 110px', background:mt2.accentLight, borderBottom:`1px solid ${mt2.accentBorder}` }}>
+                        <div style={{ padding:'7px 0', textAlign:'center', fontSize:9, fontWeight:800, color:mt2.accentText, letterSpacing:'0.5px' }}>#</div>
+                        <div style={{ padding:'7px 12px', fontSize:9, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px' }}>Tên cọc</div>
+                        <div style={{ padding:'7px 10px', fontSize:9, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px', borderLeft:`1px solid ${mt2.accentBorder}` }}>
+                          Đường kính
+                          <span style={{ fontSize:8, fontWeight:600, color:mt2.accentText, opacity:0.6, marginLeft:4 }}>Ctrl+D</span>
+                        </div>
                       </div>
                       <div style={{ maxHeight:320, overflowY:'auto' }}>
                         {gridRows.map((row, i) => (
-                          <div key={i} style={{ borderBottom:'1px solid #f8fafc', display:'flex' }}>
-                            <div style={{ width:36, background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', borderRight:'1px solid #f1f5f9', flexShrink:0 }}>
+                          <div key={i} style={{ display:'grid', gridTemplateColumns:'36px 1fr 110px', borderBottom:'1px solid #f1f5f9' }}>
+                            {/* Row number */}
+                            <div style={{ background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', borderRight:'1px solid #f1f5f9' }}>
                               <span style={{ fontSize:10, color:'#cbd5e1', fontWeight:600 }}>{i+1}</span>
                             </div>
+                            {/* Tên cọc input */}
                             <input
                               type="text"
                               value={row.name}
                               onChange={e => updateGridCell(i, 'name', e.target.value)}
                               onPaste={e => handleGridPaste(e, i, 'name')}
+                              onKeyDown={e => handleGridKeyDown(e, i, 'name')}
                               placeholder={`Cọc ${i + 1}...`}
                               style={{
-                                flex:1, height:36, padding:'0 14px',
-                                fontSize:12, fontWeight:600, color:'#1e293b',
+                                height:36, padding:'0 12px',
+                                fontSize:11, fontWeight:600, color:'#1e293b',
                                 textTransform:'uppercase', background:'transparent',
                                 border:'none', outline:'none', letterSpacing:'0.3px',
                               }}
-                              onFocus={e => (e.target.parentElement!.style.background = mt2.accentLight)}
-                              onBlur={e => (e.target.parentElement!.style.background = '')}
                             />
+                            {/* Đường kính dropdown */}
+                            <div style={{ borderLeft:'1px solid #f1f5f9', display:'flex', alignItems:'center', padding:'0 6px' }}>
+                              <select
+                                value={row.diameter}
+                                onChange={e => updateGridCell(i, 'diameter', e.target.value)}
+                                onKeyDown={e => handleGridKeyDown(e, i, 'diameter')}
+                                style={{
+                                  width:'100%', height:28, fontSize:11, fontWeight:600,
+                                  color: row.diameter ? mt2.accentText : '#94a3b8',
+                                  background:'transparent', border:`1px solid ${row.diameter ? mt2.accentBorder : '#e2e8f0'}`,
+                                  borderRadius:6, padding:'0 4px', cursor:'pointer', outline:'none',
+                                  transition:'border-color 0.15s',
+                                }}
+                                onFocus={e => (e.target.style.borderColor = mt2.accent)}
+                                onBlur={e => (e.target.style.borderColor = row.diameter ? mt2.accentBorder : '#e2e8f0')}
+                              >
+                                <option value="">—</option>
+                                {diameterOptions.map(d => (
+                                  <option key={d} value={d}>{d}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -10396,6 +10405,29 @@ function PileRegistryView({
                       onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt3.accentBorder}`)}
                       onBlur={e => (e.target.style.boxShadow = 'none')}
                     />
+                  </div>
+                  <div>
+                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                      Đường kính
+                    </label>
+                    <select
+                      value={editForm.diameter}
+                      onChange={e => setEditForm(prev => ({ ...prev, diameter: e.target.value }))}
+                      style={{
+                        width:'100%', padding:'10px 14px', borderRadius:10,
+                        border:`1.5px solid ${mt3.accentBorder}`,
+                        background:mt3.accentLight, fontSize:13, fontWeight:700,
+                        color: editForm.diameter ? mt3.accentText : '#94a3b8',
+                        outline:'none', boxSizing:'border-box', cursor:'pointer',
+                      }}
+                      onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt3.accentBorder}`)}
+                      onBlur={e => (e.target.style.boxShadow = 'none')}
+                    >
+                      <option value="">— Chọn đường kính —</option>
+                      {diameterOptions.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ display:'flex', gap:10 }}>
                     <button
