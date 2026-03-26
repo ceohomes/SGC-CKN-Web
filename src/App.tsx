@@ -13091,7 +13091,7 @@ function EditSplitView({
           <div className="space-y-4">
           <div className="grid grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
               {(() => {
                 const savedProjects: AppProject[] = (() => {
                   try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
@@ -13120,7 +13120,7 @@ function EditSplitView({
               })()}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
               {(() => {
                 const selectedProj = projects.find(p => p.name === data.project);
                 const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
@@ -13159,7 +13159,7 @@ function EditSplitView({
               })()}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Số hiệu cọc</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Số hiệu cọc</label>
               <input 
                 value={data.pileId} 
                 onChange={(e) => updateField('pileId', e.target.value)}
@@ -13167,7 +13167,7 @@ function EditSplitView({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Tên Máy khoan</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
               {(() => {
                 const selectedProj = projects.find(p => p.name === data.project);
                 const filteredMachines = selectedProj ? drillingMachines.filter(m => m.projectId === selectedProj.id) : [];
@@ -13189,7 +13189,7 @@ function EditSplitView({
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
               {diameterOptions.length > 0 ? (
                 <select
                   value={data.diameter}
@@ -13212,7 +13212,7 @@ function EditSplitView({
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Bắt đầu thi công</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
@@ -13222,7 +13222,7 @@ function EditSplitView({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Kết thúc thi công</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
