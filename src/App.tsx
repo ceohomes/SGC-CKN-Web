@@ -9856,7 +9856,7 @@ function PileRegistryView({
                     padding: '14px 16px',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                   }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flex:1, minWidth:0, overflow:'hidden' }}>
                       {/* Animated dot */}
                       <div style={{ position:'relative', flexShrink:0 }}>
                         <div style={{
@@ -9871,7 +9871,8 @@ function PileRegistryView({
                       <h2 style={{
                         fontSize: 12, fontWeight: 900, color: 'white',
                         textTransform: 'uppercase', letterSpacing: '0.5px',
-                        wordBreak: 'break-word', lineHeight: 1.35,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        minWidth: 0, flex: 1,
                         textShadow:'0 1px 3px rgba(0,0,0,0.2)'
                       }}>
                         {project.name}
