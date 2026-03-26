@@ -7615,6 +7615,7 @@ LƯU Ý:
                           projects={projects}
                           items={items}
                           drillingMachines={drillingMachines}
+                          diameterOptions={[...new Set([...(Array.isArray(history) ? history : []).map((r: any) => (r.diameter||'').trim()).filter(Boolean), ...JSON.parse(localStorage.getItem('sgc_diameter_list')||'[]')])].sort((a,b)=>(parseInt(a.replace(/\D/g,''))||0)-(parseInt(b.replace(/\D/g,''))||0))}
                           onSave={(updated) => {
                             setCurrentResult(updated);
                             setPendingResults(prev => prev.map(r => r.id === updated.id ? updated : r));
@@ -8619,6 +8620,7 @@ LƯU Ý:
           projects={projects}
           items={items}
           drillingMachines={drillingMachines}
+          diameterOptions={[...new Set([...(Array.isArray(history) ? history : []).map((r: any) => (r.diameter||'').trim()).filter(Boolean), ...JSON.parse(localStorage.getItem('sgc_diameter_list')||'[]')])].sort((a,b)=>(parseInt(a.replace(/\D/g,''))||0)-(parseInt(b.replace(/\D/g,''))||0))}
         />
       )}
 
@@ -12014,6 +12016,7 @@ function EditSplitView({
   projects,
   items,
   drillingMachines,
+  diameterOptions = [],
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
@@ -12025,6 +12028,7 @@ function EditSplitView({
   projects: AppProject[];
   items: AppItem[];
   drillingMachines: AppDrillingMachine[];
+  diameterOptions?: string[];
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
@@ -13183,35 +13187,26 @@ function EditSplitView({
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
-              {(() => {
-                const fromHistory = [...new Set(history.map((r: any) => (r.diameter || '').trim()).filter(Boolean))];
-                const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                const allDiameters = [...new Set([...fromHistory, ...fromStorage])].sort((a, b) => {
-                  const na = parseInt(a.replace(/\D/g, '')) || 0;
-                  const nb = parseInt(b.replace(/\D/g, '')) || 0;
-                  return na - nb;
-                });
-                return allDiameters.length > 0 ? (
-                  <select
-                    value={data.diameter}
-                    onChange={(e) => updateField('diameter', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
-                  >
-                    <option value="">-- Chọn đường kính --</option>
-                    {allDiameters.map(d => <option key={d} value={d}>{d}</option>)}
-                    {data.diameter && !allDiameters.some(d => d.toLowerCase() === data.diameter.toLowerCase()) && (
-                      <option value={data.diameter}>{data.diameter} (AI quét)</option>
-                    )}
-                  </select>
-                ) : (
-                  <input
-                    value={data.diameter}
-                    onChange={(e) => updateField('diameter', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-                    placeholder="VD: D800"
-                  />
-                );
-              })()}
+              {diameterOptions.length > 0 ? (
+                <select
+                  value={data.diameter}
+                  onChange={(e) => updateField('diameter', e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                >
+                  <option value="">-- Chọn đường kính --</option>
+                  {diameterOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                  {data.diameter && !diameterOptions.some(d => d.toLowerCase() === data.diameter.toLowerCase()) && (
+                    <option value={data.diameter}>{data.diameter} (AI quét)</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  value={data.diameter}
+                  onChange={(e) => updateField('diameter', e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+                  placeholder="VD: D800"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
