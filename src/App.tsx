@@ -7331,6 +7331,7 @@ LƯU Ý:
             </button>
             )}
 
+
             <button 
               onClick={() => { setActiveSheet('pdf-splitter'); setIsSidebarOpen(false); }}
               className={cn(
@@ -9164,7 +9165,7 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-60 text-white rounded-lg text-[11px] font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/30"
                   >
                     {isMerging ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    Ghép & Gửi lên Up file
+                    Ghép & Gửi lên Biên bản
                   </button>
                 </>
               )}
@@ -9404,6 +9405,7 @@ function parseViDate(str: string): Date | null {
 interface PileEntry {
   id: string;
   project_id: string;
+  stt: string;
   pile_code_raw: string;
   pile_code_canonical: string;
   item: string;
@@ -9422,6 +9424,11 @@ function normalizePileCode(raw: string): string {
   return s;
 }
 
+function searchNormalize(s: string): string {
+  if (!s) return '';
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function PileRegistryView({ 
   projects, 
   history, 
@@ -9433,67 +9440,126 @@ function PileRegistryView({
   currentUser: AppUser | null;
   supabase: any;
 }) {
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [piles, setPiles] = useState<PileEntry[]>([]);
+  const [allPiles, setAllPiles] = useState<PileEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [pasteText, setPasteText] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [projectSearches, setProjectSearches] = useState<Record<string, string>>({});
+  const [editingPile, setEditingPile] = useState<PileEntry | null>(null);
+  const [editForm, setEditForm] = useState({ stt: '', raw: '', item: '' });
+  
+  // (themes replaced by modernThemes below)
+  
+  // State cho modal thêm cọc
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addProjectId, setAddProjectId] = useState('');
+  const [gridRows, setGridRows] = useState<{stt: string, name: string, item: string}[]>(
+    Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '' }))
+  );
   const [parsePreview, setParsePreview] = useState<{
-    raw: string; canonical: string; item: string;
+    stt: string; raw: string; canonical: string; item: string;
     status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db';
   }[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [previewTab, setPreviewTab] = useState<'new' | 'existing'>('new');
 
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const loadAllPiles = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      if (supabase) {
+        const { data, error } = await supabase.from('app_pile_registry').select('*').order('item', { ascending: true });
+        if (!error && data) setAllPiles(data);
+      } else {
+        const all: PileEntry[] = [];
+        projects.forEach(p => {
+          const saved = localStorage.getItem(`pile_registry_${p.id}`);
+          if (saved) all.push(...JSON.parse(saved));
+        });
+        setAllPiles(all);
+      }
+    } catch (err) {
+      console.error('Error loading piles:', err);
+    }
+    setLoading(false);
+  }, [supabase, projects]);
 
   useEffect(() => {
-    if (!selectedProjectId) { setPiles([]); return; }
-    setLoading(true);
-    const load = async () => {
-      try {
-        if (supabase) {
-          const { data, error } = await supabase.from('app_pile_registry').select('*').eq('project_id', selectedProjectId).order('item', { ascending: true });
-          if (!error && data) setPiles(data);
-          else setPiles([]);
-        } else {
-          const saved = localStorage.getItem(`pile_registry_${selectedProjectId}`);
-          setPiles(saved ? JSON.parse(saved) : []);
-        }
-      } catch { setPiles([]); }
-      setLoading(false);
-    };
-    load();
-  }, [selectedProjectId, supabase]);
+    loadAllPiles();
+  }, [loadAllPiles]);
+
+  const handleGridPaste = (e: React.ClipboardEvent, rowIndex: number, colKey: 'stt' | 'name' | 'item') => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text');
+    const rows = text.split(/\r?\n/).filter(r => r.trim() !== '');
+    const newGrid = [...gridRows];
+    
+    rows.forEach((row, rIdx) => {
+      const targetRowIdx = rowIndex + rIdx;
+      if (targetRowIdx >= newGrid.length) {
+        newGrid.push({ stt: String(targetRowIdx + 1), name: '', item: '' });
+      }
+      
+      const cols = row.split('\t');
+      const startColIdx = colKey === 'stt' ? 0 : colKey === 'name' ? 1 : 2;
+      
+      cols.forEach((val, cIdx) => {
+        const targetColIdx = startColIdx + cIdx;
+        if (targetColIdx === 0) newGrid[targetRowIdx].stt = val.trim();
+        if (targetColIdx === 1) newGrid[targetRowIdx].name = val.trim();
+        if (targetColIdx === 2) newGrid[targetRowIdx].item = val.trim();
+      });
+    });
+    
+    setGridRows(newGrid);
+    setParsePreview(null);
+  };
+
+  const updateGridCell = (rowIndex: number, colKey: 'stt' | 'name' | 'item', value: string) => {
+    const newGrid = [...gridRows];
+    newGrid[rowIndex][colKey] = value;
+    setGridRows(newGrid);
+    setParsePreview(null);
+  };
+
+  const addGridRow = () => {
+    setGridRows(prev => [...prev, { stt: String(prev.length + 1), name: '', item: '' }]);
+  };
 
   const handleParse = () => {
-    if (!pasteText.trim()) return;
-    const lines = pasteText.trim().split('\n').filter(l => l.trim());
-    const existingCanonicals = new Set(piles.map(p => p.pile_code_canonical));
+    if (!addProjectId) return;
+    const projectPiles = allPiles.filter(p => p.project_id === addProjectId);
+    const existingCanonicals = new Set(projectPiles.map(p => p.pile_code_canonical));
     const seenInPaste = new Set<string>();
-    const parsed = lines.map(line => {
-      const parts = line.split('\t');
-      const raw = (parts[0] || '').trim();
-      const item = (parts[1] || '').trim();
-      if (!raw) return null;
-      const canonical = normalizePileCode(raw);
-      let status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db' = 'new';
-      if (existingCanonicals.has(canonical)) status = 'duplicate_in_db';
-      else if (seenInPaste.has(canonical)) status = 'duplicate_in_paste';
-      seenInPaste.add(canonical);
-      return { raw, canonical, item, status };
-    }).filter(Boolean) as any[];
+    
+    const parsed = gridRows
+      .filter(row => row.name.trim() !== '')
+      .map(row => {
+        const stt = row.stt.trim();
+        const raw = row.name.trim();
+        const item = row.item.trim();
+        const canonical = normalizePileCode(raw);
+        
+        let status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db' = 'new';
+        if (existingCanonicals.has(canonical)) status = 'duplicate_in_db';
+        else if (seenInPaste.has(canonical)) status = 'duplicate_in_paste';
+        seenInPaste.add(canonical);
+        
+        return { stt, raw, canonical, item, status };
+      });
+    
     setParsePreview(parsed);
     setSaveMsg(null);
+    setPreviewTab('existing');
   };
 
   const handleSave = async () => {
-    if (!parsePreview || !selectedProjectId) return;
+    if (!parsePreview || !addProjectId) return;
     const toSave = parsePreview.filter(p => p.status === 'new');
     if (!toSave.length) { setSaveMsg('Không có cọc mới để lưu.'); return; }
     setSaving(true);
     const newEntries = toSave.map(p => ({
-      project_id: selectedProjectId,
+      project_id: addProjectId,
+      stt: p.stt,
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
       item: p.item,
@@ -9503,357 +9569,786 @@ function PileRegistryView({
     try {
       if (supabase) {
         const { error } = await supabase.from('app_pile_registry').insert(newEntries);
-        if (error) throw error;
-        const { data } = await supabase.from('app_pile_registry').select('*').eq('project_id', selectedProjectId).order('item');
-        if (data) setPiles(data);
+        if (error) {
+          console.error("Supabase Insert Error:", error);
+          throw error;
+        }
       } else {
         const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}` }));
-        const updated = [...piles, ...fakes];
-        setPiles(updated);
-        localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
+        const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${addProjectId}`) || '[]');
+        localStorage.setItem(`pile_registry_${addProjectId}`, JSON.stringify([...currentLocal, ...fakes]));
       }
+      await loadAllPiles();
       setSaveMsg(`✓ Đã lưu ${toSave.length} cọc mới!`);
-      setPasteText('');
-      setParsePreview(null);
+      setTimeout(() => {
+        setIsAddModalOpen(false);
+        setGridRows(Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '' })));
+        setParsePreview(null);
+        setSaveMsg('');
+      }, 1500);
     } catch (err: any) {
-      setSaveMsg(`✗ Lỗi: ${err?.message || 'Không thể lưu'}`);
+      console.error("Save error details:", err);
+      setSaveMsg(`✗ Lỗi: ${err?.message || 'Không thể lưu dữ liệu'}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, projectId: string) => {
     if (!window.confirm('Xóa cọc này khỏi danh sách?')) return;
     try {
-      if (supabase) await supabase.from('app_pile_registry').delete().eq('id', id);
-      else {
-        const updated = piles.filter(p => p.id !== id);
-        localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
+      if (supabase) {
+        const { error } = await supabase.from('app_pile_registry').delete().eq('id', id);
+        if (error) {
+          console.error("Supabase Delete Error:", error);
+          throw error;
+        }
+      } else {
+        const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${projectId}`) || '[]');
+        const updated = currentLocal.filter((p: any) => p.id !== id);
+        localStorage.setItem(`pile_registry_${projectId}`, JSON.stringify(updated));
       }
-      setPiles(prev => prev.filter(p => p.id !== id));
-    } catch {}
+      setAllPiles(prev => prev.filter(p => p.id !== id));
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      alert(`✗ Lỗi khi xóa: ${err?.message || 'Không thể thực hiện'}`);
+    }
   };
 
-  // Phân tích đối chiếu với biên bản
-  const analysis = React.useMemo(() => {
-    if (!selectedProjectId || !piles.length) return null;
-    const projHistory = history.filter(h => h.project === selectedProject?.name);
-    const registryCanonicals = new Set(piles.map(p => p.pile_code_canonical));
-    const pilesInReports = new Map<string, { raw: string; count: number }>();
-    projHistory.forEach(h => {
-      const canonical = normalizePileCode(h.pileId);
-      if (!pilesInReports.has(canonical)) pilesInReports.set(canonical, { raw: h.pileId, count: 0 });
-      pilesInReports.get(canonical)!.count++;
-    });
-    const unknownPiles = Array.from(pilesInReports.entries()).filter(([c]) => !registryCanonicals.has(c));
-    const duplicateReportPiles = Array.from(pilesInReports.entries()).filter(([c, v]) => v.count > 1 && registryCanonicals.has(c));
-    return { pilesInReports, unknownPiles, duplicateReportPiles };
-  }, [piles, history, selectedProjectId, selectedProject]);
+  const startEdit = (pile: PileEntry) => {
+    setEditingPile(pile);
+    setEditForm({ stt: pile.stt || '', raw: pile.pile_code_raw, item: pile.item || '' });
+  };
+
+  const handleUpdate = async () => {
+    if (!editingPile) return;
+    const canonical = normalizePileCode(editForm.raw);
+    try {
+      if (supabase) {
+        const { error } = await supabase.from('app_pile_registry').update({
+          stt: editForm.stt,
+          pile_code_raw: editForm.raw,
+          pile_code_canonical: canonical,
+          item: editForm.item
+        }).eq('id', editingPile.id);
+        if (error) {
+          console.error("Supabase Update Error:", error);
+          throw error;
+        }
+      } else {
+        const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${editingPile.project_id}`) || '[]');
+        const updated = currentLocal.map((p: any) => p.id === editingPile.id ? {
+          ...p,
+          stt: editForm.stt,
+          pile_code_raw: editForm.raw,
+          pile_code_canonical: canonical,
+          item: editForm.item
+        } : p);
+        localStorage.setItem(`pile_registry_${editingPile.project_id}`, JSON.stringify(updated));
+      }
+      setAllPiles(prev => prev.map(p => p.id === editingPile.id ? {
+        ...p,
+        stt: editForm.stt,
+        pile_code_raw: editForm.raw,
+        pile_code_canonical: canonical,
+        item: editForm.item
+      } : p));
+      setEditingPile(null);
+    } catch (err: any) {
+      console.error("Update error details:", err);
+      alert(`✗ Lỗi cập nhật: ${err?.message || 'Không thể lưu'}`);
+    }
+  };
 
   const newCount = parsePreview?.filter(p => p.status === 'new').length ?? 0;
-  const dupDbCount = parsePreview?.filter(p => p.status === 'duplicate_in_db').length ?? 0;
-  const dupPasteCount = parsePreview?.filter(p => p.status === 'duplicate_in_paste').length ?? 0;
+  const existingCount = (parsePreview?.filter(p => p.status === 'duplicate_in_db').length ?? 0) + 
+                        (parsePreview?.filter(p => p.status === 'duplicate_in_paste').length ?? 0);
 
-  const filteredPiles = piles.filter(p =>
-    !searchTerm ||
-    p.pile_code_raw.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.pile_code_canonical.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.item || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Phân tích đối chiếu với biên bản cho toàn bộ dự án
+  const fullAnalysis = React.useMemo(() => {
+    const results: Record<string, any> = {};
+    projects.forEach(project => {
+      const projectPiles = allPiles.filter(p => p.project_id === project.id);
+      if (projectPiles.length === 0) return;
 
-  const coveredCount = piles.filter(p => analysis?.pilesInReports.has(p.pile_code_canonical)).length;
+      const projHistory = history.filter(h => h.project === project.name);
+      const registryCanonicals = new Set(projectPiles.map(p => p.pile_code_canonical));
+      const pilesInReports = new Map<string, { raw: string; count: number }>();
+      
+      projHistory.forEach(h => {
+        const canonical = normalizePileCode(h.pileId);
+        if (!pilesInReports.has(canonical)) pilesInReports.set(canonical, { raw: h.pileId, count: 0 });
+        pilesInReports.get(canonical)!.count++;
+      });
+
+      const unknownPiles = Array.from(pilesInReports.entries()).filter(([c]) => !registryCanonicals.has(c));
+      const duplicateReportPiles = Array.from(pilesInReports.entries()).filter(([c, v]) => v.count > 1 && registryCanonicals.has(c));
+      const coveredCount = projectPiles.filter(p => pilesInReports.has(p.pile_code_canonical)).length;
+
+      results[project.id] = { pilesInReports, unknownPiles, duplicateReportPiles, coveredCount, total: projectPiles.length };
+    });
+    return results;
+  }, [allPiles, history, projects]);
+
+  const pilesByProject = React.useMemo(() => {
+    const map: Record<string, PileEntry[]> = {};
+    allPiles.forEach(p => {
+      if (!map[p.project_id]) map[p.project_id] = [];
+      map[p.project_id].push(p);
+    });
+    return map;
+  }, [allPiles]);
+
+  const totalStats = React.useMemo(() => {
+    let total = allPiles.length;
+    let covered = 0;
+    let unknown = 0;
+    Object.values(fullAnalysis).forEach(a => {
+      covered += a.coveredCount;
+      unknown += a.unknownPiles.length;
+    });
+    return { total, covered, unknown };
+  }, [allPiles.length, fullAnalysis]);
+
+  // Modern theme palette — clean, data-dense, professional
+  const modernThemes = [
+    {
+      accent: '#3b82f6', accentLight: '#eff6ff', accentBorder: '#bfdbfe',
+      accentText: '#1d4ed8', accentDot: '#3b82f6', dotPulse: '#93c5fd',
+      headerGrad: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+      badgeBg: '#dbeafe', badgeText: '#1d4ed8',
+      rowHover: '#f0f7ff',
+    },
+    {
+      accent: '#10b981', accentLight: '#f0fdf4', accentBorder: '#a7f3d0',
+      accentText: '#065f46', accentDot: '#10b981', dotPulse: '#6ee7b7',
+      headerGrad: 'linear-gradient(135deg, #065f46 0%, #10b981 100%)',
+      badgeBg: '#d1fae5', badgeText: '#065f46',
+      rowHover: '#f0fdf4',
+    },
+    {
+      accent: '#8b5cf6', accentLight: '#faf5ff', accentBorder: '#ddd6fe',
+      accentText: '#5b21b6', accentDot: '#8b5cf6', dotPulse: '#c4b5fd',
+      headerGrad: 'linear-gradient(135deg, #4c1d95 0%, #8b5cf6 100%)',
+      badgeBg: '#ede9fe', badgeText: '#5b21b6',
+      rowHover: '#faf5ff',
+    },
+    {
+      accent: '#f59e0b', accentLight: '#fffbeb', accentBorder: '#fde68a',
+      accentText: '#92400e', accentDot: '#f59e0b', dotPulse: '#fcd34d',
+      headerGrad: 'linear-gradient(135deg, #78350f 0%, #f59e0b 100%)',
+      badgeBg: '#fef3c7', badgeText: '#92400e',
+      rowHover: '#fffbeb',
+    },
+    {
+      accent: '#ef4444', accentLight: '#fff1f2', accentBorder: '#fecaca',
+      accentText: '#991b1b', accentDot: '#ef4444', dotPulse: '#fca5a5',
+      headerGrad: 'linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%)',
+      badgeBg: '#fee2e2', badgeText: '#991b1b',
+      rowHover: '#fff1f2',
+    },
+  ];
 
   return (
-    <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 80px)' }}>
-      {/* Header bar */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-200 bg-white">
-        <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
-          <ListChecks className="text-white w-4 h-4" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-base font-black text-slate-800 uppercase tracking-tight">Danh sách cọc</h1>
-          <p className="text-[11px] text-slate-400">Quản lý & đối chiếu cọc theo dự án</p>
-        </div>
-        {/* Stats inline nếu đã chọn dự án */}
-        {selectedProjectId && (
-          <div className="flex items-center gap-3">
-            {[
-              { label: 'Tổng cọc', value: piles.length, cls: 'bg-blue-50 text-blue-700 border-blue-100' },
-              { label: 'Có biên bản', value: coveredCount, cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-              { label: 'Chưa có', value: piles.length - coveredCount, cls: 'bg-amber-50 text-amber-700 border-amber-100' },
-              { label: 'Cọc lạ', value: analysis?.unknownPiles.length ?? 0, cls: (analysis?.unknownPiles.length ?? 0) > 0 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-400 border-slate-100' },
-            ].map(s => (
-              <div key={s.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${s.cls}`}>
-                <span className="text-base font-black">{s.value}</span>
-                <span className="font-medium opacity-80">{s.label}</span>
+    <div className="h-full flex flex-col" style={{ background: '#f8fafc', minHeight: 'calc(100vh - 80px)' }}>
+      {/* ── Top Header Bar ── */}
+      <div style={{
+        background: 'white',
+        borderBottom: '1px solid #e2e8f0',
+        position: 'sticky', top: 0, zIndex: 20,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+      }}>
+        <div className="flex items-center gap-4 px-6 py-4">
+          <div style={{
+            width: 38, height: 38, borderRadius: 12,
+            background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, boxShadow: '0 4px 12px rgba(59,130,246,0.35)'
+          }}>
+            <ListChecks className="text-white w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 style={{ fontSize: 15, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.3px', textTransform: 'uppercase' }}>
+              Danh Sách Cọc
+            </h1>
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>Quản lý & đối chiếu cọc theo từng dự án</p>
+          </div>
+          {/* Stats pills */}
+          <div className="hidden md:flex items-center gap-2">
+            <div style={{ background: '#f1f5f9', borderRadius: 999, padding: '4px 12px', display:'flex', alignItems:'center', gap:6 }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', background:'#3b82f6' }} />
+              <span style={{ fontSize:11, fontWeight:700, color:'#475569' }}>{totalStats.total} cọc</span>
+            </div>
+            <div style={{ background: '#f0fdf4', borderRadius: 999, padding: '4px 12px', display:'flex', alignItems:'center', gap:6 }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', background:'#10b981' }} />
+              <span style={{ fontSize:11, fontWeight:700, color:'#065f46' }}>{totalStats.covered} có BB</span>
+            </div>
+            {totalStats.unknown > 0 && (
+              <div style={{ background: '#fff1f2', borderRadius: 999, padding: '4px 12px', display:'flex', alignItems:'center', gap:6 }}>
+                <div style={{ width:6, height:6, borderRadius:'50%', background:'#ef4444' }} />
+                <span style={{ fontSize:11, fontWeight:700, color:'#991b1b' }}>{totalStats.unknown} lạ</span>
               </div>
-            ))}
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main Grid ── */}
+      <div className="flex-1 overflow-y-auto" style={{ padding: '24px 24px 32px' }}>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <Loader2 className="animate-spin w-8 h-8" style={{ color: '#3b82f6' }} />
+            <p style={{ fontSize:13, color:'#94a3b8', fontWeight:600 }}>Đang tải dữ liệu cọc...</p>
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <ClipboardList size={56} style={{ color: '#cbd5e1', opacity: 0.5 }} />
+            <p style={{ fontSize:15, fontWeight:700, color:'#94a3b8' }}>Chưa có dự án nào</p>
+            <p style={{ fontSize:12, color:'#cbd5e1' }}>Vui lòng tạo dự án trước khi quản lý cọc</p>
+          </div>
+        ) : (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:20, alignItems:'start' }}>
+            {projects.map((project, pIdx) => {
+              const projectPiles = pilesByProject[project.id] || [];
+              const pSearch = projectSearches[project.id] || '';
+              const snSearch = searchNormalize(searchTerm);
+              const snPSearch = searchNormalize(pSearch);
+              
+              const filtered = projectPiles.filter(p => {
+                const matchesGlobal = !searchTerm ||
+                  searchNormalize(p.pile_code_raw).includes(snSearch) ||
+                  searchNormalize(p.pile_code_canonical).includes(snSearch) ||
+                  searchNormalize(p.item || '').includes(snSearch);
+                const matchesLocal = !pSearch ||
+                  searchNormalize(p.pile_code_raw).includes(snPSearch) ||
+                  searchNormalize(p.pile_code_canonical).includes(snPSearch) ||
+                  searchNormalize(p.item || '').includes(snPSearch);
+                return matchesGlobal && matchesLocal;
+              });
+
+              if (searchTerm && filtered.length === 0) return null;
+
+              const projAnalysis = fullAnalysis[project.id];
+              const mt = modernThemes[pIdx % modernThemes.length];
+              const hasAlerts = projAnalysis && (projAnalysis.unknownPiles.length > 0 || projAnalysis.duplicateReportPiles.length > 0);
+
+              return (
+                <div key={project.id} style={{
+                  background: 'white',
+                  borderRadius: 16,
+                  border: `1.5px solid ${mt.accentBorder}`,
+                  overflow: 'hidden',
+                  boxShadow: `0 2px 12px rgba(0,0,0,0.06), 0 0 0 0 ${mt.accent}`,
+                  transition: 'box-shadow 0.2s, transform 0.15s',
+                }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 28px rgba(0,0,0,0.10), 0 0 0 2px ${mt.accentBorder}`;
+                    (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.boxShadow = `0 2px 12px rgba(0,0,0,0.06)`;
+                    (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+                  }}
+                >
+                  {/* ── Card Header ── */}
+                  <div style={{
+                    background: mt.headerGrad,
+                    padding: '14px 16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden', flex:1 }}>
+                      {/* Animated dot */}
+                      <div style={{ position:'relative', flexShrink:0 }}>
+                        <div style={{
+                          width:8, height:8, borderRadius:'50%', background:'rgba(255,255,255,0.9)',
+                          position:'absolute', top:'50%', left:'50%',
+                          transform:'translate(-50%,-50%)',
+                          boxShadow:`0 0 0 4px rgba(255,255,255,0.25)`,
+                          animation:'pulse 2s infinite',
+                        }} />
+                        <div style={{ width:18, height:18 }} />
+                      </div>
+                      <h2 style={{
+                        fontSize: 12, fontWeight: 900, color: 'white',
+                        textTransform: 'uppercase', letterSpacing: '0.5px',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                        textShadow:'0 1px 3px rgba(0,0,0,0.2)'
+                      }}>
+                        {project.name}
+                      </h2>
+                      {/* Count badge */}
+                      <div style={{
+                        background: 'rgba(255,255,255,0.25)',
+                        border: '1px solid rgba(255,255,255,0.4)',
+                        borderRadius: 999, padding: '1px 8px',
+                        fontSize: 10, fontWeight: 800, color: 'white',
+                        flexShrink: 0, backdropFilter:'blur(4px)'
+                      }}>
+                        {projectPiles.length}
+                      </div>
+                    </div>
+
+                    {/* Search + Add */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                      <div style={{ position:'relative' }}>
+                        <input
+                          type="text"
+                          placeholder="Tìm cọc..."
+                          value={projectSearches[project.id] || ''}
+                          onChange={(e) => setProjectSearches(prev => ({ ...prev, [project.id]: e.target.value }))}
+                          style={{
+                            width: 110, height: 30, paddingLeft: 28, paddingRight: 10,
+                            fontSize: 10, fontWeight: 600,
+                            background: 'rgba(255,255,255,0.18)',
+                            border: '1px solid rgba(255,255,255,0.35)',
+                            borderRadius: 8, color: 'white', outline: 'none',
+                            backdropFilter: 'blur(8px)',
+                            transition: 'all 0.2s',
+                          }}
+                          onFocus={e => { e.target.style.background = 'rgba(255,255,255,0.28)'; e.target.style.width = '140px'; }}
+                          onBlur={e => { e.target.style.background = 'rgba(255,255,255,0.18)'; e.target.style.width = '110px'; }}
+                        />
+                        <Search size={11} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.7)', pointerEvents:'none' }} />
+                      </div>
+                      <button
+                        onClick={() => { setAddProjectId(project.id); setIsAddModalOpen(true); }}
+                        style={{
+                          width: 30, height: 30, borderRadius: 8,
+                          background: 'rgba(255,255,255,0.2)',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          cursor:'pointer', color:'white', transition:'all 0.15s',
+                          backdropFilter:'blur(4px)',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.35)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+                        title="Thêm cọc mới"
+                      >
+                        <Plus size={15} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Pile Grid Body ── */}
+                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                    {filtered.length === 0 ? (
+                      <div style={{ padding:'32px 16px', textAlign:'center', color:'#cbd5e1', fontSize:12, fontStyle:'italic' }}>
+                        Chưa có dữ liệu cọc
+                      </div>
+                    ) : (
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr' }}>
+                        {filtered.map((pile, idx) => {
+                          const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
+                          const isMulti = bbCount > 1;
+                          const isRight = idx % 2 === 1;
+
+                          return (
+                            <div
+                              key={pile.id}
+                              className="group"
+                              style={{
+                                position:'relative',
+                                minHeight: 40,
+                                display:'flex', alignItems:'center',
+                                padding:'0 14px',
+                                background: isMulti ? '#fffbeb' : 'white',
+                                borderBottom: `1px solid #f1f5f9`,
+                                borderRight: isRight ? 'none' : `1px solid #f1f5f9`,
+                                transition:'background 0.12s',
+                                cursor:'default',
+                              }}
+                              onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : 'white'; }}
+                            >
+                              <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:36 }}>
+                                {/* color indicator stripe */}
+                                <div style={{
+                                  width:3, height:20, borderRadius:2, flexShrink:0,
+                                  background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#e2e8f0'
+                                }} />
+                                <span style={{
+                                  fontSize:11, fontWeight:700, color:'#1e293b',
+                                  textTransform:'uppercase', letterSpacing:'0.3px',
+                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                                }}>
+                                  {pile.pile_code_raw}
+                                </span>
+                                {bbCount > 0 && (
+                                  <div style={{
+                                    flexShrink:0, padding:'1px 6px', borderRadius:999,
+                                    fontSize:9, fontWeight:800, textTransform:'uppercase',
+                                    background: isMulti ? '#fef3c7' : mt.badgeBg,
+                                    color: isMulti ? '#92400e' : mt.badgeText,
+                                  }}>
+                                    {bbCount}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Hover actions */}
+                              <div className="opacity-0 group-hover:opacity-100" style={{
+                                position:'absolute', right:6, top:'50%', transform:'translateY(-50%)',
+                                display:'flex', alignItems:'center', gap:2,
+                                transition:'opacity 0.15s',
+                              }}>
+                                <button
+                                  onClick={() => startEdit(pile)}
+                                  style={{ padding:4, borderRadius:6, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer', transition:'all 0.1s' }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; (e.currentTarget as HTMLElement).style.background = mt.accentLight; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                                >
+                                  <Edit2 size={11} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(pile.id, project.id)}
+                                  style={{ padding:4, borderRadius:6, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer', transition:'all 0.1s' }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; (e.currentTarget as HTMLElement).style.background = '#fff1f2'; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Alert Footer ── */}
+                  {hasAlerts && (
+                    <div style={{ padding:'10px 14px', borderTop:'1px solid #f1f5f9', background:'#fafafa', display:'flex', flexDirection:'column', gap:6 }}>
+                      {projAnalysis.unknownPiles.length > 0 && (
+                        <div style={{
+                          display:'flex', alignItems:'center', gap:7,
+                          padding:'6px 10px', borderRadius:8,
+                          background:'#fff1f2', border:'1px solid #fecaca',
+                        }}>
+                          <AlertTriangle size={11} style={{ color:'#ef4444', flexShrink:0 }} />
+                          <span style={{ fontSize:10, fontWeight:700, color:'#991b1b', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+                            {projAnalysis.unknownPiles.length} cọc lạ trong biên bản
+                          </span>
+                        </div>
+                      )}
+                      {projAnalysis.duplicateReportPiles.length > 0 && (
+                        <div style={{
+                          display:'flex', alignItems:'center', gap:7,
+                          padding:'6px 10px', borderRadius:8,
+                          background:'#fffbeb', border:'1px solid #fde68a',
+                        }}>
+                          <AlertCircle size={11} style={{ color:'#f59e0b', flexShrink:0 }} />
+                          <span style={{ fontSize:10, fontWeight:700, color:'#92400e', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+                            {projAnalysis.duplicateReportPiles.length} cọc trùng lặp trong BB
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Alerts */}
-      {(analysis?.unknownPiles.length ?? 0) > 0 && (
-        <div className="mx-6 mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
-          <AlertTriangle className="text-red-500 w-4 h-4 flex-shrink-0" />
-          <p className="text-sm font-bold text-red-700">
-            ⚠ {analysis!.unknownPiles.length} cọc trong biên bản KHÔNG có trong danh sách dự án này!
-          </p>
-        </div>
-      )}
-      {(analysis?.duplicateReportPiles.length ?? 0) > 0 && (
-        <div className="mx-6 mt-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
-          <AlertTriangle className="text-amber-500 w-4 h-4 flex-shrink-0" />
-          <p className="text-sm font-bold text-amber-700">
-            {analysis!.duplicateReportPiles.length} cọc có nhiều hơn 1 biên bản (nghi trùng lặp)
-          </p>
-        </div>
-      )}
+      {/* ── Modal Thêm cọc mới ── */}
+      {isAddModalOpen && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:9999,
+          background:'rgba(15,23,42,0.65)', backdropFilter:'blur(6px)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16
+        }}>
+          {(() => {
+            const projectIndex = projects.findIndex(p => p.id === addProjectId);
+            const mt2 = modernThemes[projectIndex !== -1 ? projectIndex % modernThemes.length : 0];
+            const project = projects.find(p => p.id === addProjectId);
 
-      {/* Main 2-col layout */}
-      <div className="flex flex-1 gap-0 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
-
-        {/* ── CỘT TRÁI: Bảng danh sách cọc ── */}
-        <div className="flex flex-col border-r border-slate-200 bg-white" style={{ width: '420px', minWidth: '320px' }}>
-          {/* Toolbar tìm kiếm */}
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Tìm cọc..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-            </div>
-            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">{filteredPiles.length}/{piles.length} cọc</span>
-          </div>
-
-          {/* Bảng */}
-          <div className="flex-1 overflow-y-auto">
-            {!selectedProjectId ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-300">
-                <ClipboardList size={40} className="mb-3 opacity-40" />
-                <p className="text-sm">Chọn dự án bên phải</p>
-              </div>
-            ) : loading ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="animate-spin text-indigo-400 w-6 h-6" />
-              </div>
-            ) : (
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 z-10">
-                  <tr style={{ background: '#1e3a8a' }}>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider w-10">STT</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider">Tên cọc</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-black text-white uppercase tracking-wider">Hạng mục</th>
-                    <th className="px-2 py-2.5 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPiles.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-12 text-slate-400 text-sm">
-                      {piles.length === 0 ? 'Chưa có cọc nào. Nhập danh sách ở bên phải.' : 'Không tìm thấy cọc phù hợp'}
-                    </td></tr>
-                  ) : filteredPiles.map((pile, i) => {
-                    const hasBB = analysis?.pilesInReports.has(pile.pile_code_canonical);
-                    const bbCount = analysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
-                    const isMulti = bbCount > 1;
-                    return (
-                      <tr key={pile.id} className={cn(
-                        'border-b border-slate-100 hover:bg-indigo-50/40 transition-colors',
-                        isMulti ? 'bg-amber-50/40' : ''
-                      )}>
-                        <td className="px-3 py-2 text-[11px] text-slate-400 font-medium">{i + 1}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-bold text-slate-800 text-[12px]">{pile.pile_code_raw}</span>
-                            {hasBB && (
-                              <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full',
-                                isMulti ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
-                                {bbCount}BB
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-[11px] text-slate-500 max-w-[120px] truncate">{pile.item || '—'}</td>
-                        <td className="px-2 py-2">
-                          <button onClick={() => handleDelete(pile.id)}
-                            className="p-1 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded transition-all">
-                            <Trash2 size={12} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-
-        {/* ── CỘT PHẢI: Panel chọn dự án + nhập cọc ── */}
-        <div className="flex-1 flex flex-col overflow-y-auto bg-slate-50 p-5 gap-4">
-
-          {/* Chọn dự án */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-            <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên dự án</label>
-            <select
-              value={selectedProjectId}
-              onChange={e => { setSelectedProjectId(e.target.value); setParsePreview(null); setPasteText(''); setSaveMsg(null); setSearchTerm(''); }}
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              <option value="">-- Chọn dự án --</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-
-          {selectedProjectId && (
-            <>
-              {/* Nhập cọc */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <Plus size={12} className="text-indigo-500" /> Thêm cọc mới
-                </h3>
-                <p className="text-[11px] text-slate-400 mb-2">
-                  Copy từ Excel dán vào đây. Cột 1: <strong>Tên cọc</strong>, Cột 2: <strong>Hạng mục</strong> (cách nhau bằng Tab). Có thể dán 1 cột hoặc 2 cột.
-                </p>
-                <textarea
-                  value={pasteText}
-                  onChange={e => { setPasteText(e.target.value); setParsePreview(null); }}
-                  placeholder={"P1-01\tHạng mục A\nP1-02\tHạng mục A\nP2.1\tHạng mục B"}
-                  rows={5}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-mono text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-y"
-                />
-                <div className="flex items-center gap-2 mt-2">
-                  <button onClick={handleParse} disabled={!pasteText.trim()}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-wide hover:bg-indigo-700 disabled:opacity-40 transition-all">
-                    Kiểm tra
+            return (
+              <div style={{
+                background:'white', borderRadius:20,
+                boxShadow:'0 24px 64px rgba(0,0,0,0.2)',
+                width:'100%', maxWidth:600, overflow:'hidden',
+                animation:'zoomIn 0.18s ease-out',
+              }}>
+                {/* Modal Header */}
+                <div style={{
+                  background: mt2.headerGrad,
+                  padding:'18px 24px',
+                  display:'flex', alignItems:'center', justifyContent:'space-between',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                    <div style={{
+                      width:32, height:32, borderRadius:10,
+                      background:'rgba(255,255,255,0.2)',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      border:'1px solid rgba(255,255,255,0.3)'
+                    }}>
+                      <Plus className="text-white w-4 h-4" />
+                    </div>
+                    <h3 style={{ color:'white', fontWeight:900, fontSize:15, textTransform:'uppercase', letterSpacing:'0.5px' }}>
+                      Thêm danh sách cọc mới
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setIsAddModalOpen(false)}
+                    style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'white', transition:'all 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
+                  >
+                    <X size={16} />
                   </button>
-                  {pasteText && (
-                    <button onClick={() => { setPasteText(''); setParsePreview(null); setSaveMsg(null); }}
-                      className="px-3 py-2 border border-slate-200 text-slate-500 rounded-xl text-xs hover:bg-slate-50">
-                      Xóa
-                    </button>
-                  )}
                 </div>
 
-                {/* Preview */}
-                {parsePreview && (
-                  <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden">
-                    <div className="flex gap-3 px-3 py-2 bg-slate-50 border-b border-slate-100 flex-wrap">
-                      <span className="text-[11px] font-bold text-emerald-600">✓ {newCount} mới</span>
-                      {dupDbCount > 0 && <span className="text-[11px] font-bold text-red-500">✗ {dupDbCount} đã có trong DB</span>}
-                      {dupPasteCount > 0 && <span className="text-[11px] font-bold text-amber-500">⚠ {dupPasteCount} trùng trong danh sách</span>}
+                {/* Modal Body */}
+                <div style={{ padding:'24px', overflowY:'auto', maxHeight:'76vh', display:'flex', flexDirection:'column', gap:20 }}>
+                  {/* Project display */}
+                  <div>
+                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                      Dự án đang thêm
+                    </label>
+                    <div style={{
+                      border:`1.5px solid ${mt2.accentBorder}`,
+                      borderRadius:12, padding:'10px 16px',
+                      background:mt2.accentLight,
+                      display:'flex', alignItems:'center', justifyContent:'space-between',
+                    }}>
+                      <span style={{ fontSize:14, fontWeight:700, color:mt2.accentText }}>{project?.name || 'Chưa chọn dự án'}</span>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:mt2.accentDot, boxShadow:`0 0 0 3px ${mt2.accentBorder}` }} />
                     </div>
-                    <div className="max-h-48 overflow-y-auto">
-                      <table className="w-full text-[11px]">
-                        <thead className="sticky top-0 bg-slate-100">
-                          <tr>
-                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã gốc</th>
-                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã chuẩn</th>
-                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Hạng mục</th>
-                            <th className="px-3 py-1.5 text-left font-bold text-slate-500">Trạng thái</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {parsePreview.map((row, i) => (
-                            <tr key={i} className={cn('border-t border-slate-100',
-                              row.status === 'duplicate_in_db' ? 'bg-red-50' :
-                              row.status === 'duplicate_in_paste' ? 'bg-amber-50' : '')}>
-                              <td className="px-3 py-1.5 font-mono">{row.raw}</td>
-                              <td className="px-3 py-1.5 font-mono font-bold text-indigo-700">{row.canonical}</td>
-                              <td className="px-3 py-1.5 text-slate-500">{row.item || '—'}</td>
-                              <td className="px-3 py-1.5">
-                                {row.status === 'new' && <span className="text-emerald-600 font-bold">✓ Mới</span>}
-                                {row.status === 'duplicate_in_db' && <span className="text-red-500 font-bold">✗ Có rồi</span>}
-                                {row.status === 'duplicate_in_paste' && <span className="text-amber-600 font-bold">⚠ Trùng</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {newCount > 0 && (
-                      <div className="px-3 py-2.5 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
-                        <button onClick={handleSave} disabled={saving}
-                          className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wide hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1.5">
-                          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                          Lưu {newCount} cọc mới
-                        </button>
-                        {saveMsg && <span className={cn('text-xs font-bold', saveMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500')}>{saveMsg}</span>}
+                  </div>
+
+                  {/* Pile input table */}
+                  <div>
+                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6 }}>
+                      Dán danh sách tên cọc
+                    </label>
+                    <p style={{ fontSize:11, color:'#94a3b8', marginBottom:12, lineHeight:1.5 }}>
+                      Mẹo: Bạn có thể copy danh sách tên cọc từ Excel và dán trực tiếp vào ô bên dưới.
+                    </p>
+                    <div style={{
+                      border:`1.5px solid #e2e8f0`, borderRadius:12,
+                      overflow:'hidden', background:'white',
+                      boxShadow:'0 1px 4px rgba(0,0,0,0.05)'
+                    }}>
+                      <div style={{ background:mt2.accentLight, borderBottom:`1px solid ${mt2.accentBorder}`, padding:'8px 16px' }}>
+                        <span style={{ fontSize:11, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px' }}>Tên cọc</span>
                       </div>
+                      <div style={{ maxHeight:320, overflowY:'auto' }}>
+                        {gridRows.map((row, i) => (
+                          <div key={i} style={{ borderBottom:'1px solid #f8fafc', display:'flex' }}>
+                            <div style={{ width:36, background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', borderRight:'1px solid #f1f5f9', flexShrink:0 }}>
+                              <span style={{ fontSize:10, color:'#cbd5e1', fontWeight:600 }}>{i+1}</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={e => updateGridCell(i, 'name', e.target.value)}
+                              onPaste={e => handleGridPaste(e, i, 'name')}
+                              placeholder={`Cọc ${i + 1}...`}
+                              style={{
+                                flex:1, height:36, padding:'0 14px',
+                                fontSize:12, fontWeight:600, color:'#1e293b',
+                                textTransform:'uppercase', background:'transparent',
+                                border:'none', outline:'none', letterSpacing:'0.3px',
+                              }}
+                              onFocus={e => (e.target.parentElement!.style.background = mt2.accentLight)}
+                              onBlur={e => (e.target.parentElement!.style.background = '')}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={addGridRow}
+                        style={{
+                          width:'100%', padding:'8px', textAlign:'center',
+                          fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase',
+                          letterSpacing:'0.5px', background:'#f8fafc', border:'none',
+                          borderTop:'1px solid #f1f5f9', cursor:'pointer', transition:'all 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget.style.background = mt2.accentLight); (e.currentTarget.style.color = mt2.accentText); }}
+                        onMouseLeave={e => { (e.currentTarget.style.background = '#f8fafc'); (e.currentTarget.style.color = '#94a3b8'); }}
+                      >
+                        + Thêm dòng mới
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Duplicate preview */}
+                  {parsePreview && existingCount > 0 && (
+                    <div style={{ border:'1.5px solid #fecaca', borderRadius:12, overflow:'hidden' }}>
+                      <div style={{ background:'#fff1f2', borderBottom:'1px solid #fecaca', padding:'10px 16px', display:'flex', alignItems:'center', gap:8 }}>
+                        <AlertTriangle size={13} style={{ color:'#ef4444' }} />
+                        <span style={{ fontSize:11, fontWeight:800, color:'#991b1b', textTransform:'uppercase' }}>{existingCount} cọc đã tồn tại</span>
+                      </div>
+                      <div style={{ maxHeight:200, overflowY:'auto' }}>
+                        {parsePreview
+                          .filter(p => p.status === 'duplicate_in_db' || p.status === 'duplicate_in_paste')
+                          .map((row, i) => (
+                            <div key={i} style={{
+                              padding:'8px 16px', borderBottom:'1px solid #fff1f2',
+                              display:'flex', alignItems:'center', justifyContent:'space-between',
+                            }}>
+                              <span style={{ fontSize:12, fontWeight:700, color:'#1e293b', textTransform:'uppercase' }}>{row.raw}</span>
+                              <span style={{
+                                fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:999,
+                                background: row.status === 'duplicate_in_db' ? '#fee2e2' : '#fef3c7',
+                                color: row.status === 'duplicate_in_db' ? '#991b1b' : '#92400e',
+                                textTransform:'uppercase'
+                              }}>
+                                {row.status === 'duplicate_in_db' ? 'Đã có trong DB' : 'Trùng danh sách'}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:10, paddingTop:4 }}>
+                    <button
+                      onClick={() => setIsAddModalOpen(false)}
+                      style={{
+                        padding:'10px 20px', borderRadius:10, border:'1.5px solid #e2e8f0',
+                        background:'white', color:'#64748b', fontSize:12, fontWeight:700,
+                        textTransform:'uppercase', letterSpacing:'0.5px', cursor:'pointer', transition:'all 0.15s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+                    >
+                      Đóng
+                    </button>
+                    {!parsePreview ? (
+                      <button
+                        onClick={handleParse}
+                        disabled={gridRows.every(r => !r.name.trim()) || !addProjectId}
+                        style={{
+                          padding:'10px 24px', borderRadius:10, border:'none',
+                          background: mt2.headerGrad, color:'white',
+                          fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
+                          cursor:'pointer', transition:'all 0.15s', opacity: (gridRows.every(r => !r.name.trim()) || !addProjectId) ? 0.5 : 1,
+                          boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
+                        }}
+                      >
+                        Kiểm tra dữ liệu
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleSave}
+                        disabled={saving || newCount === 0}
+                        style={{
+                          padding:'10px 24px', borderRadius:10, border:'none',
+                          background:'linear-gradient(135deg,#065f46 0%,#10b981 100%)', color:'white',
+                          fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
+                          cursor:'pointer', display:'flex', alignItems:'center', gap:8,
+                          opacity:(saving || newCount === 0) ? 0.5 : 1,
+                          boxShadow:'0 4px 14px rgba(16,185,129,0.3)',
+                        }}
+                      >
+                        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                        Lưu {newCount} cọc
+                      </button>
                     )}
                   </div>
-                )}
-                {saveMsg && !parsePreview && (
-                  <p className={cn('mt-2 text-xs font-bold', saveMsg.startsWith('✓') ? 'text-emerald-600' : 'text-amber-600')}>{saveMsg}</p>
-                )}
+
+                  {saveMsg && (
+                    <div style={{
+                      padding:'12px 16px', borderRadius:10, textAlign:'center',
+                      fontSize:13, fontWeight:600,
+                      background: saveMsg.startsWith('✓') ? '#f0fdf4' : '#fff1f2',
+                      color: saveMsg.startsWith('✓') ? '#065f46' : '#991b1b',
+                      border: `1px solid ${saveMsg.startsWith('✓') ? '#a7f3d0' : '#fecaca'}`,
+                    }}>
+                      {saveMsg}
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Cọc lạ */}
-              {(analysis?.unknownPiles.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-red-500" />
-                    <span className="text-xs font-black text-red-700 uppercase tracking-wide">
-                      Cọc lạ trong biên bản ({analysis!.unknownPiles.length})
-                    </span>
-                  </div>
-                  <div className="max-h-40 overflow-y-auto">
-                    <table className="w-full text-[11px]">
-                      <thead className="bg-red-50/50 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã cọc (trong biên bản)</th>
-                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Số BB</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analysis!.unknownPiles.map(([canonical, info], i) => (
-                          <tr key={i} className="border-t border-red-50 hover:bg-red-50/40">
-                            <td className="px-3 py-1.5 font-mono font-bold text-red-700">{info.raw}</td>
-                            <td className="px-3 py-1.5 text-slate-500">{info.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Cọc nhiều biên bản */}
-              {(analysis?.duplicateReportPiles.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-500" />
-                    <span className="text-xs font-black text-amber-700 uppercase tracking-wide">
-                      Cọc có nhiều hơn 1 biên bản ({analysis!.duplicateReportPiles.length})
-                    </span>
-                  </div>
-                  <div className="max-h-40 overflow-y-auto">
-                    <table className="w-full text-[11px]">
-                      <thead className="bg-amber-50/50 sticky top-0">
-                        <tr>
-                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Mã cọc</th>
-                          <th className="px-3 py-1.5 text-left font-bold text-slate-500">Số BB</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {analysis!.duplicateReportPiles.map(([canonical, info], i) => (
-                          <tr key={i} className="border-t border-amber-50 hover:bg-amber-50/40">
-                            <td className="px-3 py-1.5 font-mono font-bold text-amber-700">{info.raw}</td>
-                            <td className="px-3 py-1.5"><span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">{info.count}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+            );
+          })()}
         </div>
-      </div>
+      )}
+
+      {/* ── Modal chỉnh sửa cọc ── */}
+      {editingPile && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:9999,
+          background:'rgba(15,23,42,0.65)', backdropFilter:'blur(6px)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16
+        }}>
+          {(() => {
+            const projectIndex = projects.findIndex(p => p.id === editingPile.project_id);
+            const mt3 = modernThemes[projectIndex !== -1 ? projectIndex % modernThemes.length : 0];
+
+            return (
+              <div style={{
+                background:'white', borderRadius:20,
+                boxShadow:'0 24px 64px rgba(0,0,0,0.2)',
+                width:'100%', maxWidth:420, overflow:'hidden',
+              }}>
+                <div style={{
+                  background: mt3.headerGrad,
+                  padding:'18px 24px',
+                  display:'flex', alignItems:'center', justifyContent:'space-between',
+                }}>
+                  <h3 style={{ color:'white', fontWeight:900, fontSize:14, textTransform:'uppercase', letterSpacing:'0.5px' }}>
+                    Chỉnh sửa thông tin cọc
+                  </h3>
+                  <button
+                    onClick={() => setEditingPile(null)}
+                    style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'white' }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div style={{ padding:24, display:'flex', flexDirection:'column', gap:18 }}>
+                  <div>
+                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                      Mã cọc
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.raw}
+                      onChange={e => setEditForm(prev => ({ ...prev, raw: e.target.value }))}
+                      style={{
+                        width:'100%', padding:'10px 14px', borderRadius:10,
+                        border:`1.5px solid ${mt3.accentBorder}`,
+                        background:mt3.accentLight, fontSize:14, fontWeight:700,
+                        color:mt3.accentText, outline:'none', textTransform:'uppercase',
+                        boxSizing:'border-box',
+                      }}
+                      onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt3.accentBorder}`)}
+                      onBlur={e => (e.target.style.boxShadow = 'none')}
+                    />
+                  </div>
+                  <div style={{ display:'flex', gap:10 }}>
+                    <button
+                      onClick={handleUpdate}
+                      style={{
+                        flex:1, padding:'11px', borderRadius:10, border:'none',
+                        background:mt3.headerGrad, color:'white',
+                        fontSize:12, fontWeight:800, textTransform:'uppercase',
+                        cursor:'pointer', boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
+                      }}
+                    >
+                      Cập nhật
+                    </button>
+                    <button
+                      onClick={() => setEditingPile(null)}
+                      style={{
+                        flex:1, padding:'11px', borderRadius:10,
+                        border:'1.5px solid #e2e8f0', background:'white',
+                        color:'#64748b', fontSize:12, fontWeight:700,
+                        textTransform:'uppercase', cursor:'pointer',
+                      }}
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
