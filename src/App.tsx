@@ -5753,6 +5753,160 @@ LƯU Ý:
           </div>
         )}
 
+        {/* ── Cảnh báo hạng mục từ biên bản chưa có trong danh mục ── */}
+        {activeTab === 'project' && (() => {
+          // Với mỗi dự án, tìm các tên item xuất hiện trong history nhưng chưa có trong app_items
+          const warnings: { projName: string; projId: string | undefined; unsyncedItems: string[] }[] = [];
+          const allProjNames = [...new Set(history.map(r => (r.project || '').trim()).filter(Boolean))];
+          allProjNames.forEach(projName => {
+            const proj = projects.find(p => p.name.trim() === projName.trim());
+            const officialItems = proj
+              ? items.filter(it => it.projectId === proj.id).map(it => it.name.trim().toLowerCase())
+              : [];
+            const itemsInHistory = [...new Set(
+              history
+                .filter(r => (r.project || '').trim() === projName)
+                .map(r => (r.item || '').trim())
+                .filter(Boolean)
+            )];
+            const unsynced = itemsInHistory.filter(name => !officialItems.includes(name.toLowerCase()));
+            if (unsynced.length > 0) {
+              warnings.push({ projName, projId: proj?.id, unsyncedItems: unsynced });
+            }
+          });
+          if (warnings.length === 0) return null;
+          const totalUnsynced = warnings.reduce((s, w) => s + w.unsyncedItems.length, 0);
+          return (
+            <div className="bg-teal-50 border border-teal-300 rounded-2xl overflow-hidden shadow-sm animate-in fade-in duration-300">
+              {/* Header */}
+              <div className="px-5 py-3 bg-teal-600 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 bg-white/20 rounded-lg shrink-0">
+                    <AlertCircle size={16} className="text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest">
+                      Hạng mục từ biên bản chưa có trong danh mục
+                    </h4>
+                    <p className="text-[10px] text-teal-100 font-medium mt-0.5">
+                      Các hạng mục này do AI quét từ biên bản — chưa được tạo chính thức. Thêm vào danh mục để chuẩn hóa.
+                    </p>
+                  </div>
+                </div>
+                <span className="bg-white text-teal-700 text-[10px] font-black px-2.5 py-1 rounded-full shrink-0">
+                  {totalUnsynced} hạng mục · {warnings.length} dự án
+                </span>
+              </div>
+              {/* Body: từng dự án */}
+              <div className="divide-y divide-teal-100">
+                {warnings.map(({ projName, projId, unsyncedItems }) => (
+                  <div key={projName} className="px-5 py-3 flex items-start gap-4 flex-wrap hover:bg-teal-50/80 transition-colors">
+                    {/* Tên dự án */}
+                    <div className="shrink-0 min-w-[160px] max-w-[200px]">
+                      <p className="text-[11px] font-black text-teal-800 truncate" title={projName}>{projName}</p>
+                      <p className="text-[9px] text-teal-500 font-medium uppercase tracking-widest mt-0.5">
+                        {unsyncedItems.length} hạng mục chưa đồng bộ
+                      </p>
+                    </div>
+                    {/* Tags hạng mục chưa đồng bộ */}
+                    <div className="flex-1 flex flex-wrap gap-1.5 items-center">
+                      {unsyncedItems.map(name => (
+                        <span key={name} className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 bg-white border border-teal-200 text-teal-700 rounded-lg shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" />
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                    {/* Nút thêm nhanh */}
+                    {currentUser?.role === 'admin' && projId && (
+                      <button
+                        onClick={async () => {
+                          if (!projId) return;
+                          setIsSavingNewProject(true);
+                          try {
+                            const toAdd: AppItem[] = unsyncedItems.map(name => ({
+                              id: crypto.randomUUID(),
+                              projectId: projId,
+                              name: name,
+                              createdAt: new Date().toISOString(),
+                              createdBy: currentUser?.username || 'admin',
+                            }));
+                            const updated = [...items, ...toAdd];
+                            setItems(updated);
+                            localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+                            if (supabase) {
+                              await supabase.from('app_items').insert(
+                                toAdd.map(it => ({ id: it.id, project_id: it.projectId, name: it.name, created_at: it.createdAt, created_by: it.createdBy }))
+                              );
+                            }
+                            showToast(`✅ Đã thêm ${toAdd.length} hạng mục vào "${projName}"!`, 'success');
+                          } catch (e: any) {
+                            showToast(`Lỗi: ${e?.message}`, 'error');
+                          } finally {
+                            setIsSavingNewProject(false);
+                          }
+                        }}
+                        disabled={isSavingNewProject}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-sm whitespace-nowrap"
+                      >
+                        {isSavingNewProject ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                        Thêm tất cả
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* Footer: nút thêm tất cả luôn (nếu nhiều dự án) */}
+              {currentUser?.role === 'admin' && warnings.length > 1 && (
+                <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-teal-600 font-medium">
+                    Thêm tất cả {totalUnsynced} hạng mục vào đúng dự án tương ứng
+                  </span>
+                  <button
+                    onClick={async () => {
+                      setIsSavingNewProject(true);
+                      try {
+                        const allToAdd: AppItem[] = [];
+                        warnings.forEach(({ projId: pid, unsyncedItems: uItems }) => {
+                          if (!pid) return;
+                          uItems.forEach(name => {
+                            allToAdd.push({
+                              id: crypto.randomUUID(),
+                              projectId: pid,
+                              name,
+                              createdAt: new Date().toISOString(),
+                              createdBy: currentUser?.username || 'admin',
+                            });
+                          });
+                        });
+                        if (allToAdd.length === 0) return;
+                        const updated = [...items, ...allToAdd];
+                        setItems(updated);
+                        localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+                        if (supabase) {
+                          await supabase.from('app_items').insert(
+                            allToAdd.map(it => ({ id: it.id, project_id: it.projectId, name: it.name, created_at: it.createdAt, created_by: it.createdBy }))
+                          );
+                        }
+                        showToast(`✅ Đã thêm ${allToAdd.length} hạng mục vào ${warnings.length} dự án!`, 'success');
+                      } catch (e: any) {
+                        showToast(`Lỗi: ${e?.message}`, 'error');
+                      } finally {
+                        setIsSavingNewProject(false);
+                      }
+                    }}
+                    disabled={isSavingNewProject}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-md whitespace-nowrap"
+                  >
+                    {isSavingNewProject ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    Đồng bộ tất cả ({totalUnsynced})
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Table / Columns */}
         {tabItems.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-16 text-center">
