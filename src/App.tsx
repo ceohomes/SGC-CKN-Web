@@ -1314,7 +1314,7 @@ function DiameterBadge({
   return (
     <span
       title={isAdmin ? 'Click để sửa tên đường kính (sẽ đồng bộ toàn bộ biên bản)' : ''}
-      className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border select-none transition-colors
+      className={`flex items-center gap-1 text-[13px] font-bold px-3 py-1 rounded-lg border select-none transition-colors
         ${isFromHistory ? 'bg-violet-100 text-violet-800 border-violet-300' : 'bg-violet-50 text-violet-600 border-violet-200'}
         ${isAdmin ? 'cursor-pointer hover:bg-violet-200 hover:border-violet-400' : 'cursor-default'}
       `}
@@ -13087,10 +13087,11 @@ function EditSplitView({
       {/* Main Content Split */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Data Form - chiếm phần còn lại sau khi viewer co vừa A4 */}
-        <div className="flex-1 border-r border-sky-100 bg-white overflow-y-auto p-8 space-y-8 custom-scrollbar">
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
+        <div className="flex-1 border-r border-sky-100 bg-white overflow-y-auto p-5 space-y-5 custom-scrollbar">
+          <div className="space-y-4">
+          <div className="grid grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Dự án</label>
               {(() => {
                 const savedProjects: AppProject[] = (() => {
                   try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
@@ -13118,8 +13119,8 @@ function EditSplitView({
                 );
               })()}
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Hạng mục</label>
               {(() => {
                 const selectedProj = projects.find(p => p.name === data.project);
                 const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
@@ -13157,16 +13158,16 @@ function EditSplitView({
                 );
               })()}
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Số hiệu cọc</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Số hiệu cọc</label>
               <input 
                 value={data.pileId} 
                 onChange={(e) => updateField('pileId', e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Tên Máy khoan</label>
               {(() => {
                 const selectedProj = projects.find(p => p.name === data.project);
                 const filteredMachines = selectedProj ? drillingMachines.filter(m => m.projectId === selectedProj.id) : [];
@@ -13185,8 +13186,10 @@ function EditSplitView({
                 );
               })()}
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Đường kính</label>
               {diameterOptions.length > 0 ? (
                 <select
                   value={data.diameter}
@@ -13208,8 +13211,8 @@ function EditSplitView({
                 />
               )}
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
@@ -13218,8 +13221,8 @@ function EditSplitView({
                 placeholder="HH:mm dd/mm/yyyy"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
@@ -13229,7 +13232,7 @@ function EditSplitView({
               />
             </div>
           </div>
-
+          </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
