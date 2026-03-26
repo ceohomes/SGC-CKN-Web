@@ -3760,6 +3760,35 @@ export default function App() {
       setPendingResults(latestPending);
     }
 
+    // ── Validate droplist cho TẤT CẢ biên bản trước khi lưu ──
+    const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const appDiameterOptions = [...new Set([
+      ...(Array.isArray(history) ? history : []).map((r: any) => (r.diameter || '').trim()).filter(Boolean),
+      ...(() => { try { return JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'); } catch { return []; } })()
+    ])];
+    for (const r of latestPending) {
+      const proj = projects.find(p => p.name === r.project);
+      const projItems = proj ? items.filter(it => it.projectId === proj.id) : [];
+      const projMachines = proj ? drillingMachines.filter(m => m.projectId === proj.id) : [];
+      const invalidFields: string[] = [];
+
+      if (projects.length > 0 && (!r.project || !projects.some(p => p.name === r.project)))
+        invalidFields.push('Dự án');
+      if (projItems.length > 0 && r.item && !projItems.some(it => it.name === r.item))
+        invalidFields.push('Hạng mục');
+      if (projMachines.length > 0 && r.reportNumber && !projMachines.some(m => m.name === r.reportNumber))
+        invalidFields.push('Tên máy khoan');
+      if (appDiameterOptions.length > 0 && r.diameter && !appDiameterOptions.some((d: string) => norm(d) === norm(r.diameter)))
+        invalidFields.push('Đường kính');
+
+      if (invalidFields.length > 0) {
+        const label = r.pileId || r.fileName || 'Biên bản';
+        alert(`⚠️ Biên bản "${label}" có thông tin chưa hợp lệ trong droplist:\n• ${invalidFields.join('\n• ')}\n\nVui lòng chọn lại đúng giá trị trong danh sách trước khi lưu.`);
+        setCurrentResult(r);
+        return;
+      }
+    }
+
     // Kiểm tra tính nhất quán cho TẤT CẢ biên bản trước khi lưu
     for (const r of latestPending) {
       const { valid, conflicts } = validateLayerConsistency(r);
@@ -12816,6 +12845,8 @@ function EditSplitView({
   // Dialog upload thủ công đã bị loại bỏ — ảnh luôn tự động lấy từ GitHub
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [autoRetrying, setAutoRetrying] = useState(false);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const isDraggingRef = useRef(false);
@@ -12892,6 +12923,8 @@ function EditSplitView({
       
       setIsPdf(isPdfFile);
       setLoadError(null);
+      setRetryCount(0);
+      setAutoRetrying(false);
       setIsLoading(true);
 
       // Raw githubusercontent URLs có thể load trực tiếp, không cần proxy
@@ -12999,6 +13032,62 @@ function EditSplitView({
       return newData;
     });
   };
+
+  // ── Normalize để so khớp mềm (bỏ khoảng trắng thừa, lowercase) ──
+  const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  // ── Auto-match: lấy project đúng tên chuẩn từ danh sách ──
+  const savedProjects: AppProject[] = (() => {
+    try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
+  })();
+  const sessionRaw = localStorage.getItem('sgc_session');
+  const sessionUser: AppUser | null = sessionRaw ? (() => { try { return JSON.parse(sessionRaw); } catch { return null; } })() : null;
+  const availableProjects = sessionUser && sessionUser.role !== 'admin' && sessionUser.assignedProjects?.length > 0
+    ? savedProjects.filter(p => sessionUser.assignedProjects.includes(p.name))
+    : savedProjects;
+
+  const matchedProject = availableProjects.find(p => norm(p.name) === norm(data.project));
+  // Auto-sync nếu tên AI quét khác tên chuẩn
+  React.useEffect(() => {
+    if (matchedProject && matchedProject.name !== data.project) {
+      updateField('project', matchedProject.name);
+    }
+  }, [data.project]);
+
+  const selectedProj = projects.find(p => p.name === data.project);
+  const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
+  const filteredMachines = selectedProj ? drillingMachines.filter(m => m.projectId === selectedProj.id) : [];
+
+  const matchedMachine = filteredMachines.find(m => norm(m.name) === norm(data.reportNumber));
+  React.useEffect(() => {
+    if (matchedMachine && matchedMachine.name !== data.reportNumber) {
+      updateField('reportNumber', matchedMachine.name);
+    }
+  }, [data.reportNumber, data.project]);
+
+  const matchedDiameter = diameterOptions.find(d => norm(d) === norm(data.diameter));
+  React.useEffect(() => {
+    if (matchedDiameter && matchedDiameter !== data.diameter) {
+      updateField('diameter', matchedDiameter);
+    }
+  }, [data.diameter]);
+
+  // ── Droplist validation: các field bắt buộc phải nằm trong danh sách ──
+  const projectValid = availableProjects.length === 0 || availableProjects.some(p => p.name === data.project);
+  const itemValid = filteredItems.length === 0 || filteredItems.some(it => it.name === data.item) || !data.item;
+  const itemRequiredAndInvalid = filteredItems.length > 0 && data.item && !filteredItems.some(it => it.name === data.item);
+  const machineValid = filteredMachines.length === 0 || filteredMachines.some(m => m.name === data.reportNumber) || !data.reportNumber;
+  const machineRequiredAndInvalid = filteredMachines.length > 0 && data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber);
+  const diameterRequiredAndInvalid = diameterOptions.length > 0 && data.diameter && !diameterOptions.some(d => norm(d) === norm(data.diameter));
+  const projectRequiredAndInvalid = availableProjects.length > 0 && (!data.project || !availableProjects.some(p => p.name === data.project));
+
+  const droplistErrors: string[] = [
+    ...(projectRequiredAndInvalid ? ['Dự án'] : []),
+    ...(itemRequiredAndInvalid ? ['Hạng mục'] : []),
+    ...(machineRequiredAndInvalid ? ['Tên máy khoan'] : []),
+    ...(diameterRequiredAndInvalid ? ['Đường kính'] : []),
+  ];
+  const hasDroplistError = droplistErrors.length > 0;
 
   const updateLayer = (idx: number, field: keyof DrillLayer, value: any) => {
     const newLayers = [...data.layers];
@@ -13178,11 +13267,19 @@ function EditSplitView({
             Hủy bỏ
           </button>
           <button 
-            onClick={() => onSave(dataRef.current)}
-            className="px-6 py-2 bg-sky-400 hover:bg-sky-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
+            onClick={() => {
+              if (hasDroplistError) {
+                alert(`⚠️ Vui lòng chọn đúng thông tin từ danh sách trước khi lưu:\n• ${droplistErrors.join('\n• ')}`);
+                return;
+              }
+              onSave(dataRef.current);
+            }}
+            disabled={hasDroplistError}
+            className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg flex items-center gap-2 ${hasDroplistError ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300' : 'bg-sky-400 hover:bg-sky-500 text-white border border-sky-300'}`}
+            title={hasDroplistError ? `Cần chọn đúng: ${droplistErrors.join(', ')}` : 'Lưu thay đổi'}
           >
             <Save size={14} />
-            Lưu thay đổi
+            {hasDroplistError ? `Cần chọn lại: ${droplistErrors.join(', ')}` : 'Lưu thay đổi'}
           </button>
         </div>
       </div>
@@ -13205,37 +13302,34 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
               {(() => {
-                const savedProjects: AppProject[] = (() => {
-                  try { const r = localStorage.getItem('sgc_app_projects'); return r ? JSON.parse(r) : []; } catch { return []; }
-                })();
-                const sessionRaw = localStorage.getItem('sgc_session');
-                const sessionUser: AppUser | null = sessionRaw ? (() => { try { return JSON.parse(sessionRaw); } catch { return null; } })() : null;
-
-                let availableProjects = savedProjects;
-                if (sessionUser && sessionUser.role !== 'admin' && sessionUser.assignedProjects && sessionUser.assignedProjects.length > 0) {
-                  availableProjects = savedProjects.filter(p => sessionUser.assignedProjects.includes(p.name));
-                }
-
                 return (
-                  <select
-                    value={data.project}
-                    onChange={e => updateField('project', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
-                  >
-                    <option value="">-- Chọn dự án --</option>
-                    {availableProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    {data.project && !availableProjects.some(p => p.name === data.project) && (
-                      <option value={data.project}>{data.project} (AI quét)</option>
+                  <div className="space-y-1">
+                    <select
+                      value={data.project}
+                      onChange={e => updateField('project', e.target.value)}
+                      className={cn(
+                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
+                        projectRequiredAndInvalid ? "border-red-400 bg-red-50" : "border-slate-300"
+                      )}
+                    >
+                      <option value="">-- Chọn dự án --</option>
+                      {availableProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      {data.project && !availableProjects.some(p => p.name === data.project) && (
+                        <option value={data.project}>{data.project} (AI quét — không hợp lệ)</option>
+                      )}
+                    </select>
+                    {projectRequiredAndInvalid && (
+                      <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                        <span>🚫</span> Dự án AI quét không có trong hệ thống. Vui lòng chọn lại.
+                      </p>
                     )}
-                  </select>
+                  </div>
                 );
               })()}
             </div>
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
               {(() => {
-                const selectedProj = projects.find(p => p.name === data.project);
-                const filteredItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
                 // Normalize: nếu data.item (AI quét) trùng tên chuẩn hóa với 1 item trong app_items → tự động dùng tên chuẩn
                 const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
                 const matchedItem = filteredItems.find(it => normalize(it.name) === normalize(data.item || ''));
@@ -13245,6 +13339,7 @@ function EditSplitView({
                   setTimeout(() => updateField('item', matchedItem.name), 0);
                 }
                 const hasExactMatch = filteredItems.some(it => it.name === effectiveValue);
+                const showError = filteredItems.length > 0 && effectiveValue && !hasExactMatch;
                 return (
                   <div className="space-y-1">
                     <select
@@ -13252,18 +13347,18 @@ function EditSplitView({
                       onChange={e => updateField('item', e.target.value)}
                       className={cn(
                         "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
-                        !hasExactMatch && effectiveValue ? "border-amber-400 bg-amber-50" : "border-slate-300"
+                        showError ? "border-red-400 bg-red-50" : "border-slate-300"
                       )}
                     >
                       <option value="">-- Chọn hạng mục --</option>
                       {filteredItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
                       {effectiveValue && !hasExactMatch && (
-                        <option value={effectiveValue}>{effectiveValue} (AI quét — chưa có trong danh mục)</option>
+                        <option value={effectiveValue}>{effectiveValue} (AI quét — không hợp lệ)</option>
                       )}
                     </select>
-                    {effectiveValue && !hasExactMatch && (
-                      <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1">
-                        <span>⚠️</span> Hạng mục này do AI quét, chưa có trong danh mục dự án. Vui lòng chọn lại hoặc thêm vào danh mục.
+                    {showError && (
+                      <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                        <span>🚫</span> Hạng mục AI quét không có trong danh mục. Vui lòng chọn lại.
                       </p>
                     )}
                   </div>
@@ -13281,20 +13376,29 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
               {(() => {
-                const selectedProj = projects.find(p => p.name === data.project);
-                const filteredMachines = selectedProj ? drillingMachines.filter(m => m.projectId === selectedProj.id) : [];
+                const showError = filteredMachines.length > 0 && data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber);
                 return (
-                  <select
-                    value={data.reportNumber}
-                    onChange={e => updateField('reportNumber', e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
-                  >
-                    <option value="">-- Chọn máy khoan --</option>
-                    {filteredMachines.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                    {data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber) && (
-                      <option value={data.reportNumber}>{data.reportNumber} (AI quét)</option>
+                  <div className="space-y-1">
+                    <select
+                      value={data.reportNumber}
+                      onChange={e => updateField('reportNumber', e.target.value)}
+                      className={cn(
+                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
+                        showError ? "border-red-400 bg-red-50" : "border-slate-300"
+                      )}
+                    >
+                      <option value="">-- Chọn máy khoan --</option>
+                      {filteredMachines.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                      {data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber) && (
+                        <option value={data.reportNumber}>{data.reportNumber} (AI quét — không hợp lệ)</option>
+                      )}
+                    </select>
+                    {showError && (
+                      <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                        <span>🚫</span> Máy khoan AI quét không có trong danh sách. Vui lòng chọn lại.
+                      </p>
                     )}
-                  </select>
+                  </div>
                 );
               })()}
             </div>
@@ -13303,17 +13407,27 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
               {diameterOptions.length > 0 ? (
-                <select
-                  value={data.diameter}
-                  onChange={(e) => updateField('diameter', e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
-                >
-                  <option value="">-- Chọn đường kính --</option>
-                  {diameterOptions.map(d => <option key={d} value={d}>{d}</option>)}
-                  {data.diameter && !diameterOptions.some(d => d.toLowerCase() === data.diameter.toLowerCase()) && (
-                    <option value={data.diameter}>{data.diameter} (AI quét)</option>
+                <div className="space-y-1">
+                  <select
+                    value={data.diameter}
+                    onChange={(e) => updateField('diameter', e.target.value)}
+                    className={cn(
+                      "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
+                      diameterRequiredAndInvalid ? "border-red-400 bg-red-50" : "border-slate-300"
+                    )}
+                  >
+                    <option value="">-- Chọn đường kính --</option>
+                    {diameterOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                    {data.diameter && !diameterOptions.some(d => norm(d) === norm(data.diameter)) && (
+                      <option value={data.diameter}>{data.diameter} (AI quét — không hợp lệ)</option>
+                    )}
+                  </select>
+                  {diameterRequiredAndInvalid && (
+                    <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                      <span>🚫</span> Đường kính AI quét không có trong danh sách. Vui lòng chọn lại.
+                    </p>
                   )}
-                </select>
+                </div>
               ) : (
                 <input
                   value={data.diameter}
@@ -13774,10 +13888,15 @@ function EditSplitView({
             </div>
           )}
 
-          {isLoading ? (
+          {isLoading || autoRetrying ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-sky-400 gap-4">
               <Loader2 size={48} className="animate-spin text-blue-500" />
-              <p className="text-xs font-black uppercase tracking-widest opacity-60">Đang tải tài liệu...</p>
+              <p className="text-xs font-black uppercase tracking-widest opacity-60">
+                {autoRetrying ? `GitHub quá tải — Đang thử lại (lần ${retryCount + 1}/5)...` : 'Đang tải tài liệu...'}
+              </p>
+              {autoRetrying && (
+                <p className="text-[11px] text-slate-400">Hệ thống tự động thử lại, vui lòng chờ...</p>
+              )}
             </div>
           ) : loadError ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-red-500 gap-4 p-8 text-center">
@@ -13787,7 +13906,11 @@ function EditSplitView({
                 <p className="text-[12px] opacity-60 mt-1">{loadError}</p>
               </div>
               <button 
-                onClick={() => setDisplayUrl(displayUrl)} 
+                onClick={() => {
+                  setLoadError(null);
+                  setRetryCount(0);
+                  setDisplayUrl(toRawGithubUrl(data.fileUrl || '').split('?')[0] + `?t=${Date.now()}`);
+                }} 
                 className="mt-4 px-6 py-2 bg-sky-50 hover:bg-sky-100 text-blue-900 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all"
               >
                 Thử lại
@@ -13875,14 +13998,38 @@ function EditSplitView({
                     positionRef.current = { x: 0, y: 0 };
                     setPosition({ x: 0, y: 0 });
                     setZoom(1);
+                    setRetryCount(0);
+                    setAutoRetrying(false);
+                    setLoadError(null);
                   }}
                   onError={(e) => {
                     console.error("Image load failed", e);
                     fetch(displayUrl!)
-                      .then(res => { if (!res.ok) return res.text(); return null; })
-                      .then(text => {
-                        if (text) setLoadError(text);
-                        else setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                      .then(async res => {
+                        if (res.status === 503 || res.status === 429 || res.status === 502) {
+                          // GitHub quá tải — tự động retry với backoff
+                          const currentRetry = retryCount;
+                          if (currentRetry < 5) {
+                            const delay = Math.min(1500 * Math.pow(1.8, currentRetry), 20000);
+                            setAutoRetrying(true);
+                            setLoadError(null);
+                            setTimeout(() => {
+                              setRetryCount(r => r + 1);
+                              // Thêm cache-bust param để force reload
+                              setDisplayUrl(displayUrl!.split('?')[0] + `?t=${Date.now()}`);
+                              setAutoRetrying(false);
+                            }, delay);
+                            return;
+                          }
+                          setLoadError(`GitHub đang quá tải (503). Đã thử ${currentRetry} lần. Vui lòng thử lại sau hoặc mở tab mới.`);
+                          return;
+                        }
+                        if (!res.ok) {
+                          const text = await res.text().catch(() => '');
+                          setLoadError(text || `Lỗi tải tài liệu (HTTP ${res.status}). Vui lòng thử mở trong tab mới.`);
+                        } else {
+                          setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới.");
+                        }
                       })
                       .catch(() => setLoadError("Không thể hiển thị hình ảnh. Vui lòng thử mở trong tab mới."));
                   }}
