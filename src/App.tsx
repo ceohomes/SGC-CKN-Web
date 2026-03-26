@@ -7752,6 +7752,15 @@ LƯU Ý:
                     )}
                   </div>
                   <div className="flex items-center gap-3">
+                    {currentUser?.role === 'admin' && (
+                      <button
+                        onClick={() => setActiveSheet('pile-registry')}
+                        className="flex items-center gap-2.5 px-5 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-slate-200 bg-white text-[#1e3a8a] hover:bg-blue-50 hover:border-blue-300 shadow-md shadow-slate-200/50 active:scale-95"
+                      >
+                        <ListChecks size={16} strokeWidth={2.5} />
+                        Danh sách cọc
+                      </button>
+                    )}
                     <button 
                       onClick={() => fileInputRef.current?.click()}
                       className="bg-gradient-to-br from-orange-400 to-orange-600 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] hover:from-orange-500 hover:to-orange-700 transition-all flex items-center gap-3 shadow-lg shadow-orange-500/30 border border-white/10 active:scale-95"
