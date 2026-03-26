@@ -1266,6 +1266,73 @@ const SmartDateInput = ({
 // ══════════════════════════════════════════════════════════════
 // AccountConfigView — Cấu hình tài khoản
 // ══════════════════════════════════════════════════════════════
+// ── DiameterBadge: badge đường kính có thể click để sửa tên ──
+function DiameterBadge({
+  value, count, isFromHistory, isAdmin, onRename, onDelete
+}: {
+  value: string;
+  count: number;
+  isFromHistory: boolean;
+  isAdmin: boolean;
+  onRename: (oldVal: string, newVal: string) => Promise<void>;
+  onDelete?: () => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [editVal, setEditVal] = React.useState(value);
+  const [saving, setSaving] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (editing) { setEditVal(value); setTimeout(() => inputRef.current?.select(), 50); }
+  }, [editing, value]);
+
+  const commit = async () => {
+    if (!editVal.trim() || editVal.trim() === value) { setEditing(false); return; }
+    setSaving(true);
+    try { await onRename(value, editVal.trim()); } finally { setSaving(false); setEditing(false); }
+  };
+
+  if (editing) {
+    return (
+      <span className="flex items-center gap-1 bg-violet-100 border-2 border-violet-400 rounded-lg px-1.5 py-0.5">
+        <input
+          ref={inputRef}
+          value={editVal}
+          onChange={e => setEditVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+          className="text-[11px] font-bold text-violet-900 bg-transparent outline-none w-20"
+          disabled={saving}
+        />
+        <button onClick={commit} disabled={saving} className="text-emerald-600 hover:text-emerald-700 font-black text-[11px]">
+          {saving ? '...' : '✓'}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-red-500 text-[11px]">✕</button>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title={isAdmin ? 'Click để sửa tên đường kính (sẽ đồng bộ toàn bộ biên bản)' : ''}
+      className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border select-none transition-colors
+        ${isFromHistory ? 'bg-violet-100 text-violet-800 border-violet-300' : 'bg-violet-50 text-violet-600 border-violet-200'}
+        ${isAdmin ? 'cursor-pointer hover:bg-violet-200 hover:border-violet-400' : 'cursor-default'}
+      `}
+      onClick={() => { if (isAdmin) setEditing(true); }}
+    >
+      {value}
+      {count > 0 && <span className="text-violet-400 font-normal">({count})</span>}
+      {onDelete && (
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="ml-0.5 text-violet-400 hover:text-red-500"
+          title="Xóa"
+        >×</button>
+      )}
+    </span>
+  );
+}
+
 function AccountConfigView({ history, appProjects, currentUser, onImpersonate }: { 
   history: ExtractionResult[]; 
   appProjects: AppProject[]; 
@@ -5834,67 +5901,76 @@ LƯU Ý:
             </div>
 
             {/* Đường kính */}
-            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <div className="flex gap-2">
+            <div className={`lg:col-span-3 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
                   value={newDiameterName}
                   onChange={e => setNewDiameterName(e.target.value)}
-                  placeholder="Đường kính cọc (VD: D800, D1000)..."
+                  onKeyDown={e => e.key === 'Enter' && handleCreateDiameter()}
+                  placeholder="Đường kính cọc (VD: D800)..."
                   disabled={currentUser?.role !== 'admin'}
-                  className={`flex-1 px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                  className={`px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white w-52 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
                 />
                 <button
                   onClick={handleCreateDiameter}
                   disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 whitespace-nowrap"
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
                 >
                   <Save size={14} />
                   Tạo đường kính
                 </button>
+                {/* Badges inline — click để sửa tên */}
+                {(() => {
+                  const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
+                  const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                  const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
+                  const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
+                  const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
+                    const na = parseInt(a.replace(/\D/g, '')) || 0;
+                    const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                    return na - nb;
+                  });
+                  return allDiameters.map(d => {
+                    const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
+                    const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
+                    return (
+                      <DiameterBadge
+                        key={d}
+                        value={d}
+                        count={count}
+                        isFromHistory={isFromHistory}
+                        isAdmin={currentUser?.role === 'admin'}
+                        onRename={async (oldVal, newVal) => {
+                          if (!newVal.trim() || newVal.trim() === oldVal) return;
+                          const trimmed = newVal.trim();
+                          // Cập nhật history (Supabase)
+                          if (supabase) {
+                            const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
+                            for (const res of affected) {
+                              await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
+                            }
+                          }
+                          setHistory((prev: any[]) => prev.map(r =>
+                            (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase()
+                              ? { ...r, diameter: trimmed } : r
+                          ));
+                          // Cập nhật localStorage nếu có
+                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                          const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
+                          localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
+                          showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
+                        }}
+                        onDelete={isFromHistory ? undefined : () => {
+                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                          localStorage.setItem('sgc_diameter_list', JSON.stringify(stored.filter(x => x.toLowerCase() !== d.toLowerCase())));
+                          setNewDiameterName(p => p + '');
+                        }}
+                      />
+                    );
+                  });
+                })()}
               </div>
-              {/* Danh sách đường kính: từ biên bản (history) + từ localStorage */}
-              {(() => {
-                const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
-                const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                // Merge: history là nguồn chính (không xóa được), storage là do user thêm thủ công
-                const allSet = new Set([...fromHistory.map(d => d.toLowerCase())]);
-                const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
-                const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
-                  const na = parseInt(a.replace(/\D/g, '')) || 0;
-                  const nb = parseInt(b.replace(/\D/g, '')) || 0;
-                  return na - nb;
-                });
-                if (allDiameters.length === 0) return (
-                  <p className="mt-2 text-[10px] text-slate-400">Chưa có đường kính nào. Thêm mới ở trên hoặc upload biên bản có dữ liệu đường kính.</p>
-                );
-                return (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {allDiameters.map(d => {
-                      const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
-                      const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
-                      return (
-                        <span key={d} className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${isFromHistory ? 'bg-violet-100 text-violet-800 border-violet-300' : 'bg-violet-50 text-violet-600 border-violet-200'}`}>
-                          {d}
-                          {count > 0 && <span className="ml-0.5 text-violet-400">({count})</span>}
-                          {!isFromHistory && (
-                            <button
-                              onClick={() => {
-                                const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                                const updated = stored.filter(x => x.toLowerCase() !== d.toLowerCase());
-                                localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
-                                setNewDiameterName(prev => prev + ''); // trigger re-render
-                              }}
-                              className="ml-0.5 text-violet-400 hover:text-red-500"
-                              title="Xóa (chỉ xóa được đường kính thêm thủ công)"
-                            >×</button>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
             </div>
           </div>
         )}
@@ -13107,12 +13183,35 @@ function EditSplitView({
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
-              <input 
-                value={data.diameter} 
-                onChange={(e) => updateField('diameter', e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
-                placeholder="VD: D2000"
-              />
+              {(() => {
+                const fromHistory = [...new Set(history.map((r: any) => (r.diameter || '').trim()).filter(Boolean))];
+                const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                const allDiameters = [...new Set([...fromHistory, ...fromStorage])].sort((a, b) => {
+                  const na = parseInt(a.replace(/\D/g, '')) || 0;
+                  const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                  return na - nb;
+                });
+                return allDiameters.length > 0 ? (
+                  <select
+                    value={data.diameter}
+                    onChange={(e) => updateField('diameter', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="">-- Chọn đường kính --</option>
+                    {allDiameters.map(d => <option key={d} value={d}>{d}</option>)}
+                    {data.diameter && !allDiameters.some(d => d.toLowerCase() === data.diameter.toLowerCase()) && (
+                      <option value={data.diameter}>{data.diameter} (AI quét)</option>
+                    )}
+                  </select>
+                ) : (
+                  <input
+                    value={data.diameter}
+                    onChange={(e) => updateField('diameter', e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm"
+                    placeholder="VD: D800"
+                  />
+                );
+              })()}
             </div>
             <div className="space-y-2">
               <label className="text-[15px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
