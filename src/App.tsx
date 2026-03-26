@@ -48,7 +48,12 @@ import {
   ArrowRight,
   Sparkles,
   UserCheck,
-  Eye
+  Eye,
+  ListChecks,
+  ClipboardList,
+  AlertTriangle,
+  CheckCircle,
+  Copy
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -355,7 +360,7 @@ interface ProcessingFile {
   error?: string;
 }
 
-type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology' | 'account-config';
+type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology' | 'account-config' | 'pile-registry';
 
 // ── Types cho quản lý tài khoản ──
 type UserRole = 'admin' | 'QS-QC' | 'P. TQT';
@@ -7339,6 +7344,21 @@ LƯU Ý:
               <span className="font-medium text-sm">Tách file PDF</span>
             </button>
 
+            {currentUser?.role === 'admin' && (
+            <button 
+              onClick={() => { setActiveSheet('pile-registry'); setIsSidebarOpen(false); }}
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group",
+                activeSheet === 'pile-registry' 
+                  ? "bg-orange-500 text-white shadow-lg shadow-orange-900/40" 
+                  : "hover:bg-white/10 text-blue-200"
+              )}
+            >
+              <ListChecks size={18} className={activeSheet === 'pile-registry' ? "text-white" : "text-blue-300 group-hover:text-white"} />
+              <span className="font-medium text-sm">Danh sách cọc</span>
+            </button>
+            )}
+
             <button 
               onClick={() => { setActiveSheet('account-config'); setIsSidebarOpen(false); }}
               className={cn(
@@ -8167,6 +8187,16 @@ LƯU Ý:
             const fakeEvent = { target: { files: dt.files } } as unknown as React.ChangeEvent<HTMLInputElement>;
             handleFileUpload(fakeEvent);
           }} />
+        ) : activeSheet === 'pile-registry' ? (
+          currentUser?.role === 'admin' ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} /> : (
+            <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
+              <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <h3 className="text-xl font-black text-slate-700 uppercase tracking-tight mb-2">Không có quyền truy cập</h3>
+              <p className="text-slate-400 text-sm">Chức năng Danh sách cọc chỉ dành cho tài khoản Admin.</p>
+            </div>
+          )
         ) : activeSheet === 'geology' ? (
           currentUser?.role === 'admin' ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
@@ -9369,6 +9399,590 @@ function parseViDate(str: string): Date | null {
   const isoMatch = str.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
   if (isoMatch) return new Date(+isoMatch[1], +isoMatch[2]-1, +isoMatch[3]);
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PILE REGISTRY VIEW — Quản lý danh sách cọc theo dự án
+// ═══════════════════════════════════════════════════════════
+
+interface PileEntry {
+  id: string;
+  project_id: string;
+  pile_code_raw: string;
+  pile_code_canonical: string;
+  item: string;
+  created_at: string;
+  created_by: string;
+}
+
+function normalizePileCode(raw: string): string {
+  let s = raw.trim().toUpperCase();
+  // Thay tất cả dấu phân cách thành '-'
+  s = s.replace(/[.\/_\s]+/g, '-');
+  // Xử lý số: thêm số 0 cho số < 10 (1→01, nhưng 10 giữ nguyên)
+  // Pattern: tìm các đoạn chữ cái theo sau bởi số
+  s = s.replace(/([A-Z]-)(\d)(?!\d)/g, '$1' + '0' + '$2');
+  s = s.replace(/-(\d)(?!\d)/g, '-0$1');
+  return s;
+}
+
+function PileRegistryView({ 
+  projects, 
+  history, 
+  currentUser, 
+  supabase 
+}: { 
+  projects: AppProject[]; 
+  history: ExtractionResult[]; 
+  currentUser: AppUser | null;
+  supabase: any;
+}) {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [piles, setPiles] = useState<PileEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [parsePreview, setParsePreview] = useState<{
+    raw: string; canonical: string; item: string; 
+    status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db';
+  }[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterItem, setFilterItem] = useState('');
+  const [activeTab, setActiveTab] = useState<'registry' | 'analysis'>('registry');
+
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
+
+  // Load piles từ Supabase khi chọn dự án
+  useEffect(() => {
+    if (!selectedProjectId) { setPiles([]); return; }
+    setLoading(true);
+    const loadPiles = async () => {
+      try {
+        if (supabase) {
+          const { data, error } = await (supabase as any)
+            .from('app_pile_registry')
+            .select('*')
+            .eq('project_id', selectedProjectId)
+            .order('item', { ascending: true });
+          if (!error && data) { setPiles(data); }
+        } else {
+          const saved = localStorage.getItem(`pile_registry_${selectedProjectId}`);
+          if (saved) setPiles(JSON.parse(saved));
+          else setPiles([]);
+        }
+      } catch { setPiles([]); }
+      setLoading(false);
+    };
+    loadPiles();
+  }, [selectedProjectId, supabase]);
+
+  // Parse paste text → preview
+  const handleParse = () => {
+    if (!pasteText.trim()) return;
+    const lines = pasteText.trim().split('\n').filter(l => l.trim());
+    const existingCanonicals = new Set(piles.map(p => p.pile_code_canonical));
+    const seenInPaste = new Set<string>();
+    const parsed = lines.map(line => {
+      const parts = line.split('\t');
+      const raw = (parts[0] || '').trim();
+      const item = (parts[1] || '').trim();
+      if (!raw) return null;
+      const canonical = normalizePileCode(raw);
+      let status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db' = 'new';
+      if (existingCanonicals.has(canonical)) status = 'duplicate_in_db';
+      else if (seenInPaste.has(canonical)) status = 'duplicate_in_paste';
+      seenInPaste.add(canonical);
+      return { raw, canonical, item, status };
+    }).filter(Boolean) as typeof parsePreview;
+    setParsePreview(parsed);
+    setSaveMsg(null);
+  };
+
+  // Lưu các cọc "new" vào DB
+  const handleSave = async () => {
+    if (!parsePreview || !selectedProjectId) return;
+    const toSave = parsePreview.filter(p => p.status === 'new');
+    if (toSave.length === 0) { setSaveMsg('Không có cọc mới để lưu.'); return; }
+    setSaving(true);
+    const newEntries: Omit<PileEntry, 'id'>[] = toSave.map(p => ({
+      project_id: selectedProjectId,
+      pile_code_raw: p.raw,
+      pile_code_canonical: p.canonical,
+      item: p.item,
+      created_at: new Date().toISOString(),
+      created_by: currentUser?.fullName || 'Admin',
+    }));
+    try {
+      if (supabase) {
+        const { error } = await (supabase as any).from('app_pile_registry').insert(newEntries);
+        if (error) throw error;
+        // Reload
+        const { data } = await (supabase as any)
+          .from('app_pile_registry').select('*')
+          .eq('project_id', selectedProjectId).order('item');
+        if (data) setPiles(data);
+      } else {
+        // Fallback localStorage
+        const fakeEntries: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}` }));
+        const updated = [...piles, ...fakeEntries];
+        setPiles(updated);
+        localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
+      }
+      setSaveMsg(`✓ Đã lưu ${toSave.length} cọc mới thành công!`);
+      setPasteText('');
+      setParsePreview(null);
+    } catch (err: any) {
+      setSaveMsg(`✗ Lỗi: ${err?.message || 'Không thể lưu'}`);
+    }
+    setSaving(false);
+  };
+
+  // Xóa 1 cọc
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Xóa cọc này khỏi danh sách?')) return;
+    try {
+      if (supabase) {
+        await (supabase as any).from('app_pile_registry').delete().eq('id', id);
+      } else {
+        const updated = piles.filter(p => p.id !== id);
+        localStorage.setItem(`pile_registry_${selectedProjectId}`, JSON.stringify(updated));
+      }
+      setPiles(prev => prev.filter(p => p.id !== id));
+    } catch {}
+  };
+
+  // Phân tích đối chiếu với biên bản
+  const analysisData = React.useMemo(() => {
+    if (!selectedProjectId || piles.length === 0) return null;
+    const projectHistory = history.filter(h => h.project === selectedProject?.name);
+    const registryCanonicals = new Set(piles.map(p => p.pile_code_canonical));
+    const registryMap = new Map(piles.map(p => [p.pile_code_canonical, p]));
+
+    // Cọc trong biên bản
+    const pilesInReports = new Map<string, { raw: string; canonical: string; count: number; reports: string[] }>();
+    projectHistory.forEach(h => {
+      const raw = h.pileId;
+      const canonical = normalizePileCode(raw);
+      if (!pilesInReports.has(canonical)) {
+        pilesInReports.set(canonical, { raw, canonical, count: 0, reports: [] });
+      }
+      const entry = pilesInReports.get(canonical)!;
+      entry.count++;
+      if (!entry.reports.includes(h.reportNumber)) entry.reports.push(h.reportNumber);
+    });
+
+    // Cọc trong biên bản nhưng KHÔNG có trong registry
+    const unknownPiles = Array.from(pilesInReports.values()).filter(p => !registryCanonicals.has(p.canonical));
+    
+    // Cọc trong registry đã có biên bản
+    const coveredPiles = piles.filter(p => pilesInReports.has(p.pile_code_canonical));
+    
+    // Cọc trong registry chưa có biên bản
+    const pendingPiles = piles.filter(p => !pilesInReports.has(p.pile_code_canonical));
+
+    // Cọc có nhiều hơn 1 biên bản (trùng biên bản)
+    const duplicateReportPiles = Array.from(pilesInReports.values()).filter(p => p.count > 1 && registryCanonicals.has(p.canonical));
+
+    // Thống kê theo hạng mục
+    const itemStats = new Map<string, { total: number; done: number }>();
+    piles.forEach(p => {
+      const item = p.item || '(Chưa phân hạng mục)';
+      if (!itemStats.has(item)) itemStats.set(item, { total: 0, done: 0 });
+      itemStats.get(item)!.total++;
+      if (pilesInReports.has(p.pile_code_canonical)) itemStats.get(item)!.done++;
+    });
+
+    return { unknownPiles, coveredPiles, pendingPiles, duplicateReportPiles, itemStats, pilesInReports };
+  }, [piles, history, selectedProjectId, selectedProject]);
+
+  const items = Array.from(new Set(piles.map(p => p.item).filter(Boolean)));
+  const filteredPiles = piles.filter(p => {
+    const matchSearch = !searchTerm || 
+      p.pile_code_raw.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.pile_code_canonical.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchItem = !filterItem || p.item === filterItem;
+    return matchSearch && matchItem;
+  });
+
+  const newCount = parsePreview?.filter(p => p.status === 'new').length ?? 0;
+  const dupDbCount = parsePreview?.filter(p => p.status === 'duplicate_in_db').length ?? 0;
+  const dupPasteCount = parsePreview?.filter(p => p.status === 'duplicate_in_paste').length ?? 0;
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+          <ListChecks className="text-white w-5 h-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-black text-slate-800 uppercase tracking-tight">Danh sách cọc</h1>
+          <p className="text-xs text-slate-500">Quản lý & đối chiếu cọc theo dự án</p>
+        </div>
+      </div>
+
+      {/* Chọn dự án */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-5 shadow-sm">
+        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Chọn dự án</label>
+        <select
+          value={selectedProjectId}
+          onChange={e => { setSelectedProjectId(e.target.value); setParsePreview(null); setPasteText(''); setSearchTerm(''); setFilterItem(''); }}
+          className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">-- Chọn dự án --</option>
+          {projects.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {!selectedProjectId && (
+        <div className="flex flex-col items-center py-24 text-slate-400">
+          <ClipboardList size={48} className="mb-4 opacity-30" />
+          <p className="text-sm">Chọn dự án để xem và quản lý danh sách cọc</p>
+        </div>
+      )}
+
+      {selectedProjectId && (
+        <>
+          {/* Stats tóm tắt */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+            {[
+              { label: 'Tổng số cọc', value: piles.length, color: 'bg-blue-50 text-blue-700 border-blue-100' },
+              { label: 'Đã có biên bản', value: analysisData?.coveredPiles.length ?? 0, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+              { label: 'Chưa có biên bản', value: analysisData?.pendingPiles.length ?? 0, color: 'bg-amber-50 text-amber-700 border-amber-100' },
+              { label: 'Cọc lạ (ngoài DS)', value: analysisData?.unknownPiles.length ?? 0, color: 'bg-red-50 text-red-700 border-red-100' },
+            ].map(stat => (
+              <div key={stat.label} className={`rounded-2xl border p-4 ${stat.color}`}>
+                <p className="text-2xl font-black">{stat.value}</p>
+                <p className="text-xs font-medium mt-1 opacity-80">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Cảnh báo nếu có cọc lạ hoặc biên bản trùng */}
+          {(analysisData?.unknownPiles.length ?? 0) > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
+              <AlertTriangle className="text-red-500 w-5 h-5 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-red-700">Phát hiện {analysisData!.unknownPiles.length} cọc trong biên bản KHÔNG có trong danh sách dự án!</p>
+                <p className="text-xs text-red-500 mt-1">Xem chi tiết trong tab "Phân tích đối chiếu"</p>
+              </div>
+            </div>
+          )}
+          {(analysisData?.duplicateReportPiles.length ?? 0) > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
+              <AlertTriangle className="text-amber-500 w-5 h-5 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-amber-700">{analysisData!.duplicateReportPiles.length} cọc có nhiều hơn 1 biên bản (có thể trùng lặp)</p>
+                <p className="text-xs text-amber-500 mt-1">Xem chi tiết trong tab "Phân tích đối chiếu"</p>
+              </div>
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div className="flex gap-2 mb-4">
+            {[
+              { id: 'registry', label: 'Danh sách cọc', icon: <ListChecks size={14}/> },
+              { id: 'analysis', label: 'Phân tích đối chiếu', icon: <BarChart3 size={14}/> },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
+                className={cn('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all border',
+                  activeTab === tab.id
+                    ? 'bg-[#1e3a8a] text-white border-[#1e3a8a] shadow'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300')}>
+                {tab.icon}{tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── TAB 1: DANH SÁCH CỌC ── */}
+          {activeTab === 'registry' && (
+            <div className="space-y-5">
+              {/* Nhập cọc mới */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <Plus size={14} className="text-blue-500"/> Thêm cọc mới
+                </h3>
+                <p className="text-xs text-slate-500 mb-3">
+                  Copy từ Excel và dán vào đây. Cột 1: Tên cọc, Cột 2: Hạng mục (cách nhau bằng Tab). Nếu chỉ có 1 cột thì chỉ cần dán tên cọc.
+                </p>
+                <textarea
+                  value={pasteText}
+                  onChange={e => { setPasteText(e.target.value); setParsePreview(null); }}
+                  placeholder={"P1-01\tHạng mục A\nP1-02\tHạng mục A\nP2.1\tHạng mục B\n..."}
+                  rows={6}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+                />
+                <div className="flex gap-3 mt-3">
+                  <button
+                    onClick={handleParse}
+                    disabled={!pasteText.trim()}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-40 transition-all"
+                  >
+                    Kiểm tra & Preview
+                  </button>
+                  {pasteText && (
+                    <button onClick={() => { setPasteText(''); setParsePreview(null); setSaveMsg(null); }}
+                      className="px-4 py-2 border border-slate-200 text-slate-500 rounded-xl text-sm hover:bg-slate-50">
+                      Xóa
+                    </button>
+                  )}
+                </div>
+
+                {/* Preview kết quả parse */}
+                {parsePreview && (
+                  <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="flex gap-4 px-4 py-3 bg-slate-50 border-b border-slate-200">
+                      <span className="text-xs font-bold text-emerald-600">✓ {newCount} cọc mới</span>
+                      {dupDbCount > 0 && <span className="text-xs font-bold text-red-500">✗ {dupDbCount} đã có trong DB</span>}
+                      {dupPasteCount > 0 && <span className="text-xs font-bold text-amber-500">⚠ {dupPasteCount} trùng trong danh sách dán</span>}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-slate-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-bold text-slate-600">Mã gốc</th>
+                            <th className="px-3 py-2 text-left font-bold text-slate-600">Mã chuẩn hóa</th>
+                            <th className="px-3 py-2 text-left font-bold text-slate-600">Hạng mục</th>
+                            <th className="px-3 py-2 text-left font-bold text-slate-600">Trạng thái</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parsePreview.map((row, i) => (
+                            <tr key={i} className={cn('border-t border-slate-100',
+                              row.status === 'duplicate_in_db' ? 'bg-red-50' :
+                              row.status === 'duplicate_in_paste' ? 'bg-amber-50' : '')}>
+                              <td className="px-3 py-2 font-mono">{row.raw}</td>
+                              <td className="px-3 py-2 font-mono font-bold text-blue-700">{row.canonical}</td>
+                              <td className="px-3 py-2 text-slate-600">{row.item || '—'}</td>
+                              <td className="px-3 py-2">
+                                {row.status === 'new' && <span className="text-emerald-600 font-bold">✓ Mới</span>}
+                                {row.status === 'duplicate_in_db' && <span className="text-red-500 font-bold">✗ Đã có trong DB</span>}
+                                {row.status === 'duplicate_in_paste' && <span className="text-amber-600 font-bold">⚠ Trùng ở trên</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {newCount > 0 && (
+                      <div className="px-4 py-3 border-t border-slate-200 bg-slate-50 flex items-center gap-3">
+                        <button onClick={handleSave} disabled={saving}
+                          className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center gap-2">
+                          {saving ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>}
+                          Lưu {newCount} cọc mới
+                        </button>
+                        {saveMsg && <span className={cn('text-xs font-bold', saveMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500')}>{saveMsg}</span>}
+                      </div>
+                    )}
+                    {newCount === 0 && saveMsg && (
+                      <div className="px-4 py-3 border-t border-slate-200 bg-slate-50">
+                        <span className="text-xs font-bold text-amber-600">{saveMsg}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Danh sách cọc hiện tại */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-wrap gap-3">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest">
+                    Danh sách hiện tại — {piles.length} cọc
+                  </h3>
+                  <div className="flex gap-2">
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                      <input type="text" placeholder="Tìm cọc..." value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs w-40 focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+                    </div>
+                    <select value={filterItem} onChange={e => setFilterItem(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="">Tất cả hạng mục</option>
+                      {items.map(it => <option key={it} value={it}>{it}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="animate-spin text-blue-500 w-6 h-6"/>
+                  </div>
+                ) : piles.length === 0 ? (
+                  <div className="flex flex-col items-center py-16 text-slate-400">
+                    <ClipboardList size={36} className="mb-3 opacity-30"/>
+                    <p className="text-sm">Chưa có cọc nào. Dán danh sách ở trên để bắt đầu.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">STT</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã gốc</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Mã chuẩn hóa</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Hạng mục</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Biên bản</th>
+                          <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase">Xóa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPiles.map((pile, i) => {
+                          const hasBienBan = analysisData?.pilesInReports.has(pile.pile_code_canonical);
+                          const bienBanCount = analysisData?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
+                          const isMulti = bienBanCount > 1;
+                          return (
+                            <tr key={pile.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-2.5 text-slate-400 text-xs">{i + 1}</td>
+                              <td className="px-4 py-2.5 font-mono text-slate-700">{pile.pile_code_raw}</td>
+                              <td className="px-4 py-2.5 font-mono font-bold text-blue-700">{pile.pile_code_canonical}</td>
+                              <td className="px-4 py-2.5 text-slate-600">{pile.item || '—'}</td>
+                              <td className="px-4 py-2.5">
+                                {hasBienBan ? (
+                                  <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold',
+                                    isMulti ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
+                                    {isMulti ? <AlertTriangle size={10}/> : <CheckCircle size={10}/>}
+                                    {bienBanCount} biên bản
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-400">
+                                    Chưa có
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <button onClick={() => handleDelete(pile.id)}
+                                  className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                                  <Trash2 size={13}/>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {filteredPiles.length === 0 && (
+                      <div className="py-8 text-center text-slate-400 text-sm">Không tìm thấy cọc phù hợp</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 2: PHÂN TÍCH ĐỐI CHIẾU ── */}
+          {activeTab === 'analysis' && (
+            <div className="space-y-5">
+              {/* Tiến độ theo hạng mục */}
+              {analysisData && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Tiến độ theo hạng mục</h3>
+                  {Array.from(analysisData.itemStats.entries()).length === 0 ? (
+                    <p className="text-sm text-slate-400">Chưa có dữ liệu</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {Array.from(analysisData.itemStats.entries()).sort((a, b) => b[1].total - a[1].total).map(([item, stat]) => {
+                        const pct = stat.total > 0 ? Math.round(stat.done / stat.total * 100) : 0;
+                        return (
+                          <div key={item}>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm font-medium text-slate-700">{item}</span>
+                              <span className="text-xs font-bold text-slate-500">{stat.done}/{stat.total} — {pct}%</span>
+                            </div>
+                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : pct > 50 ? 'bg-blue-500' : 'bg-amber-400')}
+                                style={{ width: `${pct}%` }}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Cọc lạ — ngoài danh sách */}
+              {analysisData && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className={cn('px-5 py-4 border-b flex items-center gap-2',
+                    analysisData.unknownPiles.length > 0 ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100')}>
+                    <AlertTriangle size={16} className={analysisData.unknownPiles.length > 0 ? 'text-red-500' : 'text-slate-300'}/>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">
+                      Cọc trong biên bản nhưng không có trong danh sách ({analysisData.unknownPiles.length})
+                    </h3>
+                  </div>
+                  {analysisData.unknownPiles.length === 0 ? (
+                    <div className="flex items-center gap-2 px-5 py-8 text-emerald-600">
+                      <CheckCircle size={18}/><span className="text-sm font-medium">Tất cả cọc trong biên bản đều nằm trong danh sách dự án.</span>
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã cọc (trong biên bản)</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã chuẩn hóa</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Số biên bản</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysisData.unknownPiles.map((p, i) => (
+                          <tr key={i} className="border-b border-red-50 bg-red-50/30 hover:bg-red-50 transition-colors">
+                            <td className="px-4 py-2.5 font-mono font-bold text-red-700">{p.raw}</td>
+                            <td className="px-4 py-2.5 font-mono text-red-500">{p.canonical}</td>
+                            <td className="px-4 py-2.5 text-slate-600">{p.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
+              {/* Cọc có nhiều biên bản */}
+              {analysisData && (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className={cn('px-5 py-4 border-b flex items-center gap-2',
+                    analysisData.duplicateReportPiles.length > 0 ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100')}>
+                    <AlertTriangle size={16} className={analysisData.duplicateReportPiles.length > 0 ? 'text-amber-500' : 'text-slate-300'}/>
+                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-700">
+                      Cọc có nhiều hơn 1 biên bản ({analysisData.duplicateReportPiles.length})
+                    </h3>
+                  </div>
+                  {analysisData.duplicateReportPiles.length === 0 ? (
+                    <div className="flex items-center gap-2 px-5 py-8 text-emerald-600">
+                      <CheckCircle size={18}/><span className="text-sm font-medium">Không có cọc nào bị trùng biên bản.</span>
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã cọc</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Số biên bản</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase">Mã biên bản</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysisData.duplicateReportPiles.map((p, i) => (
+                          <tr key={i} className="border-b border-amber-50 bg-amber-50/30 hover:bg-amber-50 transition-colors">
+                            <td className="px-4 py-2.5 font-mono font-bold text-amber-700">{p.raw}</td>
+                            <td className="px-4 py-2.5"><span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">{p.count}</span></td>
+                            <td className="px-4 py-2.5 text-slate-600 text-xs">{p.reports.join(', ')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 function SummaryView({ 
