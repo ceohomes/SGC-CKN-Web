@@ -12146,6 +12146,104 @@ function StatCard({ title, value, icon }: { title: string; value: string; icon: 
   );
 }
 
+// ── CustomSelect: Dropdown đẹp thay thế <select> native ──
+interface CustomSelectOption { value: string; label: string; invalid?: boolean; }
+function CustomSelect({
+  value, onChange, options, placeholder = '-- Chọn --', isError = false, disabled = false,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: CustomSelectOption[];
+  placeholder?: string;
+  isError?: boolean;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const selectedOpt = options.find(o => o.value === value);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          "w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border text-sm font-normal transition-all shadow-sm cursor-pointer outline-none text-left",
+          isError
+            ? "border-red-400 bg-red-50 text-red-700 focus:ring-2 focus:ring-red-200"
+            : open
+              ? "border-blue-500 bg-white ring-2 ring-blue-100 text-black"
+              : "border-slate-200 bg-white hover:border-blue-300 text-black",
+          disabled && "opacity-60 cursor-not-allowed"
+        )}
+      >
+        <span className={cn("truncate flex-1", !selectedOpt && "text-slate-400")}>
+          {selectedOpt ? (
+            <span className={selectedOpt.invalid ? "text-red-500" : ""}>{selectedOpt.label}</span>
+          ) : placeholder}
+        </span>
+        <span className={cn(
+          "shrink-0 flex items-center justify-center w-6 h-6 rounded-lg transition-all",
+          isError ? "bg-red-100 text-red-500" : open ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"
+        )}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={cn("transition-transform duration-200", open && "rotate-180")}>
+            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute z-[9999] mt-1.5 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Placeholder option */}
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false); }}
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-[12px] text-slate-400 hover:bg-slate-50 transition-colors text-left border-b border-slate-100"
+          >
+            {placeholder}
+          </button>
+          <div className="max-h-52 overflow-y-auto custom-scrollbar">
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={cn(
+                  "w-full flex items-center justify-between gap-2 px-4 py-2.5 text-[13px] transition-colors text-left",
+                  opt.value === value
+                    ? "bg-blue-50 text-blue-700 font-bold"
+                    : opt.invalid
+                      ? "text-red-500 hover:bg-red-50"
+                      : "text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                <span className="truncate flex-1">{opt.label}</span>
+                {opt.value === value && (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-blue-500">
+                    <path d="M2.5 7l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                {opt.invalid && (
+                  <span className="shrink-0 text-[9px] font-black text-red-400 bg-red-50 px-1.5 py-0.5 rounded-md">AI</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditSplitView({ 
   result, 
   onClose, 
@@ -13302,22 +13400,21 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Dự án</label>
               {(() => {
+                const opts: CustomSelectOption[] = [
+                  ...availableProjects.map(p => ({ value: p.name, label: p.name })),
+                  ...(data.project && !availableProjects.some(p => p.name === data.project)
+                    ? [{ value: data.project, label: `${data.project} (AI quét)`, invalid: true }]
+                    : []),
+                ];
                 return (
                   <div className="space-y-1">
-                    <select
+                    <CustomSelect
                       value={data.project}
-                      onChange={e => updateField('project', e.target.value)}
-                      className={cn(
-                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
-                        projectRequiredAndInvalid ? "border-red-400 bg-red-50" : "border-slate-300"
-                      )}
-                    >
-                      <option value="">-- Chọn dự án --</option>
-                      {availableProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                      {data.project && !availableProjects.some(p => p.name === data.project) && (
-                        <option value={data.project}>{data.project} (AI quét — không hợp lệ)</option>
-                      )}
-                    </select>
+                      onChange={v => updateField('project', v)}
+                      options={opts}
+                      placeholder="-- Chọn dự án --"
+                      isError={projectRequiredAndInvalid}
+                    />
                     {projectRequiredAndInvalid && (
                       <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
                         <span>🚫</span> Dự án AI quét không có trong hệ thống. Vui lòng chọn lại.
@@ -13330,32 +13427,29 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Hạng mục</label>
               {(() => {
-                // Normalize: nếu data.item (AI quét) trùng tên chuẩn hóa với 1 item trong app_items → tự động dùng tên chuẩn
                 const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
                 const matchedItem = filteredItems.find(it => normalize(it.name) === normalize(data.item || ''));
                 const effectiveValue = matchedItem ? matchedItem.name : (data.item || '');
-                // Nếu tên AI quét khác tên chuẩn → tự động cập nhật field
                 if (matchedItem && matchedItem.name !== data.item) {
                   setTimeout(() => updateField('item', matchedItem.name), 0);
                 }
                 const hasExactMatch = filteredItems.some(it => it.name === effectiveValue);
-                const showError = filteredItems.length > 0 && effectiveValue && !hasExactMatch;
+                const showError = filteredItems.length > 0 && !!effectiveValue && !hasExactMatch;
+                const opts: CustomSelectOption[] = [
+                  ...filteredItems.map(it => ({ value: it.name, label: it.name })),
+                  ...(effectiveValue && !hasExactMatch
+                    ? [{ value: effectiveValue, label: `${effectiveValue} (AI quét)`, invalid: true }]
+                    : []),
+                ];
                 return (
                   <div className="space-y-1">
-                    <select
+                    <CustomSelect
                       value={effectiveValue}
-                      onChange={e => updateField('item', e.target.value)}
-                      className={cn(
-                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
-                        showError ? "border-red-400 bg-red-50" : "border-slate-300"
-                      )}
-                    >
-                      <option value="">-- Chọn hạng mục --</option>
-                      {filteredItems.map(it => <option key={it.id} value={it.name}>{it.name}</option>)}
-                      {effectiveValue && !hasExactMatch && (
-                        <option value={effectiveValue}>{effectiveValue} (AI quét — không hợp lệ)</option>
-                      )}
-                    </select>
+                      onChange={v => updateField('item', v)}
+                      options={opts}
+                      placeholder="-- Chọn hạng mục --"
+                      isError={showError}
+                    />
                     {showError && (
                       <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
                         <span>🚫</span> Hạng mục AI quét không có trong danh mục. Vui lòng chọn lại.
@@ -13376,23 +13470,22 @@ function EditSplitView({
             <div className="space-y-1">
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Tên Máy khoan</label>
               {(() => {
-                const showError = filteredMachines.length > 0 && data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber);
+                const showError = filteredMachines.length > 0 && !!data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber);
+                const opts: CustomSelectOption[] = [
+                  ...filteredMachines.map(m => ({ value: m.name, label: m.name })),
+                  ...(data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber)
+                    ? [{ value: data.reportNumber, label: `${data.reportNumber} (AI quét)`, invalid: true }]
+                    : []),
+                ];
                 return (
                   <div className="space-y-1">
-                    <select
+                    <CustomSelect
                       value={data.reportNumber}
-                      onChange={e => updateField('reportNumber', e.target.value)}
-                      className={cn(
-                        "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
-                        showError ? "border-red-400 bg-red-50" : "border-slate-300"
-                      )}
-                    >
-                      <option value="">-- Chọn máy khoan --</option>
-                      {filteredMachines.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                      {data.reportNumber && !filteredMachines.some(m => m.name === data.reportNumber) && (
-                        <option value={data.reportNumber}>{data.reportNumber} (AI quét — không hợp lệ)</option>
-                      )}
-                    </select>
+                      onChange={v => updateField('reportNumber', v)}
+                      options={opts}
+                      placeholder="-- Chọn máy khoan --"
+                      isError={showError}
+                    />
                     {showError && (
                       <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
                         <span>🚫</span> Máy khoan AI quét không có trong danh sách. Vui lòng chọn lại.
@@ -13408,20 +13501,18 @@ function EditSplitView({
               <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Đường kính</label>
               {diameterOptions.length > 0 ? (
                 <div className="space-y-1">
-                  <select
+                  <CustomSelect
                     value={data.diameter}
-                    onChange={(e) => updateField('diameter', e.target.value)}
-                    className={cn(
-                      "w-full bg-white border rounded-xl px-4 py-3 text-sm text-black font-normal focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer",
-                      diameterRequiredAndInvalid ? "border-red-400 bg-red-50" : "border-slate-300"
-                    )}
-                  >
-                    <option value="">-- Chọn đường kính --</option>
-                    {diameterOptions.map(d => <option key={d} value={d}>{d}</option>)}
-                    {data.diameter && !diameterOptions.some(d => norm(d) === norm(data.diameter)) && (
-                      <option value={data.diameter}>{data.diameter} (AI quét — không hợp lệ)</option>
-                    )}
-                  </select>
+                    onChange={v => updateField('diameter', v)}
+                    options={[
+                      ...diameterOptions.map(d => ({ value: d, label: d })),
+                      ...(data.diameter && !diameterOptions.some(d => norm(d) === norm(data.diameter))
+                        ? [{ value: data.diameter, label: `${data.diameter} (AI quét)`, invalid: true }]
+                        : []),
+                    ]}
+                    placeholder="-- Chọn đường kính --"
+                    isError={diameterRequiredAndInvalid}
+                  />
                   {diameterRequiredAndInvalid && (
                     <p className="text-[10px] text-red-600 font-bold flex items-center gap-1">
                       <span>🚫</span> Đường kính AI quét không có trong danh sách. Vui lòng chọn lại.
