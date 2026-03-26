@@ -8130,7 +8130,14 @@ LƯU Ý:
             )} {/* end else: không có file */}
           </div>
         ) : activeSheet === 'pdf-splitter' ? (
-          <PdfSplitterView />
+          <PdfSplitterView onSendToUpload={(files: File[]) => {
+            setActiveSheet('upload');
+            // Tạo synthetic event-like object để trigger handleFileUpload
+            const dt = new DataTransfer();
+            files.forEach(f => dt.items.add(f));
+            const fakeEvent = { target: { files: dt.files } } as unknown as React.ChangeEvent<HTMLInputElement>;
+            handleFileUpload(fakeEvent);
+          }} />
         ) : activeSheet === 'geology' ? (
           currentUser?.role === 'admin' ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
@@ -8818,7 +8825,7 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
   );
 }
 
-function PdfSplitterView() {
+function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -8826,6 +8833,54 @@ function PdfSplitterView() {
   const [previewPage, setPreviewPage] = useState<{ url: string; name: string; index: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prefixText, setPrefixText] = useState<string>('');
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [isMerging, setIsMerging] = useState(false);
+
+  const togglePageSelect = (i: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedPages(prev => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedPages(new Set(pages.map((_, i) => i)));
+  const clearSelection = () => setSelectedPages(new Set());
+
+  const mergeSelectedAndSend = async () => {
+    if (selectedPages.size === 0 || !onSendToUpload) return;
+    setIsMerging(true);
+    try {
+      const sortedIdx = Array.from(selectedPages).sort((a, b) => a - b);
+      const mergedPdf = await PDFDocument.create();
+      for (const idx of sortedIdx) {
+        const pageBlob = pages[idx].blob;
+        const pageBytes = await pageBlob.arrayBuffer();
+        const srcDoc = await PDFDocument.load(pageBytes);
+        const [copied] = await mergedPdf.copyPages(srcDoc, [0]);
+        mergedPdf.addPage(copied);
+      }
+      const mergedBytes = await mergedPdf.save();
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, '0');
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const yyyy = today.getFullYear();
+      const dateStr = `${dd}-${mm}-${yyyy}`;
+      const safePrefix = prefixText.trim().replace(/[^a-zA-Z0-9À-ỹĂăÂâĐđÊêÔôƠơƯư\s_\-]/g, '').trim().replace(/\s+/g, '_');
+      const baseName = file?.name.replace(/\.pdf$/i, '') || 'merged';
+      const pageNums = sortedIdx.map(i => i + 1).join('-');
+      const parts = [dateStr, safePrefix, baseName, `Trang_${pageNums}`].filter(Boolean);
+      const mergedName = parts.join('_') + '.pdf';
+      const mergedFile = new File([mergedBytes], mergedName, { type: 'application/pdf' });
+      onSendToUpload([mergedFile]);
+    } catch (err) {
+      alert('Có lỗi khi ghép trang PDF.');
+      console.error(err);
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   // Helper: build tên file theo format NgayThang_NoiDung_TenFile_Trang_N.pdf
   const buildPageName = (baseName: string, pageNum: number, prefix: string): string => {
@@ -8860,6 +8915,7 @@ function PdfSplitterView() {
     setPages([]);
     setProgress(0);
     setIsProcessing(true);
+    setSelectedPages(new Set());
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
@@ -9029,66 +9085,116 @@ function PdfSplitterView() {
       {/* Page grid with thumbnails */}
       {pages.length > 0 && (
         <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
               <FileText size={15} className="text-blue-500" />
               {pages.length} trang — click vào trang để xem to
             </h4>
-            <p className="text-[11px] text-slate-400 font-medium">Hover để xem nút tải xuống từng trang</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-[11px] text-slate-400 font-medium">Hover để xem nút tải xuống từng trang</p>
+              {selectedPages.size > 0 && (
+                <>
+                  <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                    Đã chọn {selectedPages.size} trang
+                  </span>
+                  <button
+                    onClick={clearSelection}
+                    className="text-[11px] font-bold text-slate-500 hover:text-red-500 px-2 py-1 rounded-lg border border-slate-200 hover:border-red-200 transition-all"
+                  >
+                    Bỏ chọn
+                  </button>
+                  <button
+                    onClick={mergeSelectedAndSend}
+                    disabled={isMerging}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-60 text-white rounded-lg text-[11px] font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/30"
+                  >
+                    {isMerging ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                    Ghép & Gửi lên Up file
+                  </button>
+                </>
+              )}
+              <button
+                onClick={selectedPages.size === pages.length ? clearSelection : selectAll}
+                className="text-[11px] font-bold text-blue-500 hover:text-blue-700 px-2 py-1 rounded-lg border border-blue-200 hover:border-blue-400 transition-all"
+              >
+                {selectedPages.size === pages.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {displayPages.map((page, i) => (
-              <div
-                key={i}
-                className="group relative bg-white border-2 border-slate-200 hover:border-blue-400 rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => setPreviewPage({ url: page.url, name: page.name, index: i })}
-              >
-                {/* Thumbnail */}
-                <div className="relative bg-slate-50" style={{ paddingBottom: '141%' }}>
-                  {page.thumbnail ? (
-                    <img
-                      src={page.thumbnail}
-                      alt={`Trang ${i + 1}`}
-                      className="absolute inset-0 w-full h-full object-contain"
-                      draggable={false}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <FileText size={32} className="text-slate-300" />
-                    </div>
+            {displayPages.map((page, i) => {
+              const isSelected = selectedPages.has(i);
+              return (
+                <div
+                  key={i}
+                  className={`group relative bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer border-2 ${isSelected ? 'border-blue-500 shadow-blue-200' : 'border-slate-200 hover:border-blue-400'}`}
+                  onClick={() => setPreviewPage({ url: page.url, name: page.name, index: i })}
+                >
+                  {/* Selected overlay highlight */}
+                  {isSelected && (
+                    <div className="absolute inset-0 bg-blue-500/10 z-10 pointer-events-none rounded-2xl" />
                   )}
-                  {/* Overlay khi hover */}
-                  <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-all flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
-                      <div className="bg-white rounded-full p-2.5 shadow-lg">
-                        <ZoomInIcon size={18} className="text-blue-600" />
+
+                  {/* Thumbnail */}
+                  <div className="relative bg-slate-50" style={{ paddingBottom: '141%' }}>
+                    {page.thumbnail ? (
+                      <img
+                        src={page.thumbnail}
+                        alt={`Trang ${i + 1}`}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <FileText size={32} className="text-slate-300" />
+                      </div>
+                    )}
+                    {/* Overlay khi hover */}
+                    <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-all flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
+                        <div className="bg-white rounded-full p-2.5 shadow-lg">
+                          <ZoomInIcon size={18} className="text-blue-600" />
+                        </div>
+                      </div>
+                    </div>
+                    {/* Page number badge */}
+                    <div className="absolute top-2 left-2 bg-[#1a3a6b] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow z-20">
+                      Trang {i + 1}
+                    </div>
+                    {/* Checkbox chọn trang — góc trên phải */}
+                    <div
+                      className="absolute top-2 right-2 z-20"
+                      onClick={e => togglePageSelect(i, e)}
+                    >
+                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/90 border-slate-300 opacity-0 group-hover:opacity-100'}`}>
+                        {isSelected && (
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
                       </div>
                     </div>
                   </div>
-                  {/* Page number badge */}
-                  <div className="absolute top-2 left-2 bg-[#1a3a6b] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow">
-                    Trang {i + 1}
+
+                  {/* Footer: tên file + nút tải */}
+                  <div className="px-2.5 py-2 flex items-center justify-between gap-1 border-t border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-600 truncate flex-1" title={page.name}>
+                      {page.name.split('_Trang_')[1]?.replace('.pdf','') ? `Trang ${i+1}` : page.name}
+                    </span>
+                    <a
+                      href={page.url}
+                      download={page.name}
+                      onClick={e => e.stopPropagation()}
+                      className="shrink-0 p-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white rounded-lg transition-all"
+                      title={`Tải ${page.name}`}
+                    >
+                      <ArrowDownToLine size={13} />
+                    </a>
                   </div>
                 </div>
-
-                {/* Footer: tên file + nút tải */}
-                <div className="px-2.5 py-2 flex items-center justify-between gap-1 border-t border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-600 truncate flex-1" title={page.name}>
-                    {page.name.split('_Trang_')[1]?.replace('.pdf','') ? `Trang ${i+1}` : page.name}
-                  </span>
-                  <a
-                    href={page.url}
-                    download={page.name}
-                    onClick={e => e.stopPropagation()}
-                    className="shrink-0 p-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white rounded-lg transition-all"
-                    title={`Tải ${page.name}`}
-                  >
-                    <ArrowDownToLine size={13} />
-                  </a>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -9137,6 +9243,12 @@ function PdfSplitterView() {
                 >
                   <ArrowDownToLine size={13} /> Tải xuống
                 </a>
+                <button
+                  onClick={() => togglePageSelect(previewPage.index, { stopPropagation: () => {} } as any)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${selectedPages.has(previewPage.index) ? 'bg-blue-500 hover:bg-blue-400 text-white' : 'bg-white/10 hover:bg-white/20 text-white'}`}
+                >
+                  {selectedPages.has(previewPage.index) ? '✓ Đã chọn' : '+ Chọn trang'}
+                </button>
                 <button onClick={() => setPreviewPage(null)} className="p-2 bg-white/10 hover:bg-red-500 text-white rounded-lg transition-all">
                   <X size={16} />
                 </button>
