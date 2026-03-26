@@ -47,7 +47,6 @@ import {
   FileDown,
   ArrowRight,
   Sparkles,
-  CircleDot,
   UserCheck,
   Eye
 } from 'lucide-react';
@@ -663,7 +662,7 @@ const isQuotaError = (err: any): boolean => {
   );
 };
 
-const extractDataFromFile = async (images: { base64: string; mimeType: string }[], userApiKey?: string): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
+const extractDataFromFile = async (images: { base64: string; mimeType: string }[], userApiKey?: string, diameterList?: string[]): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
   
@@ -723,7 +722,7 @@ BƯỚC 1: TRÍCH XUẤT HEADER (THÔNG TIN CHUNG)
 - item: Hạng mục (PHẢI lấy đúng dòng "Hạng mục", không lấy nhầm "Dự án").
 - pileId: Số hiệu cọc (ví dụ: "C9", "17-05").
 - reportNumber: Tên máy khoan (Drilling Machine). Ví dụ: "SANY 285", "XCMG 360", "Bauer BG28". Đọc từ header biên bản.
-- diameter: Đường kính cọc (ví dụ: "D800", "1200").
+- diameter: Đường kính cọc. Tham chiếu danh sách đường kính đã chuẩn hóa: ${diameterList && diameterList.length > 0 ? diameterList.join(", ") : "không có danh sách"}. Nếu giá trị trên biên bản khớp hoặc gần khớp (ví dụ: D800 ≈ 800), hãy dùng giá trị trong danh sách. Nếu không khớp, đọc trực tiếp từ biên bản.
 - constructionStart / constructionEnd: Thời gian bắt đầu/kết thúc tổng thể (HH:mm DD/MM/YYYY).
 - casingElevation: Cao độ đỉnh casing (chỉ có ở Loại B). Đọc số viết tay (ví dụ: "0,71").
 
@@ -1968,7 +1967,7 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
 
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
-  const [geologyChuanHoaTab, setGeologyChuanHoaTab] = useState<'geology' | 'project' | 'diameter'>('geology');
+  const [geologyChuanHoaTab, setGeologyChuanHoaTab] = useState<'geology' | 'project'>('geology');
   // Stable edit states tách riêng ở component level để tránh reset khi re-render
   const [stableEditingKey, setStableEditingKey] = useState<string | null>(null);
   const [stableEditValue, setStableEditValue] = useState('');
@@ -2861,7 +2860,8 @@ export default function App() {
 
       try {
         console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1}`);
-        const result = await extractDataFromFile(images, key);
+        const diameterList: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+        const result = await extractDataFromFile(images, key, diameterList);
         // Thành công — cập nhật activeKeyIndex
         if (idx !== activeKeyIndex) {
           setActiveKeyIndex(idx);
@@ -4750,9 +4750,9 @@ export default function App() {
     );
   }
 
-  // ── ChuanHoaDataView: Chuẩn hóa data (3 tab: Địa chất / Dự án / Đường kính) ──
+  // ── ChuanHoaDataView: Chuẩn hóa data (2 tab: Địa chất / Dự án) ──
     const GeologyView = ({ editingKey: stableEditingKey, setEditingKey: setStableEditingKey, editValue: stableEditValue, setEditValue: setStableEditValue }: { editingKey: string|null, setEditingKey: (v:string|null)=>void, editValue: string, setEditValue: (v:string)=>void }) => {
-      type DataTab = 'geology' | 'project' | 'diameter';
+      type DataTab = 'geology' | 'project';
       const activeTab = geologyChuanHoaTab;
       const setActiveTab = setGeologyChuanHoaTab;
 
@@ -4790,8 +4790,6 @@ export default function App() {
           );
         } else if (activeTab === 'project') {
           reports = history.filter(res => (res.project || '').trim() === value);
-        } else if (activeTab === 'diameter') {
-          reports = history.filter(res => (res.diameter || '').trim() === value);
         }
         setViewingReports({ value, reports });
       };
@@ -5387,6 +5385,7 @@ LƯU Ý:
     const [newProjectName, setNewProjectName] = React.useState('');
     const [newItemName, setNewItemName] = React.useState('');
     const [newMachineName, setNewMachineName] = React.useState('');
+    const [newDiameterName, setNewDiameterName] = React.useState('');
     const [selectedProjectId, setSelectedProjectId] = React.useState('');
     const [isSavingNewProject, setIsSavingNewProject] = React.useState(false);
 
@@ -5495,6 +5494,25 @@ LƯU Ý:
       } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); } finally { setIsSavingNewProject(false); }
     };
 
+
+    const handleCreateDiameter = async () => {
+      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo đường kính', 'error'); return; }
+      const trimmed = newDiameterName.trim();
+      if (!trimmed) return;
+      try {
+        const stored = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]') as string[];
+        if (stored.map((s: string) => s.toLowerCase()).includes(trimmed.toLowerCase())) {
+          showToast(`⚠️ Đường kính "${trimmed}" đã tồn tại!`, 'error', 3500);
+          return;
+        }
+        stored.push(trimmed);
+        stored.sort();
+        localStorage.setItem('sgc_diameter_list', JSON.stringify(stored));
+        setNewDiameterName('');
+        showToast(`✅ Đã thêm đường kính "${trimmed}" vào danh sách!`, 'success');
+      } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); }
+    };
+
     const projectList = useEditableList(
       () => {
         // Merge: dự án từ app_projects + dự án xuất hiện trong biên bản (history)
@@ -5574,17 +5592,6 @@ LƯU Ý:
         activeClass: 'bg-blue-600 text-white shadow-lg shadow-blue-200 border-blue-700',
         badgeClass: 'bg-white/20 text-white',
         headerBg: '#1e3a8a',
-      },
-      {
-        id: 'diameter',
-        label: 'Đường kính',
-        icon: <CircleDot size={14} />,
-        list: diameterList,
-        emptyMsg: 'Chưa có dữ liệu đường kính',
-        colHeader: 'Đường kính cọc',
-        activeClass: 'bg-violet-600 text-white shadow-lg shadow-violet-200 border-violet-700',
-        badgeClass: 'bg-white/20 text-white',
-        headerBg: '#4c1d95',
       },
     ];
 
@@ -5711,7 +5718,6 @@ LƯU Ý:
         <div className="text-xs text-slate-400 font-medium -mt-3">
           {activeTab === 'geology' && 'Danh sách không trùng lặp các lớp địa chất — chỉnh sửa sẽ cập nhật layerDesign trong tất cả biên bản'}
           {activeTab === 'project' && 'Danh sách dự án — chỉnh sửa sẽ cập nhật trường "project" trong tất cả biên bản liên quan'}
-          {activeTab === 'diameter' && 'Danh sách đường kính cọc — chỉnh sửa sẽ cập nhật trường "diameter" trong tất cả biên bản liên quan'}
         </div>
 
         {/* Create new project / item / machine panel - only shown in project tab */}
@@ -5813,6 +5819,51 @@ LƯU Ý:
                       {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                       Đồng bộ {unsynced.length} máy khoan vào danh mục
                     </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Đường kính */}
+            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newDiameterName}
+                  onChange={e => setNewDiameterName(e.target.value)}
+                  placeholder="Đường kính cọc (VD: D800, D1000)..."
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`flex-1 px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                />
+                <button
+                  onClick={handleCreateDiameter}
+                  disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 whitespace-nowrap"
+                >
+                  <Save size={14} />
+                  Tạo đường kính
+                </button>
+              </div>
+              {/* Danh sách đường kính đã tạo */}
+              {(() => {
+                const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                if (stored.length === 0) return null;
+                return (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {stored.map(d => (
+                      <span key={d} className="flex items-center gap-1 text-[10px] font-bold bg-violet-100 text-violet-800 px-2 py-0.5 rounded-lg border border-violet-300">
+                        {d}
+                        <button
+                          onClick={() => {
+                            const updated = stored.filter(x => x !== d);
+                            localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
+                            setNewDiameterName(prev => prev); // trigger re-render
+                          }}
+                          className="ml-0.5 text-violet-400 hover:text-red-500"
+                          title="Xóa"
+                        >×</button>
+                      </span>
+                    ))}
                   </div>
                 );
               })()}
@@ -12078,7 +12129,7 @@ function EditSplitView({
 
           const rawResult = onExtract
             ? await onExtract([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }])
-            : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey);
+            : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey, JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'));
           const map = rawResult.designLayerMap || {};
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
             const geoCode = (layer.actualGeology || '').trim();
