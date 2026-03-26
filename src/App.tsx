@@ -2398,6 +2398,10 @@ export default function App() {
     // 3. Realtime Subscription for Settings
     let settingsSubscription: any = null;
     let extractionsSubscription: any = null;
+    let projectsSubscription: any = null;
+    let itemsSubscription: any = null;
+    let machinesSubscription: any = null;
+    let usersSubscription: any = null;
     if (supabase) {
       settingsSubscription = supabase
         .channel('public:app_settings')
@@ -2476,12 +2480,175 @@ export default function App() {
         .subscribe((status) => {
           console.log('[Realtime] drill_extractions subscription status:', status);
         });
+
+      // ── Realtime cho app_projects ──
+      projectsSubscription = supabase
+        .channel('public:app_projects')
+        .on('postgres_changes', { event: 'INSERT', table: 'app_projects', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          const newProj: AppProject = { id: row.id, name: row.name, createdAt: row.created_at, createdBy: row.created_by || '' };
+          setProjects(prev => {
+            if (prev.some(p => p.id === newProj.id)) return prev;
+            const updated = [...prev, newProj];
+            localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'UPDATE', table: 'app_projects', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          setProjects(prev => {
+            const updated = prev.map(p => p.id === row.id ? { ...p, name: row.name, createdAt: row.created_at, createdBy: row.created_by || '' } : p);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'DELETE', table: 'app_projects', schema: 'public' }, (payload) => {
+          const deleted = payload.old as { id: string };
+          setProjects(prev => {
+            const updated = prev.filter(p => p.id !== deleted.id);
+            localStorage.setItem('sgc_app_projects', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .subscribe();
+
+      // ── Realtime cho app_items ──
+      itemsSubscription = supabase
+        .channel('public:app_items')
+        .on('postgres_changes', { event: 'INSERT', table: 'app_items', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          const newItem: AppItem = { id: row.id, projectId: row.project_id, name: row.name, createdAt: row.created_at, createdBy: row.created_by || '' };
+          setItems(prev => {
+            if (prev.some(it => it.id === newItem.id)) return prev;
+            const updated = [...prev, newItem];
+            localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'UPDATE', table: 'app_items', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          setItems(prev => {
+            const updated = prev.map(it => it.id === row.id ? { ...it, name: row.name, projectId: row.project_id } : it);
+            localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'DELETE', table: 'app_items', schema: 'public' }, (payload) => {
+          const deleted = payload.old as { id: string };
+          setItems(prev => {
+            const updated = prev.filter(it => it.id !== deleted.id);
+            localStorage.setItem('sgc_app_items', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .subscribe();
+
+      // ── Realtime cho app_drilling_machines ──
+      machinesSubscription = supabase
+        .channel('public:app_drilling_machines')
+        .on('postgres_changes', { event: 'INSERT', table: 'app_drilling_machines', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          const newMachine: AppDrillingMachine = {
+            id: row.id,
+            projectId: (row.project_id && row.project_id !== 'global') ? row.project_id : 'global',
+            name: row.name, createdAt: row.created_at, createdBy: row.created_by || ''
+          };
+          setDrillingMachines(prev => {
+            if (prev.some(m => m.id === newMachine.id)) return prev;
+            const updated = [...prev, newMachine];
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'UPDATE', table: 'app_drilling_machines', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          setDrillingMachines(prev => {
+            const updated = prev.map(m => m.id === row.id ? {
+              ...m, name: row.name,
+              projectId: (row.project_id && row.project_id !== 'global') ? row.project_id : 'global'
+            } : m);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .on('postgres_changes', { event: 'DELETE', table: 'app_drilling_machines', schema: 'public' }, (payload) => {
+          const deleted = payload.old as { id: string };
+          setDrillingMachines(prev => {
+            const updated = prev.filter(m => m.id !== deleted.id);
+            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+            return updated;
+          });
+        })
+        .subscribe();
+
+      // ── Realtime cho app_users ──
+      usersSubscription = supabase
+        .channel('public:app_users')
+        .on('postgres_changes', { event: 'INSERT', table: 'app_users', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          const newUser: AppUser = {
+            id: row.id, fullName: row.full_name, username: row.username,
+            passwordHash: row.password_hash, role: row.role,
+            createdAt: row.created_at, isActive: row.is_active,
+            assignedProjects: row.assigned_projects || [],
+          };
+          try {
+            const raw = localStorage.getItem('sgc_app_users');
+            const arr: AppUser[] = raw ? JSON.parse(raw) : [DEFAULT_ADMIN];
+            if (!arr.some(u => u.id === newUser.id)) {
+              localStorage.setItem('sgc_app_users', JSON.stringify([...arr, newUser]));
+            }
+          } catch {}
+        })
+        .on('postgres_changes', { event: 'UPDATE', table: 'app_users', schema: 'public' }, (payload) => {
+          const row = payload.new as any;
+          const updatedUser: AppUser = {
+            id: row.id, fullName: row.full_name, username: row.username,
+            passwordHash: row.password_hash, role: row.role,
+            createdAt: row.created_at, isActive: row.is_active,
+            assignedProjects: row.assigned_projects || [],
+          };
+          try {
+            const raw = localStorage.getItem('sgc_app_users');
+            if (raw) {
+              const arr: AppUser[] = JSON.parse(raw);
+              localStorage.setItem('sgc_app_users', JSON.stringify(arr.map(u => u.id === updatedUser.id ? updatedUser : u)));
+            }
+          } catch {}
+          // Nếu user đang đăng nhập bị thay đổi → cập nhật session
+          setCurrentUser(prev => {
+            if (!prev || prev.id !== updatedUser.id) return prev;
+            if (!updatedUser.isActive) {
+              localStorage.removeItem('sgc_session');
+              setIsLoginScreen(true);
+              return null;
+            }
+            const newSession = { ...prev, ...updatedUser };
+            localStorage.setItem('sgc_session', JSON.stringify(newSession));
+            return newSession;
+          });
+        })
+        .on('postgres_changes', { event: 'DELETE', table: 'app_users', schema: 'public' }, (payload) => {
+          const deleted = payload.old as { id: string };
+          try {
+            const raw = localStorage.getItem('sgc_app_users');
+            if (raw) {
+              const arr: AppUser[] = JSON.parse(raw);
+              localStorage.setItem('sgc_app_users', JSON.stringify(arr.filter(u => u.id !== deleted.id)));
+            }
+          } catch {}
+        })
+        .subscribe();
     }
 
     return () => {
       window.removeEventListener('message', handleMessage);
       if (settingsSubscription) supabase?.removeChannel(settingsSubscription);
       if (extractionsSubscription) supabase?.removeChannel(extractionsSubscription);
+      if (projectsSubscription) supabase?.removeChannel(projectsSubscription);
+      if (itemsSubscription) supabase?.removeChannel(itemsSubscription);
+      if (machinesSubscription) supabase?.removeChannel(machinesSubscription);
+      if (usersSubscription) supabase?.removeChannel(usersSubscription);
     };
   }, []);
 
