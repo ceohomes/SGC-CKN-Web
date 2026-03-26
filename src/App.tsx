@@ -9834,11 +9834,11 @@ function PileRegistryView({
 
               return (
                 <div key={project.id} style={{
-                  background: 'white',
+                  background: '#f4f6f9',
                   borderRadius: 16,
                   border: `1.5px solid ${mt.accentBorder}`,
                   overflow: 'hidden',
-                  boxShadow: `0 2px 12px rgba(0,0,0,0.06), 0 0 0 0 ${mt.accent}`,
+                  boxShadow: `0 2px 12px rgba(0,0,0,0.06)`,
                   transition: 'box-shadow 0.2s, transform 0.15s',
                 }}
                   onMouseEnter={e => {
@@ -9856,7 +9856,7 @@ function PileRegistryView({
                     padding: '14px 16px',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                   }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, overflow:'hidden', flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, minWidth:0 }}>
                       {/* Animated dot */}
                       <div style={{ position:'relative', flexShrink:0 }}>
                         <div style={{
@@ -9871,7 +9871,7 @@ function PileRegistryView({
                       <h2 style={{
                         fontSize: 12, fontWeight: 900, color: 'white',
                         textTransform: 'uppercase', letterSpacing: '0.5px',
-                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                        wordBreak: 'break-word', lineHeight: 1.35,
                         textShadow:'0 1px 3px rgba(0,0,0,0.2)'
                       }}>
                         {project.name}
@@ -9936,78 +9936,155 @@ function PileRegistryView({
                         Chưa có dữ liệu cọc
                       </div>
                     ) : (
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr' }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 20px 1fr' }}>
                         {filtered.map((pile, idx) => {
                           const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
                           const isMulti = bbCount > 1;
                           const isRight = idx % 2 === 1;
+                          const isLastPair = idx >= filtered.length - (filtered.length % 2 === 0 ? 2 : 1);
+
+                          // Render pile icon column between left and right items
+                          const pileIconCell = idx % 2 === 0 ? (
+                            <div key={`icon-${idx}`} style={{
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              borderBottom: `1px solid #e8ecf0`,
+                              background: '#f4f6f9',
+                            }}>
+                              <svg width="14" height="20" viewBox="0 0 14 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.3 }}>
+                                {/* Pile/post icon: rectangular shaft + cap on top */}
+                                <rect x="5" y="4" width="4" height="13" rx="1" fill={mt.accent}/>
+                                <rect x="2" y="2" width="10" height="3" rx="1.5" fill={mt.accent}/>
+                                <path d="M6 17 L7 20 L8 17" fill={mt.accent}/>
+                              </svg>
+                            </div>
+                          ) : null;
 
                           return (
-                            <div
-                              key={pile.id}
-                              className="group"
-                              style={{
-                                position:'relative',
-                                minHeight: 40,
-                                display:'flex', alignItems:'center',
-                                padding:'0 14px',
-                                background: isMulti ? '#fffbeb' : 'white',
-                                borderBottom: `1px solid #f1f5f9`,
-                                borderRight: isRight ? 'none' : `1px solid #f1f5f9`,
-                                transition:'background 0.12s',
-                                cursor:'default',
-                              }}
-                              onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : 'white'; }}
-                            >
-                              <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:36 }}>
-                                {/* color indicator stripe */}
-                                <div style={{
-                                  width:3, height:20, borderRadius:2, flexShrink:0,
-                                  background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#e2e8f0'
-                                }} />
-                                <span style={{
-                                  fontSize:11, fontWeight:700, color:'#1e293b',
-                                  textTransform:'uppercase', letterSpacing:'0.3px',
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                                }}>
-                                  {pile.pile_code_raw}
-                                </span>
-                                {bbCount > 0 && (
-                                  <div style={{
-                                    flexShrink:0, padding:'1px 6px', borderRadius:999,
-                                    fontSize:9, fontWeight:800, textTransform:'uppercase',
-                                    background: isMulti ? '#fef3c7' : mt.badgeBg,
-                                    color: isMulti ? '#92400e' : mt.badgeText,
-                                  }}>
-                                    {bbCount}
+                            <React.Fragment key={pile.id}>
+                              {!isRight && (
+                                <div
+                                  className="group"
+                                  style={{
+                                    position:'relative',
+                                    minHeight: 40,
+                                    display:'flex', alignItems:'center',
+                                    padding:'0 12px',
+                                    background: isMulti ? '#fffbeb' : '#f4f6f9',
+                                    borderBottom: `1px solid #e8ecf0`,
+                                    transition:'background 0.12s',
+                                    cursor:'default',
+                                  }}
+                                  onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
+                                >
+                                  <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:32 }}>
+                                    <div style={{
+                                      width:3, height:18, borderRadius:2, flexShrink:0,
+                                      background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
+                                    }} />
+                                    <span style={{
+                                      fontSize:11, fontWeight:700, color:'#1e293b',
+                                      textTransform:'uppercase', letterSpacing:'0.3px',
+                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                                    }}>
+                                      {pile.pile_code_raw}
+                                    </span>
+                                    {bbCount > 0 && (
+                                      <div style={{
+                                        flexShrink:0, padding:'1px 6px', borderRadius:999,
+                                        fontSize:9, fontWeight:800, textTransform:'uppercase',
+                                        background: isMulti ? '#fef3c7' : mt.badgeBg,
+                                        color: isMulti ? '#92400e' : mt.badgeText,
+                                      }}>
+                                        {bbCount}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                              {/* Hover actions */}
-                              <div className="opacity-0 group-hover:opacity-100" style={{
-                                position:'absolute', right:6, top:'50%', transform:'translateY(-50%)',
-                                display:'flex', alignItems:'center', gap:2,
-                                transition:'opacity 0.15s',
-                              }}>
-                                <button
-                                  onClick={() => startEdit(pile)}
-                                  style={{ padding:4, borderRadius:6, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer', transition:'all 0.1s' }}
-                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; (e.currentTarget as HTMLElement).style.background = mt.accentLight; }}
-                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                                >
-                                  <Edit2 size={11} />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(pile.id, project.id)}
-                                  style={{ padding:4, borderRadius:6, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer', transition:'all 0.1s' }}
-                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; (e.currentTarget as HTMLElement).style.background = '#fff1f2'; }}
-                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
-                            </div>
+                                  <div className="opacity-0 group-hover:opacity-100" style={{
+                                    position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
+                                    display:'flex', alignItems:'center', gap:1, transition:'opacity 0.15s',
+                                  }}>
+                                    <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
+                                      <Edit2 size={11} />
+                                    </button>
+                                    <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              {/* Pile icon divider column */}
+                              {!isRight && pileIconCell}
+                              {/* Right column item - find the next pile */}
+                              {!isRight && (() => {
+                                const rightPile = filtered[idx + 1];
+                                if (!rightPile) {
+                                  return <div style={{ background:'#f4f6f9', borderBottom:'1px solid #e8ecf0' }} />;
+                                }
+                                const rbbCount = projAnalysis?.pilesInReports.get(rightPile.pile_code_canonical)?.count ?? 0;
+                                const rIsMulti = rbbCount > 1;
+                                return (
+                                  <div
+                                    className="group"
+                                    style={{
+                                      position:'relative',
+                                      minHeight: 40,
+                                      display:'flex', alignItems:'center',
+                                      padding:'0 12px',
+                                      background: rIsMulti ? '#fffbeb' : '#f4f6f9',
+                                      borderBottom: `1px solid #e8ecf0`,
+                                      transition:'background 0.12s',
+                                      cursor:'default',
+                                    }}
+                                    onMouseEnter={e => { if (!rIsMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = rIsMulti ? '#fffbeb' : '#f4f6f9'; }}
+                                  >
+                                    <div style={{ display:'flex', alignItems:'center', gap:6, overflow:'hidden', flex:1, paddingRight:32 }}>
+                                      <div style={{
+                                        width:3, height:18, borderRadius:2, flexShrink:0,
+                                        background: rbbCount > 0 ? (rIsMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
+                                      }} />
+                                      <span style={{
+                                        fontSize:11, fontWeight:700, color:'#1e293b',
+                                        textTransform:'uppercase', letterSpacing:'0.3px',
+                                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                                      }}>
+                                        {rightPile.pile_code_raw}
+                                      </span>
+                                      {rbbCount > 0 && (
+                                        <div style={{
+                                          flexShrink:0, padding:'1px 6px', borderRadius:999,
+                                          fontSize:9, fontWeight:800, textTransform:'uppercase',
+                                          background: rIsMulti ? '#fef3c7' : mt.badgeBg,
+                                          color: rIsMulti ? '#92400e' : mt.badgeText,
+                                        }}>
+                                          {rbbCount}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="opacity-0 group-hover:opacity-100" style={{
+                                      position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
+                                      display:'flex', alignItems:'center', gap:1, transition:'opacity 0.15s',
+                                    }}>
+                                      <button onClick={() => startEdit(rightPile)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = mt.accentText; }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
+                                        <Edit2 size={11} />
+                                      </button>
+                                      <button onClick={() => handleDelete(rightPile.id, project.id)} style={{ padding:3, borderRadius:5, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444'; }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94a3b8'; }}>
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </React.Fragment>
                           );
                         })}
                       </div>
