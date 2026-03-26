@@ -2860,7 +2860,9 @@ export default function App() {
 
       try {
         console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1}`);
-        const diameterList: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+        const _diaFromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+        const _diaFromHistory = [...new Set(history.map((r: any) => (r.diameter || '').trim()).filter(Boolean))];
+        const diameterList: string[] = [...new Set([..._diaFromHistory, ..._diaFromStorage])];
         const result = await extractDataFromFile(images, key, diameterList);
         // Thành công — cập nhật activeKeyIndex
         if (idx !== activeKeyIndex) {
@@ -5496,18 +5498,25 @@ LƯU Ý:
 
 
     const handleCreateDiameter = async () => {
-      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo đường kính', 'error'); return; }
+      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền thêm đường kính', 'error'); return; }
       const trimmed = newDiameterName.trim();
       if (!trimmed) return;
+      // Lấy danh sách đường kính hiện có từ history + localStorage
+      const fromHistory = history.map(r => (r.diameter || '').trim()).filter(Boolean);
+      const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+      const allDiameters = [...new Set([...fromHistory, ...fromStorage])];
+      const isDuplicate = allDiameters.some(d => d.toLowerCase() === trimmed.toLowerCase());
+      if (isDuplicate) {
+        showToast(`⚠️ Đường kính "${trimmed}" đã tồn tại!`, 'error', 3500);
+        return;
+      }
       try {
-        const stored = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]') as string[];
-        if (stored.map((s: string) => s.toLowerCase()).includes(trimmed.toLowerCase())) {
-          showToast(`⚠️ Đường kính "${trimmed}" đã tồn tại!`, 'error', 3500);
-          return;
-        }
-        stored.push(trimmed);
-        stored.sort();
-        localStorage.setItem('sgc_diameter_list', JSON.stringify(stored));
+        const updated = [...new Set([...fromStorage, trimmed])].sort((a, b) => {
+          const na = parseInt(a.replace(/\D/g, '')) || 0;
+          const nb = parseInt(b.replace(/\D/g, '')) || 0;
+          return na - nb;
+        });
+        localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
         setNewDiameterName('');
         showToast(`✅ Đã thêm đường kính "${trimmed}" vào danh sách!`, 'success');
       } catch (e: any) { showToast(`Lỗi: ${e?.message}`, 'error'); }
@@ -5844,26 +5853,45 @@ LƯU Ý:
                   Tạo đường kính
                 </button>
               </div>
-              {/* Danh sách đường kính đã tạo */}
+              {/* Danh sách đường kính: từ biên bản (history) + từ localStorage */}
               {(() => {
-                const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                if (stored.length === 0) return null;
+                const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
+                const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                // Merge: history là nguồn chính (không xóa được), storage là do user thêm thủ công
+                const allSet = new Set([...fromHistory.map(d => d.toLowerCase())]);
+                const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
+                const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
+                  const na = parseInt(a.replace(/\D/g, '')) || 0;
+                  const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                  return na - nb;
+                });
+                if (allDiameters.length === 0) return (
+                  <p className="mt-2 text-[10px] text-slate-400">Chưa có đường kính nào. Thêm mới ở trên hoặc upload biên bản có dữ liệu đường kính.</p>
+                );
                 return (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {stored.map(d => (
-                      <span key={d} className="flex items-center gap-1 text-[10px] font-bold bg-violet-100 text-violet-800 px-2 py-0.5 rounded-lg border border-violet-300">
-                        {d}
-                        <button
-                          onClick={() => {
-                            const updated = stored.filter(x => x !== d);
-                            localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
-                            setNewDiameterName(prev => prev); // trigger re-render
-                          }}
-                          className="ml-0.5 text-violet-400 hover:text-red-500"
-                          title="Xóa"
-                        >×</button>
-                      </span>
-                    ))}
+                    {allDiameters.map(d => {
+                      const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
+                      const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
+                      return (
+                        <span key={d} className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border ${isFromHistory ? 'bg-violet-100 text-violet-800 border-violet-300' : 'bg-violet-50 text-violet-600 border-violet-200'}`}>
+                          {d}
+                          {count > 0 && <span className="ml-0.5 text-violet-400">({count})</span>}
+                          {!isFromHistory && (
+                            <button
+                              onClick={() => {
+                                const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                                const updated = stored.filter(x => x.toLowerCase() !== d.toLowerCase());
+                                localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
+                                setNewDiameterName(prev => prev + ''); // trigger re-render
+                              }}
+                              className="ml-0.5 text-violet-400 hover:text-red-500"
+                              title="Xóa (chỉ xóa được đường kính thêm thủ công)"
+                            >×</button>
+                          )}
+                        </span>
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -12129,7 +12157,7 @@ function EditSplitView({
 
           const rawResult = onExtract
             ? await onExtract([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }])
-            : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey, JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'));
+            : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey, (() => { const _s: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'); return _s; })());
           const map = rawResult.designLayerMap || {};
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
             const geoCode = (layer.actualGeology || '').trim();
