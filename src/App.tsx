@@ -10222,14 +10222,14 @@ function PileRegistryView({
                           .map((row, i) => (
                             <div key={i} style={{
                               padding:'8px 16px', borderBottom:'1px solid #fff1f2',
-                              display:'flex', alignItems:'center', justifyContent:'space-between',
+                              display:'flex', alignItems:'center', gap:10,
                             }}>
-                              <span style={{ fontSize:12, fontWeight:700, color:'#1e293b', textTransform:'uppercase' }}>{row.raw}</span>
+                              <span style={{ fontSize:12, fontWeight:700, color:'#1e293b', textTransform:'uppercase', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{row.raw}</span>
                               <span style={{
-                                fontSize:9, fontWeight:800, padding:'2px 7px', borderRadius:999,
+                                fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:999,
                                 background: row.status === 'duplicate_in_db' ? '#fee2e2' : '#fef3c7',
                                 color: row.status === 'duplicate_in_db' ? '#991b1b' : '#92400e',
-                                textTransform:'uppercase'
+                                textTransform:'uppercase', flexShrink:0, whiteSpace:'nowrap',
                               }}>
                                 {row.status === 'duplicate_in_db' ? 'Đã có trong DB' : 'Trùng danh sách'}
                               </span>
