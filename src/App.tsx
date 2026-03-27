@@ -8271,7 +8271,7 @@ LƯU Ý:
             handleFileUpload(fakeEvent);
           }} />
         ) : activeSheet === 'pile-registry' ? (
-          currentUser?.role === 'admin' ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} /> : (
+          currentUser?.role === 'admin' ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} items={items} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -9520,12 +9520,14 @@ function PileRegistryView({
   projects, 
   history, 
   currentUser, 
-  supabase 
+  supabase,
+  items,
 }: { 
   projects: AppProject[]; 
   history: ExtractionResult[]; 
   currentUser: AppUser | null;
   supabase: any;
+  items: AppItem[];
 }) {
   const [allPiles, setAllPiles] = useState<PileEntry[]>([]);
   const [loading, setLoading] = useState(false);
