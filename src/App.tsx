@@ -9698,6 +9698,12 @@ function PileRegistryView({
 
   const handleSave = async () => {
     if (!parsePreview || !addProjectId) return;
+    // Bắt buộc chọn hạng mục nếu dự án có hạng mục
+    const projItemsForValidation = items.filter(it => it.projectId === addProjectId);
+    if (projItemsForValidation.length > 0 && !addSelectedItemId) {
+      setSaveMsg('⚠️ Vui lòng chọn Hạng mục trước khi lưu cọc!');
+      return;
+    }
     const toSave = parsePreview.filter(p => p.status === 'new');
     if (!toSave.length) { setSaveMsg('Không có cọc mới để lưu.'); return; }
     setSaving(true);
@@ -10061,11 +10067,11 @@ function PileRegistryView({
                       </h2>
                       {/* Count badge */}
                       <div style={{
-                        background: 'rgba(255,255,255,0.25)',
-                        border: '1px solid rgba(255,255,255,0.4)',
+                        background: 'white',
+                        border: '1px solid rgba(255,255,255,0.6)',
                         borderRadius: 999, padding: '1px 8px',
-                        fontSize: 10, fontWeight: 800, color: 'white',
-                        flexShrink: 0, backdropFilter:'blur(4px)'
+                        fontSize: 10, fontWeight: 800, color: '#0f172a',
+                        flexShrink: 0,
                       }}>
                         {projectPiles.length}
                       </div>
@@ -10441,29 +10447,38 @@ function PileRegistryView({
                   {(() => {
                     const projItems = items.filter(it => it.projectId === addProjectId);
                     if (projItems.length === 0) return null;
+                    const isItemMissing = !addSelectedItemId;
                     return (
                       <div>
-                        <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
-                          Hạng mục <span style={{ color:'#94a3b8', fontWeight:500, textTransform:'none' }}>(liên thông dữ liệu Hạng mục đã tạo)</span>
+                        <label style={{ display:'block', fontSize:10, fontWeight:800, color: isItemMissing ? '#dc2626' : '#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                          Hạng mục <span style={{ color:'#dc2626', fontWeight:900 }}>*</span>{' '}
+                          <span style={{ color:'#94a3b8', fontWeight:500, textTransform:'none' }}>(bắt buộc)</span>
                         </label>
                         <select
                           value={addSelectedItemId}
-                          onChange={e => setAddSelectedItemId(e.target.value)}
+                          onChange={e => { setAddSelectedItemId(e.target.value); setSaveMsg(null); }}
                           style={{
                             width:'100%', padding:'10px 14px', borderRadius:10,
-                            border:`1.5px solid ${mt2.accentBorder}`,
-                            background:mt2.accentLight, fontSize:13, fontWeight:600,
-                            color:mt2.accentText, outline:'none', cursor:'pointer',
+                            border: isItemMissing ? '2px solid #f87171' : `1.5px solid ${mt2.accentBorder}`,
+                            background: isItemMissing ? '#fff5f5' : mt2.accentLight,
+                            fontSize:13, fontWeight:600,
+                            color: isItemMissing ? '#dc2626' : mt2.accentText,
+                            outline:'none', cursor:'pointer',
                             boxSizing:'border-box' as any,
                           }}
-                          onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt2.accentBorder}`)}
+                          onFocus={e => (e.target.style.boxShadow = isItemMissing ? '0 0 0 3px rgba(248,113,113,0.3)' : `0 0 0 3px ${mt2.accentBorder}`)}
                           onBlur={e => (e.target.style.boxShadow = 'none')}
                         >
-                          <option value="">-- Chọn hạng mục --</option>
+                          <option value="">⚠️ -- Chọn hạng mục (bắt buộc) --</option>
                           {projItems.map(it => (
                             <option key={it.id} value={it.id}>{it.name}</option>
                           ))}
                         </select>
+                        {isItemMissing && (
+                          <p style={{ marginTop:6, fontSize:11, color:'#dc2626', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                            ⚠️ Bạn phải chọn hạng mục trước khi có thể lưu cọc.
+                          </p>
+                        )}
                       </div>
                     );
                   })()}
@@ -10601,22 +10616,30 @@ function PileRegistryView({
                     >
                       Kiểm tra dữ liệu
                     </button>
-                  ) : (
-                    <button
-                      onClick={handleSave}
-                      disabled={saving || newCount === 0}
-                      style={{
-                        padding:'10px 24px', borderRadius:10, border:'none',
-                        background:'linear-gradient(135deg,#065f46 0%,#10b981 100%)', color:'white',
-                        fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
-                        cursor:'pointer', display:'flex', alignItems:'center', gap:8,
-                        opacity:(saving || newCount === 0) ? 0.5 : 1,
-                        boxShadow:'0 4px 14px rgba(16,185,129,0.3)',
-                      }}
-                    >
-                      {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                      {saveProgress || `Lưu ${newCount} cọc`}
-                    </button>
+                  ) : (() => {
+                    const projItemsBtn = items.filter(it => it.projectId === addProjectId);
+                    const mustPickItem = projItemsBtn.length > 0 && !addSelectedItemId;
+                    const btnDisabled = saving || newCount === 0 || mustPickItem;
+                    return (
+                      <button
+                        onClick={mustPickItem ? () => setSaveMsg('⚠️ Vui lòng chọn Hạng mục trước khi lưu cọc!') : handleSave}
+                        disabled={saving || newCount === 0}
+                        style={{
+                          padding:'10px 24px', borderRadius:10, border:'none',
+                          background: mustPickItem ? 'linear-gradient(135deg,#dc2626 0%,#f87171 100%)' : 'linear-gradient(135deg,#065f46 0%,#10b981 100%)',
+                          color:'white',
+                          fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
+                          cursor: btnDisabled ? 'not-allowed' : 'pointer',
+                          display:'flex', alignItems:'center', gap:8,
+                          opacity:(saving || newCount === 0) ? 0.5 : 1,
+                          boxShadow: mustPickItem ? '0 4px 14px rgba(220,38,38,0.3)' : '0 4px 14px rgba(16,185,129,0.3)',
+                        }}
+                      >
+                        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                        {saveProgress || (mustPickItem ? '⚠️ Chọn hạng mục trước!' : `Lưu ${newCount} cọc`)}
+                      </button>
+                    );
+                  })()
                   )}
                 </div>
               </div>
