@@ -14304,45 +14304,20 @@ function EditSplitView({
       newLayers[idx] = recalculateLayer(newLayers[idx]);
     }
 
-    // Logic: Khi sửa chiều dài (lengthMeters) hoặc cao độ (elevationFrom, elevationTo)
-    if (['lengthMeters', 'elevationFrom', 'elevationTo'].includes(field as string)) {
+    // Logic: Khi sửa cao độ (elevationFrom, elevationTo)
+    // lengthMeters chỉ được tính tự động từ |elevationTo - elevationFrom|, không cho phép sửa trực tiếp
+    if (['elevationFrom', 'elevationTo'].includes(field as string)) {
       const currentLayer = newLayers[idx];
       const elevFrom = parseFloat(toNum(currentLayer.elevationFrom).toString().replace(',', '.'));
       const elevTo = parseFloat(toNum(currentLayer.elevationTo).toString().replace(',', '.'));
-      const len = parseFloat(toNum(currentLayer.lengthMeters).toString().replace(',', '.'));
 
-      if (field === 'lengthMeters') {
-        if (!isNaN(elevFrom) && !isNaN(len)) {
-          newLayers[idx].elevationTo = elevFrom - len;
-        }
-      } else if (field === 'elevationTo') {
-        if (!isNaN(elevFrom) && !isNaN(elevTo)) {
-          newLayers[idx].lengthMeters = Math.abs(elevFrom - elevTo);
-        }
-      } else if (field === 'elevationFrom') {
-        if (!isNaN(elevFrom) && !isNaN(len)) {
-          newLayers[idx].elevationTo = elevFrom - len;
-        }
+      // Tự động tính lengthMeters từ cao độ đến trừ cao độ từ
+      if (!isNaN(elevFrom) && !isNaN(elevTo)) {
+        newLayers[idx].lengthMeters = Math.abs(elevTo - elevFrom);
       }
 
       // Đảm bảo tính lại speed cho lớp hiện tại
       newLayers[idx] = recalculateLayer(newLayers[idx]);
-
-      // Cập nhật toàn bộ các lớp phía dưới để đồng bộ cao độ
-      for (let i = idx + 1; i < newLayers.length; i++) {
-        const prevLayer = newLayers[i - 1];
-        const prevElevTo = parseFloat(toNum(prevLayer.elevationTo).toString().replace(',', '.'));
-        
-        if (!isNaN(prevElevTo)) {
-          newLayers[i].elevationFrom = prevElevTo;
-          const currentLen = parseFloat(toNum(newLayers[i].lengthMeters).toString().replace(',', '.'));
-          if (!isNaN(currentLen)) {
-            newLayers[i].elevationTo = newLayers[i].elevationFrom - currentLen;
-          }
-          // Tính lại speed cho lớp này
-          newLayers[i] = recalculateLayer(newLayers[i]);
-        }
-      }
     }
     
     setData(prev => ({ ...prev, layers: newLayers }));
@@ -14811,13 +14786,8 @@ function EditSplitView({
                         <td className={`px-2 py-1 text-[12px] font-normal text-black text-center ${rowBg} border-r border-slate-200 align-middle whitespace-nowrap`}>
                           {formatNumber(layer.durationHours)}
                         </td>
-                        <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
-                          <NumericCell
-                            value={layer.lengthMeters}
-                            onChange={(val) => updateLayer(idx, 'lengthMeters', val)}
-                            className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
-                            style={{ minWidth: '75px', width: '75px' }}
-                          />
+                        <td className={`px-2 py-1 text-[12px] font-normal text-black text-center border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`} style={{ minWidth: '75px', width: '75px' }}>
+                          {formatNumber(layer.lengthMeters)}
                         </td>
                         <td className={cn(
                           "px-2 py-1 text-[12px] font-normal text-center align-middle border-r border-slate-200 whitespace-nowrap",
