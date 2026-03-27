@@ -10086,7 +10086,8 @@ function PileRegistryView({
         <div style={{
           position:'fixed', inset:0, zIndex:9999,
           background:'rgba(15,23,42,0.65)', backdropFilter:'blur(6px)',
-          display:'flex', alignItems:'center', justifyContent:'center', padding:16
+          display:'flex', alignItems:'flex-start', justifyContent:'center', padding:16,
+          overflowY:'auto',
         }}>
           {(() => {
             const projectIndex = projects.findIndex(p => p.id === addProjectId);
@@ -10097,8 +10098,11 @@ function PileRegistryView({
               <div style={{
                 background:'white', borderRadius:20,
                 boxShadow:'0 24px 64px rgba(0,0,0,0.2)',
-                width:'100%', maxWidth:600, overflow:'hidden',
+                width:'100%', maxWidth:600,
+                display:'flex', flexDirection:'column',
+                maxHeight:'calc(100vh - 32px)',
                 animation:'zoomIn 0.18s ease-out',
+                margin:'auto',
               }}>
                 {/* Modal Header */}
                 <div style={{
@@ -10130,7 +10134,7 @@ function PileRegistryView({
                 </div>
 
                 {/* Modal Body */}
-                <div style={{ padding:'24px', overflowY:'auto', maxHeight:'76vh', display:'flex', flexDirection:'column', gap:20 }}>
+                <div style={{ padding:'24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:20 }}>
                   {/* Project display */}
                   <div>
                     <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
@@ -10239,53 +10243,6 @@ function PileRegistryView({
                     </div>
                   )}
 
-                  {/* Action buttons */}
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:10, paddingTop:4 }}>
-                    <button
-                      onClick={() => setIsAddModalOpen(false)}
-                      style={{
-                        padding:'10px 20px', borderRadius:10, border:'1.5px solid #e2e8f0',
-                        background:'white', color:'#64748b', fontSize:12, fontWeight:700,
-                        textTransform:'uppercase', letterSpacing:'0.5px', cursor:'pointer', transition:'all 0.15s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'white')}
-                    >
-                      Đóng
-                    </button>
-                    {!parsePreview ? (
-                      <button
-                        onClick={handleParse}
-                        disabled={gridRows.every(r => !r.name.trim()) || !addProjectId}
-                        style={{
-                          padding:'10px 24px', borderRadius:10, border:'none',
-                          background: mt2.headerGrad, color:'white',
-                          fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
-                          cursor:'pointer', transition:'all 0.15s', opacity: (gridRows.every(r => !r.name.trim()) || !addProjectId) ? 0.5 : 1,
-                          boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
-                        }}
-                      >
-                        Kiểm tra dữ liệu
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleSave}
-                        disabled={saving || newCount === 0}
-                        style={{
-                          padding:'10px 24px', borderRadius:10, border:'none',
-                          background:'linear-gradient(135deg,#065f46 0%,#10b981 100%)', color:'white',
-                          fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
-                          cursor:'pointer', display:'flex', alignItems:'center', gap:8,
-                          opacity:(saving || newCount === 0) ? 0.5 : 1,
-                          boxShadow:'0 4px 14px rgba(16,185,129,0.3)',
-                        }}
-                      >
-                        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                        Lưu {newCount} cọc
-                      </button>
-                    )}
-                  </div>
-
                   {saveMsg && (
                     <div style={{
                       padding:'12px 16px', borderRadius:10, textAlign:'center',
@@ -10296,6 +10253,53 @@ function PileRegistryView({
                     }}>
                       {saveMsg}
                     </div>
+                  )}
+                </div>
+
+                {/* Action buttons - sticky footer */}
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:10, padding:'16px 24px', borderTop:'1px solid #f1f5f9', background:'white', borderRadius:'0 0 20px 20px', flexShrink:0 }}>
+                  <button
+                    onClick={() => setIsAddModalOpen(false)}
+                    style={{
+                      padding:'10px 20px', borderRadius:10, border:'1.5px solid #e2e8f0',
+                      background:'white', color:'#64748b', fontSize:12, fontWeight:700,
+                      textTransform:'uppercase', letterSpacing:'0.5px', cursor:'pointer', transition:'all 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+                  >
+                    Đóng
+                  </button>
+                  {!parsePreview ? (
+                    <button
+                      onClick={handleParse}
+                      disabled={gridRows.every(r => !r.name.trim()) || !addProjectId}
+                      style={{
+                        padding:'10px 24px', borderRadius:10, border:'none',
+                        background: mt2.headerGrad, color:'white',
+                        fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
+                        cursor:'pointer', transition:'all 0.15s', opacity: (gridRows.every(r => !r.name.trim()) || !addProjectId) ? 0.5 : 1,
+                        boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
+                      }}
+                    >
+                      Kiểm tra dữ liệu
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || newCount === 0}
+                      style={{
+                        padding:'10px 24px', borderRadius:10, border:'none',
+                        background:'linear-gradient(135deg,#065f46 0%,#10b981 100%)', color:'white',
+                        fontSize:12, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.5px',
+                        cursor:'pointer', display:'flex', alignItems:'center', gap:8,
+                        opacity:(saving || newCount === 0) ? 0.5 : 1,
+                        boxShadow:'0 4px 14px rgba(16,185,129,0.3)',
+                      }}
+                    >
+                      {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                      Lưu {newCount} cọc
+                    </button>
                   )}
                 </div>
               </div>
