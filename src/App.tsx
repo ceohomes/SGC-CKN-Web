@@ -10004,7 +10004,7 @@ function PileRegistryView({
                                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setActivePileMenu(prev => prev === pile.id ? null : pile.id);
+                                      startEdit(pile);
                                     }}
                                   >
                                     {/* Vòng tròn có chấm bên trong */}
@@ -10033,49 +10033,6 @@ function PileRegistryView({
                                         background: isMulti ? '#fef3c7' : mt.badgeBg,
                                         color: isMulti ? '#92400e' : mt.badgeText,
                                       }}>{bbCount}</div>
-                                    )}
-                                    {/* Click popup menu */}
-                                    {activePileMenu === pile.id && (
-                                      <div
-                                        style={{
-                                          position:'absolute', top:'100%', left:0, zIndex:100,
-                                          background:'white', borderRadius:10,
-                                          boxShadow:'0 8px 24px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
-                                          border:'1px solid #e2e8f0',
-                                          padding:4, minWidth:130,
-                                          display:'flex', flexDirection:'column', gap:2,
-                                        }}
-                                        onClick={e => e.stopPropagation()}
-                                      >
-                                        <button
-                                          onClick={() => { startEdit(pile); setActivePileMenu(null); }}
-                                          style={{
-                                            display:'flex', alignItems:'center', gap:8,
-                                            padding:'7px 12px', borderRadius:7, border:'none',
-                                            background:'transparent', cursor:'pointer',
-                                            fontSize:11, fontWeight:700, color:'#1e40af',
-                                            transition:'background 0.12s', textAlign:'left',
-                                          }}
-                                          onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
-                                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                        >
-                                          <Edit2 size={12} /> Chỉnh sửa
-                                        </button>
-                                        <button
-                                          onClick={() => { handleDelete(pile.id, project.id); setActivePileMenu(null); }}
-                                          style={{
-                                            display:'flex', alignItems:'center', gap:8,
-                                            padding:'7px 12px', borderRadius:7, border:'none',
-                                            background:'transparent', cursor:'pointer',
-                                            fontSize:11, fontWeight:700, color:'#dc2626',
-                                            transition:'background 0.12s', textAlign:'left',
-                                          }}
-                                          onMouseEnter={e => (e.currentTarget.style.background = '#fff1f2')}
-                                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                        >
-                                          <Trash2 size={12} /> Xóa cọc
-                                        </button>
-                                      </div>
                                     )}
                                   </div>
                                 );
@@ -10402,40 +10359,28 @@ function PileRegistryView({
                       onBlur={e => (e.target.style.boxShadow = 'none')}
                     />
                   </div>
-                  <div>
-                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
-                      Đường kính
-                    </label>
-                    <select
-                      value={editForm.diameter}
-                      onChange={e => setEditForm(prev => ({ ...prev, diameter: e.target.value }))}
-                      style={{
-                        width:'100%', padding:'10px 14px', borderRadius:10,
-                        border:`1.5px solid ${mt3.accentBorder}`,
-                        background:mt3.accentLight, fontSize:13, fontWeight:700,
-                        color: editForm.diameter ? mt3.accentText : '#94a3b8',
-                        outline:'none', boxSizing:'border-box', cursor:'pointer',
-                      }}
-                      onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt3.accentBorder}`)}
-                      onBlur={e => (e.target.style.boxShadow = 'none')}
-                    >
-                      <option value="">— Chọn đường kính —</option>
-                      {diameterOptions.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
                   <div style={{ display:'flex', gap:10 }}>
                     <button
                       onClick={handleUpdate}
                       style={{
-                        flex:1, padding:'11px', borderRadius:10, border:'none',
+                        flex:2, padding:'11px', borderRadius:10, border:'none',
                         background:mt3.headerGrad, color:'white',
                         fontSize:12, fontWeight:800, textTransform:'uppercase',
                         cursor:'pointer', boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
                       }}
                     >
                       Cập nhật
+                    </button>
+                    <button
+                      onClick={() => { handleDelete(editingPile.id, editingPile.project_id); setEditingPile(null); }}
+                      style={{
+                        flex:1, padding:'11px', borderRadius:10,
+                        border:'1.5px solid #fecaca', background:'#fff1f2',
+                        color:'#dc2626', fontSize:12, fontWeight:700,
+                        textTransform:'uppercase', cursor:'pointer',
+                      }}
+                    >
+                      Xóa
                     </button>
                     <button
                       onClick={() => setEditingPile(null)}
