@@ -7561,7 +7561,7 @@ LƯU Ý:
                 {/* CỘT TRÁI: Danh sách file - thu gọn */}
                 <div className={cn(
                   "flex flex-col transition-all duration-500",
-                  currentResult ? "w-64 flex-shrink-0" : "w-full max-w-3xl shadow-2xl"
+                  currentResult ? "w-52 flex-shrink-0" : "w-full max-w-3xl shadow-2xl"
                 )} style={{ background: "linear-gradient(160deg, #1a3a6b 0%, #1e4480 50%, #163570 100%)" }}>
                   <div className="px-6 py-5 border-b border-[#1e3a5f]">
                     <div className="flex items-center justify-between">
@@ -9552,6 +9552,7 @@ function PileRegistryView({
   // State cho modal thêm cọc
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addProjectId, setAddProjectId] = useState('');
+  const [addSelectedItemId, setAddSelectedItemId] = useState('');
   const [gridRows, setGridRows] = useState<{stt: string, name: string, item: string, diameter: string}[]>(
     Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '', diameter: '' }))
   );
@@ -9646,12 +9647,13 @@ function PileRegistryView({
     const existingCanonicals = new Set(projectPiles.map(p => p.pile_code_canonical));
     const seenInPaste = new Set<string>();
     
+    const selectedItemName = items.find(it => it.id === addSelectedItemId)?.name || '';
     const parsed = gridRows
       .filter(row => row.name.trim() !== '')
       .map(row => {
         const stt = row.stt.trim();
         const raw = row.name.trim();
-        const item = row.item.trim();
+        const item = selectedItemName || row.item.trim();
         const canonical = normalizePileCode(raw);
         
         let status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db' = 'new';
@@ -10028,7 +10030,7 @@ function PileRegistryView({
                         <Search size={11} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.7)', pointerEvents:'none' }} />
                       </div>
                       <button
-                        onClick={() => { setAddProjectId(project.id); setIsAddModalOpen(true); }}
+                        onClick={() => { setAddProjectId(project.id); setAddSelectedItemId(''); setIsAddModalOpen(true); }}
                         style={{
                           width: 30, height: 30, borderRadius: 8,
                           background: 'rgba(255,255,255,0.2)',
@@ -10344,6 +10346,37 @@ function PileRegistryView({
                       <div style={{ width:8, height:8, borderRadius:'50%', background:mt2.accentDot, boxShadow:`0 0 0 3px ${mt2.accentBorder}` }} />
                     </div>
                   </div>
+
+                  {/* Hạng mục dropdown */}
+                  {(() => {
+                    const projItems = items.filter(it => it.projectId === addProjectId);
+                    if (projItems.length === 0) return null;
+                    return (
+                      <div>
+                        <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                          Hạng mục <span style={{ color:'#94a3b8', fontWeight:500, textTransform:'none' }}>(liên thông dữ liệu Hạng mục đã tạo)</span>
+                        </label>
+                        <select
+                          value={addSelectedItemId}
+                          onChange={e => setAddSelectedItemId(e.target.value)}
+                          style={{
+                            width:'100%', padding:'10px 14px', borderRadius:10,
+                            border:`1.5px solid ${mt2.accentBorder}`,
+                            background:mt2.accentLight, fontSize:13, fontWeight:600,
+                            color:mt2.accentText, outline:'none', cursor:'pointer',
+                            boxSizing:'border-box' as any,
+                          }}
+                          onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt2.accentBorder}`)}
+                          onBlur={e => (e.target.style.boxShadow = 'none')}
+                        >
+                          <option value="">-- Chọn hạng mục --</option>
+                          {projItems.map(it => (
+                            <option key={it.id} value={it.id}>{it.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })()}
 
                   {/* Pile input table */}
                   <div>
