@@ -9533,6 +9533,7 @@ function PileRegistryView({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [projectSearches, setProjectSearches] = useState<Record<string, string>>({});
+  const [projectItemFilters, setProjectItemFilters] = useState<Record<string, string>>({});
   const [editingPile, setEditingPile] = useState<PileEntry | null>(null);
   const [editForm, setEditForm] = useState({ stt: '', raw: '', item: '', diameter: '' });
   const [activePileMenu, setActivePileMenu] = useState<string | null>(null);
@@ -9988,8 +9989,11 @@ function PileRegistryView({
             {projects.map((project, pIdx) => {
               const projectPiles = pilesByProject[project.id] || [];
               const pSearch = projectSearches[project.id] || '';
+              const pItemFilter = projectItemFilters[project.id] || '';
               const snSearch = searchNormalize(searchTerm);
               const snPSearch = searchNormalize(pSearch);
+              // Lấy danh sách hạng mục duy nhất trong project này
+              const projItemNames = Array.from(new Set(projectPiles.map(p => p.item || '').filter(Boolean))).sort();
               
               const filtered = projectPiles.filter(p => {
                 const matchesGlobal = !searchTerm ||
@@ -10000,7 +10004,8 @@ function PileRegistryView({
                   searchNormalize(p.pile_code_raw).includes(snPSearch) ||
                   searchNormalize(p.pile_code_canonical).includes(snPSearch) ||
                   searchNormalize(p.item || '').includes(snPSearch);
-                return matchesGlobal && matchesLocal;
+                const matchesItem = !pItemFilter || (p.item || '') === pItemFilter;
+                return matchesGlobal && matchesLocal && matchesItem;
               });
 
               if (searchTerm && filtered.length === 0) return null;
@@ -10108,6 +10113,29 @@ function PileRegistryView({
                     </div>
                   </div>
 
+                  {/* ── Dropdown lọc Hạng mục ── */}
+                  {projItemNames.length > 0 && (
+                    <div style={{ padding:'0 12px 10px 12px', background:'white' }}>
+                      <select
+                        value={pItemFilter}
+                        onChange={e => setProjectItemFilters(prev => ({ ...prev, [project.id]: e.target.value }))}
+                        style={{
+                          width:'100%', height:28, padding:'0 8px',
+                          fontSize:10, fontWeight:700, color: pItemFilter ? mt.accentText : '#94a3b8',
+                          border:`1.5px solid ${pItemFilter ? mt.accentBorder : '#e2e8f0'}`,
+                          borderRadius:7, background: pItemFilter ? mt.accentLight : '#f8fafc',
+                          outline:'none', cursor:'pointer', boxSizing:'border-box' as any,
+                        }}
+                      >
+                        <option value="">— Tất cả hạng mục ({projectPiles.length} cọc) —</option>
+                        {projItemNames.map(itemName => {
+                          const cnt = projectPiles.filter(p => (p.item || '') === itemName).length;
+                          return <option key={itemName} value={itemName}>{itemName} ({cnt} cọc)</option>;
+                        })}
+                      </select>
+                    </div>
+                  )}
+
                   {/* ── Pile Grid Body ── */}
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                     {/* Column headers */}
@@ -10115,8 +10143,10 @@ function PileRegistryView({
                       background: mt.accentLight,
                       borderBottom:`1px solid ${mt.accentBorder}`,
                       padding:'4px 12px',
+                      display:'flex', alignItems:'center', justifyContent:'space-between',
                     }}>
                       <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px' }}>Tên cọc</div>
+                      <div style={{ fontSize:9, fontWeight:700, color:mt.accentText, opacity:0.7 }}>{filtered.length} cọc</div>
                     </div>
                     {filtered.length === 0 ? (
                       <div style={{ padding:'32px 16px', textAlign:'center', color:'#cbd5e1', fontSize:12, fontStyle:'italic' }}>
@@ -10169,7 +10199,7 @@ function PileRegistryView({
                                       }} />
                                     </div>
                                     <span style={{
-                                      fontSize:10, fontWeight:700, color:'#1e293b',
+                                      fontSize:10, fontWeight:800, color:'#000000',
                                       textTransform:'uppercase', letterSpacing:'0.3px',
                                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
                                     }}>
