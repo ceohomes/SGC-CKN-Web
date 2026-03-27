@@ -9448,6 +9448,11 @@ function PileRegistryView({
   const [editingPile, setEditingPile] = useState<PileEntry | null>(null);
   const [editForm, setEditForm] = useState({ stt: '', raw: '', item: '', diameter: '' });
   const [activePileMenu, setActivePileMenu] = useState<string | null>(null);
+  const [alertModal, setAlertModal] = useState<{
+    type: 'unknown' | 'duplicate';
+    projectName: string;
+    piles: any[];
+  } | null>(null);
 
   // Compute diameter options from history + localStorage
   const diameterOptions = React.useMemo(() => {
@@ -10048,27 +10053,41 @@ function PileRegistryView({
                   {hasAlerts && (
                     <div style={{ padding:'10px 14px', borderTop:'1px solid #f1f5f9', background:'#fafafa', display:'flex', flexDirection:'column', gap:6 }}>
                       {projAnalysis.unknownPiles.length > 0 && (
-                        <div style={{
-                          display:'flex', alignItems:'center', gap:7,
-                          padding:'6px 10px', borderRadius:8,
-                          background:'#fff1f2', border:'1px solid #fecaca',
-                        }}>
+                        <div
+                          onClick={() => setAlertModal({ type: 'unknown', projectName: project.name, piles: projAnalysis.unknownPiles.map(([, v]) => v.raw) })}
+                          style={{
+                            display:'flex', alignItems:'center', gap:7,
+                            padding:'6px 10px', borderRadius:8,
+                            background:'#fff1f2', border:'1px solid #fecaca',
+                            cursor:'pointer', transition:'background 0.15s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#fee2e2')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '#fff1f2')}
+                        >
                           <AlertTriangle size={11} style={{ color:'#ef4444', flexShrink:0 }} />
-                          <span style={{ fontSize:10, fontWeight:700, color:'#991b1b', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:'#991b1b', textTransform:'uppercase', letterSpacing:'0.3px', flex:1 }}>
                             {projAnalysis.unknownPiles.length} cọc lạ trong biên bản
                           </span>
+                          <ChevronRight size={11} style={{ color:'#ef4444', flexShrink:0 }} />
                         </div>
                       )}
                       {projAnalysis.duplicateReportPiles.length > 0 && (
-                        <div style={{
-                          display:'flex', alignItems:'center', gap:7,
-                          padding:'6px 10px', borderRadius:8,
-                          background:'#fffbeb', border:'1px solid #fde68a',
-                        }}>
+                        <div
+                          onClick={() => setAlertModal({ type: 'duplicate', projectName: project.name, piles: projAnalysis.duplicateReportPiles.map(([, v]) => ({ raw: v.raw, count: v.count })) })}
+                          style={{
+                            display:'flex', alignItems:'center', gap:7,
+                            padding:'6px 10px', borderRadius:8,
+                            background:'#fffbeb', border:'1px solid #fde68a',
+                            cursor:'pointer', transition:'background 0.15s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#fef3c7')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '#fffbeb')}
+                        >
                           <AlertCircle size={11} style={{ color:'#f59e0b', flexShrink:0 }} />
-                          <span style={{ fontSize:10, fontWeight:700, color:'#92400e', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:'#92400e', textTransform:'uppercase', letterSpacing:'0.3px', flex:1 }}>
                             {projAnalysis.duplicateReportPiles.length} cọc trùng lặp trong BB
                           </span>
+                          <ChevronRight size={11} style={{ color:'#f59e0b', flexShrink:0 }} />
                         </div>
                       )}
                     </div>
@@ -10079,6 +10098,96 @@ function PileRegistryView({
           </div>
         )}
       </div>
+
+      {/* ── Modal danh sách cọc alert ── */}
+      {alertModal && (
+        <div
+          style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(15,23,42,0.65)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={() => setAlertModal(null)}
+        >
+          <div
+            style={{ background:'white', borderRadius:20, boxShadow:'0 24px 64px rgba(0,0,0,0.2)', width:'100%', maxWidth:480, maxHeight:'80vh', display:'flex', flexDirection:'column', overflow:'hidden' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              background: alertModal.type === 'unknown'
+                ? 'linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%)'
+                : 'linear-gradient(135deg, #78350f 0%, #f59e0b 100%)',
+              padding:'16px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                {alertModal.type === 'unknown'
+                  ? <AlertTriangle size={18} style={{ color:'white' }} />
+                  : <AlertCircle size={18} style={{ color:'white' }} />
+                }
+                <div>
+                  <div style={{ color:'white', fontWeight:900, fontSize:13, textTransform:'uppercase', letterSpacing:'0.5px' }}>
+                    {alertModal.type === 'unknown' ? 'Cọc lạ trong biên bản' : 'Cọc trùng lặp trong BB'}
+                  </div>
+                  <div style={{ color:'rgba(255,255,255,0.75)', fontSize:11, marginTop:2 }}>{alertModal.projectName}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setAlertModal(null)}
+                style={{ background:'rgba(255,255,255,0.15)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:8, width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'white' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Description */}
+            <div style={{ padding:'12px 20px', background: alertModal.type === 'unknown' ? '#fff1f2' : '#fffbeb', borderBottom:`1px solid ${alertModal.type === 'unknown' ? '#fecaca' : '#fde68a'}`, flexShrink:0 }}>
+              <p style={{ fontSize:11, color: alertModal.type === 'unknown' ? '#991b1b' : '#92400e', fontWeight:600, lineHeight:1.5 }}>
+                {alertModal.type === 'unknown'
+                  ? 'Các cọc này xuất hiện trong biên bản nhưng chưa có trong danh sách đăng ký. Vui lòng kiểm tra và bổ sung vào danh sách.'
+                  : 'Các cọc này có nhiều hơn 1 biên bản nghiệm thu. Vui lòng kiểm tra lại tính hợp lệ.'
+                }
+              </p>
+            </div>
+
+            {/* List */}
+            <div style={{ overflowY:'auto', flex:1 }}>
+              {alertModal.piles.map((pile, i) => (
+                <div key={i} style={{
+                  display:'flex', alignItems:'center', justifyContent:'space-between',
+                  padding:'10px 20px', borderBottom:'1px solid #f1f5f9',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{
+                      width:24, height:24, borderRadius:6, flexShrink:0,
+                      background: alertModal.type === 'unknown' ? '#fee2e2' : '#fef3c7',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:9, fontWeight:800, color: alertModal.type === 'unknown' ? '#991b1b' : '#92400e',
+                    }}>{i + 1}</div>
+                    <span style={{ fontSize:13, fontWeight:700, color:'#1e293b', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+                      {alertModal.type === 'unknown' ? pile : (pile as any).raw}
+                    </span>
+                  </div>
+                  {alertModal.type === 'duplicate' && (
+                    <span style={{
+                      fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:999,
+                      background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a',
+                    }}>
+                      {(pile as any).count} BB
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:'12px 20px', borderTop:'1px solid #f1f5f9', display:'flex', justifyContent:'flex-end', flexShrink:0 }}>
+              <button
+                onClick={() => setAlertModal(null)}
+                style={{ padding:'9px 20px', borderRadius:10, border:'1.5px solid #e2e8f0', background:'white', color:'#64748b', fontSize:12, fontWeight:700, textTransform:'uppercase', cursor:'pointer' }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Thêm cọc mới ── */}
       {isAddModalOpen && (
