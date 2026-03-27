@@ -14318,6 +14318,21 @@ function EditSplitView({
 
       // Đảm bảo tính lại speed cho lớp hiện tại
       newLayers[idx] = recalculateLayer(newLayers[idx]);
+
+      // Cascade: khi sửa cao độ đến của lớp hiện tại,
+      // cập nhật cao độ từ của lớp kế tiếp = cao độ đến lớp hiện tại
+      if (field === 'elevationTo' && idx + 1 < newLayers.length) {
+        const newElevTo = parseFloat(toNum(newLayers[idx].elevationTo).toString().replace(',', '.'));
+        if (!isNaN(newElevTo)) {
+          newLayers[idx + 1] = { ...newLayers[idx + 1], elevationFrom: newElevTo };
+          // Tính lại lengthMeters cho lớp kế tiếp
+          const nextElevTo = parseFloat(toNum(newLayers[idx + 1].elevationTo).toString().replace(',', '.'));
+          if (!isNaN(nextElevTo)) {
+            newLayers[idx + 1].lengthMeters = Math.abs(nextElevTo - newElevTo);
+          }
+          newLayers[idx + 1] = recalculateLayer(newLayers[idx + 1]);
+        }
+      }
     }
     
     setData(prev => ({ ...prev, layers: newLayers }));
