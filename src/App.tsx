@@ -9878,12 +9878,12 @@ function PileRegistryView({
                   }}
                 >
                   {/* ── Card Header ── */}
-                  <div style={{
-                    background: mt.headerGrad,
-                    padding: '14px 16px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-                  }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, flex:1, minWidth:0, overflow:'hidden' }}>
+                  <div style={{ background: mt.headerGrad }}>
+                    {/* Dòng 1: Tên dự án full width */}
+                    <div style={{
+                      padding: '12px 16px 6px 16px',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
                       {/* Animated dot */}
                       <div style={{ position:'relative', flexShrink:0 }}>
                         <div style={{
@@ -9896,11 +9896,11 @@ function PileRegistryView({
                         <div style={{ width:18, height:18 }} />
                       </div>
                       <h2 style={{
-                        fontSize: 12, fontWeight: 900, color: 'white',
+                        fontSize: 13, fontWeight: 900, color: 'white',
                         textTransform: 'uppercase', letterSpacing: '0.5px',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         minWidth: 0, flex: 1,
-                        textShadow:'0 1px 3px rgba(0,0,0,0.2)'
+                        textShadow:'0 1px 3px rgba(0,0,0,0.2)',
+                        wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: '1.3',
                       }}>
                         {project.name}
                       </h2>
@@ -9916,25 +9916,26 @@ function PileRegistryView({
                       </div>
                     </div>
 
-                    {/* Search + Add */}
-                    <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                      <div style={{ position:'relative' }}>
+                    {/* Dòng 2: Search + Add */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6, padding:'0 16px 10px 16px' }}>
+                      <div style={{ position:'relative', flex:1 }}>
                         <input
                           type="text"
                           placeholder="Tìm cọc..."
                           value={projectSearches[project.id] || ''}
                           onChange={(e) => setProjectSearches(prev => ({ ...prev, [project.id]: e.target.value }))}
                           style={{
-                            width: 110, height: 30, paddingLeft: 28, paddingRight: 10,
+                            width: '100%', height: 30, paddingLeft: 28, paddingRight: 10,
                             fontSize: 10, fontWeight: 600,
                             background: 'rgba(255,255,255,0.18)',
                             border: '1px solid rgba(255,255,255,0.35)',
                             borderRadius: 8, color: 'white', outline: 'none',
                             backdropFilter: 'blur(8px)',
                             transition: 'all 0.2s',
+                            boxSizing: 'border-box',
                           }}
-                          onFocus={e => { e.target.style.background = 'rgba(255,255,255,0.28)'; e.target.style.width = '140px'; }}
-                          onBlur={e => { e.target.style.background = 'rgba(255,255,255,0.18)'; e.target.style.width = '110px'; }}
+                          onFocus={e => { e.target.style.background = 'rgba(255,255,255,0.28)'; }}
+                          onBlur={e => { e.target.style.background = 'rgba(255,255,255,0.18)'; }}
                         />
                         <Search size={11} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.7)', pointerEvents:'none' }} />
                       </div>
@@ -9946,7 +9947,7 @@ function PileRegistryView({
                           border: '1px solid rgba(255,255,255,0.4)',
                           display:'flex', alignItems:'center', justifyContent:'center',
                           cursor:'pointer', color:'white', transition:'all 0.15s',
-                          backdropFilter:'blur(4px)',
+                          backdropFilter:'blur(4px)', flexShrink: 0,
                         }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.35)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
@@ -9961,13 +9962,11 @@ function PileRegistryView({
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                     {/* Column headers */}
                     <div style={{
-                      display:'grid', gridTemplateColumns:'1fr 80px',
                       background: mt.accentLight,
                       borderBottom:`1px solid ${mt.accentBorder}`,
-                      padding:'4px 0',
+                      padding:'4px 12px',
                     }}>
-                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px', padding:'0 12px' }}>Tên cọc</div>
-                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px', padding:'0 8px' }}>Đường kính</div>
+                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px' }}>Tên cọc</div>
                     </div>
                     {filtered.length === 0 ? (
                       <div style={{ padding:'32px 16px', textAlign:'center', color:'#cbd5e1', fontSize:12, fontStyle:'italic' }}>
@@ -9975,96 +9974,84 @@ function PileRegistryView({
                       </div>
                     ) : (
                       <div>
-                        {filtered.map((pile, idx) => {
-                          const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
-                          const isMulti = bbCount > 1;
-
+                        {/* Nhóm 3 cọc thành 1 hàng */}
+                        {Array.from({ length: Math.ceil(filtered.length / 3) }, (_, rowIdx) => {
+                          const rowPiles = filtered.slice(rowIdx * 3, rowIdx * 3 + 3);
                           return (
-                            <div
-                              key={pile.id}
-                              className="group"
-                              style={{
-                                display:'grid', gridTemplateColumns:'1fr 80px',
-                                minHeight: 38,
-                                background: isMulti ? '#fffbeb' : '#f4f6f9',
-                                borderBottom:`1px solid #e8ecf0`,
-                                transition:'background 0.12s',
-                              }}
-                              onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
-                            >
-                              {/* Col 1: Tên cọc */}
-                              <div style={{ display:'flex', alignItems:'center', gap:6, padding:'0 12px', overflow:'hidden', position:'relative' }}>
-                                <div style={{
-                                  width:3, height:16, borderRadius:2, flexShrink:0,
-                                  background: bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0'
-                                }} />
-                                <span style={{
-                                  fontSize:11, fontWeight:700, color:'#1e293b',
-                                  textTransform:'uppercase', letterSpacing:'0.3px',
-                                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
-                                }}>
-                                  {pile.pile_code_raw}
-                                </span>
-                                {bbCount > 0 && (
-                                  <div style={{
-                                    flexShrink:0, padding:'1px 5px', borderRadius:999,
-                                    fontSize:9, fontWeight:800,
-                                    background: isMulti ? '#fef3c7' : mt.badgeBg,
-                                    color: isMulti ? '#92400e' : mt.badgeText,
-                                  }}>{bbCount}</div>
-                                )}
-                                {/* Hover actions */}
-                                <div className="opacity-0 group-hover:opacity-100" style={{
-                                  position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
-                                  display:'flex', gap:1, background: isMulti ? '#fffbeb' : mt.rowHover,
-                                  borderRadius:6, padding:'1px',
-                                  transition:'opacity 0.15s',
-                                }}>
-                                  <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                    onMouseEnter={e => (e.currentTarget.style.color = mt.accentText)}
-                                    onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
-                                    <Edit2 size={10} />
-                                  </button>
-                                  <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
-                                    onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-                                    onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
-                                    <Trash2 size={10} />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Col 2: Đường kính — inline select */}
-                              <div style={{ display:'flex', alignItems:'center', padding:'0 6px', borderLeft:`1px solid #e8ecf0` }}>
-                                <select
-                                  value={pile.diameter || ''}
-                                  onChange={async (e) => {
-                                    const newDia = e.target.value;
-                                    // Optimistic UI update
-                                    setAllPiles(prev => prev.map(p => p.id === pile.id ? { ...p, diameter: newDia } : p));
-                                    try {
-                                      if (supabase) {
-                                        await supabase.from('app_pile_registry').update({ diameter: newDia }).eq('id', pile.id);
-                                      } else {
-                                        const loc = JSON.parse(localStorage.getItem(`pile_registry_${project.id}`) || '[]');
-                                        localStorage.setItem(`pile_registry_${project.id}`, JSON.stringify(loc.map((p: any) => p.id === pile.id ? { ...p, diameter: newDia } : p)));
-                                      }
-                                    } catch (err) { console.error('Diameter update error:', err); }
-                                  }}
-                                  style={{
-                                    width:'100%', height:26, fontSize:10, fontWeight:700,
-                                    color: pile.diameter ? mt.accentText : '#94a3b8',
-                                    background:'transparent', border:'none', outline:'none',
-                                    cursor:'pointer', padding:'0 2px',
-                                    appearance:'none', WebkitAppearance:'none',
-                                  }}
-                                >
-                                  <option value="">—</option>
-                                  {diameterOptions.map(d => (
-                                    <option key={d} value={d}>{d}</option>
-                                  ))}
-                                </select>
-                              </div>
+                            <div key={rowIdx} style={{
+                              display:'grid', gridTemplateColumns:'1fr 1fr 1fr',
+                              borderBottom:`1px solid #e8ecf0`,
+                            }}>
+                              {rowPiles.map((pile) => {
+                                const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
+                                const isMulti = bbCount > 1;
+                                const dotColor = bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0';
+                                return (
+                                  <div
+                                    key={pile.id}
+                                    className="group"
+                                    style={{
+                                      display:'flex', alignItems:'center', gap:6,
+                                      padding:'0 10px', minHeight:34,
+                                      background: isMulti ? '#fffbeb' : '#f4f6f9',
+                                      borderRight:`1px solid #e8ecf0`,
+                                      overflow:'hidden', position:'relative',
+                                      transition:'background 0.12s',
+                                    }}
+                                    onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
+                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
+                                  >
+                                    {/* Vòng tròn có chấm bên trong */}
+                                    <div style={{
+                                      width:12, height:12, borderRadius:'50%', flexShrink:0,
+                                      border:`2px solid ${dotColor}`,
+                                      display:'flex', alignItems:'center', justifyContent:'center',
+                                    }}>
+                                      <div style={{
+                                        width:5, height:5, borderRadius:'50%',
+                                        background: dotColor,
+                                      }} />
+                                    </div>
+                                    <span style={{
+                                      fontSize:10, fontWeight:700, color:'#1e293b',
+                                      textTransform:'uppercase', letterSpacing:'0.3px',
+                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1,
+                                    }}>
+                                      {pile.pile_code_raw}
+                                    </span>
+                                    {bbCount > 0 && (
+                                      <div style={{
+                                        flexShrink:0, padding:'1px 5px', borderRadius:999,
+                                        fontSize:9, fontWeight:800,
+                                        background: isMulti ? '#fef3c7' : mt.badgeBg,
+                                        color: isMulti ? '#92400e' : mt.badgeText,
+                                      }}>{bbCount}</div>
+                                    )}
+                                    {/* Hover actions */}
+                                    <div className="opacity-0 group-hover:opacity-100" style={{
+                                      position:'absolute', right:2, top:'50%', transform:'translateY(-50%)',
+                                      display:'flex', gap:1, background: isMulti ? '#fffbeb' : mt.rowHover,
+                                      borderRadius:6, padding:'1px',
+                                      transition:'opacity 0.15s',
+                                    }}>
+                                      <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => (e.currentTarget.style.color = mt.accentText)}
+                                        onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                        <Edit2 size={10} />
+                                      </button>
+                                      <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                                        onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {/* Fill empty cells nếu hàng cuối không đủ 3 */}
+                              {rowPiles.length < 3 && Array.from({ length: 3 - rowPiles.length }, (_, i) => (
+                                <div key={`empty-${i}`} style={{ background:'#f4f6f9', borderRight:`1px solid #e8ecf0`, minHeight:34 }} />
+                              ))}
                             </div>
                           );
                         })}
