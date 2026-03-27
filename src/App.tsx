@@ -9960,6 +9960,14 @@ function PileRegistryView({
 
                   {/* ── Pile Grid Body ── */}
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                    {/* Column headers */}
+                    <div style={{
+                      background: mt.accentLight,
+                      borderBottom:`1px solid ${mt.accentBorder}`,
+                      padding:'4px 12px',
+                    }}>
+                      <div style={{ fontSize:9, fontWeight:800, color:mt.accentText, textTransform:'uppercase', letterSpacing:'0.8px' }}>Tên cọc</div>
+                    </div>
                     {filtered.length === 0 ? (
                       <div style={{ padding:'32px 16px', textAlign:'center', color:'#cbd5e1', fontSize:12, fontStyle:'italic' }}>
                         Chưa có dữ liệu cọc
@@ -9977,11 +9985,11 @@ function PileRegistryView({
                               {rowPiles.map((pile) => {
                                 const bbCount = projAnalysis?.pilesInReports.get(pile.pile_code_canonical)?.count ?? 0;
                                 const isMulti = bbCount > 1;
-                                const dotColor = bbCount > 0 ? (isMulti ? '#f59e0b' : mt.accent) : '#d1d9e0';
+                                const dotColor = isMulti ? '#f59e0b' : mt.accent;
                                 return (
                                   <div
                                     key={pile.id}
-                                    onClick={() => startEdit(pile)}
+                                    className="group"
                                     style={{
                                       display:'flex', alignItems:'center', gap:6,
                                       padding:'0 10px', minHeight:34,
@@ -9989,17 +9997,16 @@ function PileRegistryView({
                                       borderRight:`1px solid #e8ecf0`,
                                       overflow:'hidden', position:'relative',
                                       transition:'background 0.12s',
-                                      cursor:'pointer',
                                     }}
-                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fef9e7' : mt.rowHover; }}
+                                    onMouseEnter={e => { if (!isMulti) (e.currentTarget as HTMLElement).style.background = mt.rowHover; }}
                                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isMulti ? '#fffbeb' : '#f4f6f9'; }}
-                                    title="Click để sửa hoặc xóa cọc"
                                   >
                                     {/* Vòng tròn có chấm bên trong */}
                                     <div style={{
                                       width:12, height:12, borderRadius:'50%', flexShrink:0,
                                       border:`2px solid ${dotColor}`,
                                       display:'flex', alignItems:'center', justifyContent:'center',
+                                      opacity: bbCount === 0 ? 0.35 : 1,
                                     }}>
                                       <div style={{
                                         width:5, height:5, borderRadius:'50%',
@@ -10021,6 +10028,24 @@ function PileRegistryView({
                                         color: isMulti ? '#92400e' : mt.badgeText,
                                       }}>{bbCount}</div>
                                     )}
+                                    {/* Hover actions */}
+                                    <div className="opacity-0 group-hover:opacity-100" style={{
+                                      position:'absolute', right:2, top:'50%', transform:'translateY(-50%)',
+                                      display:'flex', gap:1, background: isMulti ? '#fffbeb' : mt.rowHover,
+                                      borderRadius:6, padding:'1px',
+                                      transition:'opacity 0.15s',
+                                    }}>
+                                      <button onClick={() => startEdit(pile)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => (e.currentTarget.style.color = mt.accentText)}
+                                        onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                        <Edit2 size={10} />
+                                      </button>
+                                      <button onClick={() => handleDelete(pile.id, project.id)} style={{ padding:3, borderRadius:4, color:'#94a3b8', background:'transparent', border:'none', cursor:'pointer' }}
+                                        onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                                        onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}>
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -10329,7 +10354,7 @@ function PileRegistryView({
                 <div style={{ padding:24, display:'flex', flexDirection:'column', gap:18 }}>
                   <div>
                     <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
-                      Tên cọc
+                      Mã cọc
                     </label>
                     <input
                       type="text"
@@ -10346,30 +10371,40 @@ function PileRegistryView({
                       onBlur={e => (e.target.style.boxShadow = 'none')}
                     />
                   </div>
+                  <div>
+                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:8 }}>
+                      Đường kính
+                    </label>
+                    <select
+                      value={editForm.diameter}
+                      onChange={e => setEditForm(prev => ({ ...prev, diameter: e.target.value }))}
+                      style={{
+                        width:'100%', padding:'10px 14px', borderRadius:10,
+                        border:`1.5px solid ${mt3.accentBorder}`,
+                        background:mt3.accentLight, fontSize:13, fontWeight:700,
+                        color: editForm.diameter ? mt3.accentText : '#94a3b8',
+                        outline:'none', boxSizing:'border-box', cursor:'pointer',
+                      }}
+                      onFocus={e => (e.target.style.boxShadow = `0 0 0 3px ${mt3.accentBorder}`)}
+                      onBlur={e => (e.target.style.boxShadow = 'none')}
+                    >
+                      <option value="">— Chọn đường kính —</option>
+                      {diameterOptions.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div style={{ display:'flex', gap:10 }}>
                     <button
                       onClick={handleUpdate}
                       style={{
-                        flex:2, padding:'11px', borderRadius:10, border:'none',
+                        flex:1, padding:'11px', borderRadius:10, border:'none',
                         background:mt3.headerGrad, color:'white',
                         fontSize:12, fontWeight:800, textTransform:'uppercase',
                         cursor:'pointer', boxShadow:`0 4px 14px rgba(0,0,0,0.15)`,
                       }}
                     >
-                      Lưu thay đổi
-                    </button>
-                    <button
-                      onClick={() => { if (editingPile) { handleDelete(editingPile.id, editingPile.project_id); setEditingPile(null); } }}
-                      style={{
-                        flex:1, padding:'11px', borderRadius:10, border:'none',
-                        background:'#fee2e2', color:'#dc2626',
-                        fontSize:12, fontWeight:800, textTransform:'uppercase',
-                        cursor:'pointer',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#fecaca')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#fee2e2')}
-                    >
-                      Xóa
+                      Cập nhật
                     </button>
                     <button
                       onClick={() => setEditingPile(null)}
