@@ -9572,7 +9572,12 @@ function PileRegistryView({
     try {
       if (supabase) {
         const { data, error } = await supabase.from('app_pile_registry').select('*').order('item', { ascending: true });
-        if (!error && data) setAllPiles(data);
+        if (error) {
+          console.error('[PileRegistry] Lỗi load cọc từ Supabase:', JSON.stringify(error, null, 2));
+        } else if (data) {
+          console.log(`[PileRegistry] Đã load ${data.length} cọc từ Supabase`);
+          setAllPiles(data);
+        }
       } else {
         const all: PileEntry[] = [];
         projects.forEach(p => {
@@ -9582,7 +9587,7 @@ function PileRegistryView({
         setAllPiles(all);
       }
     } catch (err) {
-      console.error('Error loading piles:', err);
+      console.error('[PileRegistry] Exception khi load cọc:', err);
     }
     setLoading(false);
   }, [supabase, projects]);
@@ -9683,6 +9688,7 @@ function PileRegistryView({
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
       item: p.item,
+      diameter: p.diameter || '',
       created_at: new Date().toISOString(),
       created_by: currentUser?.fullName || 'Admin',
     }));
@@ -9690,15 +9696,18 @@ function PileRegistryView({
       if (supabase) {
         const CHUNK_SIZE = 500;
         const totalChunks = Math.ceil(newEntries.length / CHUNK_SIZE);
+        console.log(`[PileRegistry] Bắt đầu lưu ${newEntries.length} cọc, ${totalChunks} batch...`);
         for (let i = 0; i < newEntries.length; i += CHUNK_SIZE) {
           const chunk = newEntries.slice(i, i + CHUNK_SIZE);
           const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
           if (totalChunks > 1) setSaveProgress(`Đang lưu... (${chunkNum}/${totalChunks})`);
-          const { error } = await supabase.from('app_pile_registry').insert(chunk);
+          console.log(`[PileRegistry] Đang lưu batch ${chunkNum}/${totalChunks} (${chunk.length} cọc)...`);
+          const { data: insertData, error } = await supabase.from('app_pile_registry').insert(chunk).select();
           if (error) {
-            console.error(`Supabase Insert Error (chunk ${i}–${i + chunk.length}):`, error);
-            throw new Error(`Lỗi khi lưu cọc ${i + 1}–${i + chunk.length}: ${error.message}`);
+            console.error(`[PileRegistry] Lỗi batch ${chunkNum}:`, JSON.stringify(error, null, 2));
+            throw new Error(`Lỗi khi lưu cọc ${i + 1}–${i + chunk.length}: ${error.message} (code: ${error.code})`);
           }
+          console.log(`[PileRegistry] Batch ${chunkNum} thành công, đã lưu ${insertData?.length ?? chunk.length} dòng`);
         }
         setSaveProgress(null);
       } else {
@@ -9919,6 +9928,24 @@ function PileRegistryView({
                 <span style={{ fontSize:11, fontWeight:700, color:'#991b1b' }}>{totalStats.unknown} lạ</span>
               </div>
             )}
+            <button
+              onClick={async () => {
+                if (!supabase) { alert('Không có kết nối Supabase'); return; }
+                try {
+                  const { data, error } = await supabase.from('app_pile_registry').select('id').limit(1);
+                  if (error) {
+                    alert(`❌ Lỗi kết nối bảng app_pile_registry:\n\nCode: ${error.code}\nMessage: ${error.message}\nDetails: ${error.details || 'N/A'}\nHint: ${error.hint || 'N/A'}\n\n→ Hãy chạy lại SUPABASE_MIGRATION.sql trong Supabase SQL Editor`);
+                  } else {
+                    alert(`✅ Kết nối OK! Bảng app_pile_registry hoạt động bình thường.\nHiện có ${totalStats.total} cọc trong DB.`);
+                  }
+                } catch(e: any) {
+                  alert(`❌ Exception: ${e?.message || e}`);
+                }
+              }}
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 12px', fontSize:11, fontWeight:700, color:'#64748b', cursor:'pointer' }}
+            >
+              🔍 Kiểm tra DB
+            </button>
           </div>
         </div>
       </div>
