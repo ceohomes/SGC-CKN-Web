@@ -2142,6 +2142,7 @@ export default function App() {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [dupePilesModal, setDupePilesModal] = useState<{raw: string; count: number}[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -7199,6 +7200,70 @@ LƯU Ý:
         </div>
       )}
 
+      {/* ── Modal cọc trùng lặp trong BB ── */}
+      {dupePilesModal && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setDupePilesModal(null)}
+        >
+          <div
+            className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+            style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+          >
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg, #78350f 0%, #f59e0b 100%)', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <AlertCircle size={18} style={{ color: 'white' }} />
+                <div>
+                  <div style={{ color: 'white', fontWeight: 900, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Cọc trùng lặp trong biên bản
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11, marginTop: 2 }}>
+                    {dupePilesModal.length} cọc có nhiều hơn 1 biên bản
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setDupePilesModal(null)}
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {/* Description */}
+            <div style={{ padding: '10px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a', flexShrink: 0 }}>
+              <p style={{ fontSize: 11, color: '#92400e', fontWeight: 600, lineHeight: 1.5 }}>
+                Các cọc này có nhiều hơn 1 biên bản nghiệm thu. Vui lòng kiểm tra lại tính hợp lệ.
+              </p>
+            </div>
+            {/* List */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {dupePilesModal.map((pile, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', borderBottom: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: '#92400e' }}>{i + 1}</div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{pile.raw}</span>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                    {pile.count} BB
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* Footer */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <button
+                onClick={() => setDupePilesModal(null)}
+                style={{ padding: '9px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: 'white', color: '#64748b', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', cursor: 'pointer' }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Confirm Dialog (thay window.confirm) ── */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[9997] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -7738,6 +7803,27 @@ LƯU Ý:
                         <span className="text-[9px] font-bold uppercase tracking-widest">Chưa kết nối GitHub</span>
                       </div>
                     )}
+                    {/* Duplicate pile alert inline */}
+                    {(() => {
+                      const pileCount = new Map<string, {raw: string; count: number}>();
+                      visibleHistory.forEach(h => {
+                        const key = normalizePileCode(h.pileId);
+                        if (!pileCount.has(key)) pileCount.set(key, { raw: h.pileId, count: 0 });
+                        pileCount.get(key)!.count++;
+                      });
+                      const dupes = Array.from(pileCount.values()).filter(v => v.count > 1);
+                      if (dupes.length === 0) return null;
+                      return (
+                        <button
+                          onClick={() => setDupePilesModal(dupes)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-300 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-100 transition-all"
+                        >
+                          <AlertCircle size={12} className="text-amber-500 shrink-0" />
+                          {dupes.length} cọc trùng BB
+                          <ChevronRight size={11} />
+                        </button>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-3">
                     {currentUser?.role === 'admin' && (
