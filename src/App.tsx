@@ -8977,6 +8977,29 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
   const [prefixText, setPrefixText] = useState<string>('');
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [isMerging, setIsMerging] = useState(false);
+  // Rotation state: degrees per page index (0, 90, 180, 270)
+  const [rotations, setRotations] = useState<Record<number, number>>({});
+
+  const rotatePage = (idx: number, dir: 'cw' | 'ccw', e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setRotations(prev => {
+      const cur = prev[idx] ?? 0;
+      const next = dir === 'cw' ? (cur + 90) % 360 : (cur + 270) % 360;
+      return { ...prev, [idx]: next };
+    });
+  };
+
+  // Apply rotation to a pdf blob and return new blob
+  const applyRotationToBlob = async (blob: Blob, degrees: number): Promise<Blob> => {
+    if (!degrees || degrees === 0) return blob;
+    const bytes = await blob.arrayBuffer();
+    const srcDoc = await PDFDocument.load(bytes);
+    const page = srcDoc.getPage(0);
+    const currentRot = page.getRotation().angle;
+    page.setRotation({ type: 'degrees', angle: (currentRot + degrees) % 360 } as any);
+    const outBytes = await srcDoc.save();
+    return new Blob([outBytes], { type: 'application/pdf' });
+  };
 
   const togglePageSelect = (i: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -8997,8 +9020,9 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
       const sortedIdx = Array.from(selectedPages).sort((a, b) => a - b);
       const mergedPdf = await PDFDocument.create();
       for (const idx of sortedIdx) {
-        const pageBlob = pages[idx].blob;
-        const pageBytes = await pageBlob.arrayBuffer();
+        const deg = rotations[idx] ?? 0;
+        const rotatedBlob = await applyRotationToBlob(pages[idx].blob, deg);
+        const pageBytes = await rotatedBlob.arrayBuffer();
         const srcDoc = await PDFDocument.load(pageBytes);
         const [copied] = await mergedPdf.copyPages(srcDoc, [0]);
         mergedPdf.addPage(copied);
@@ -9058,6 +9082,7 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
     setProgress(0);
     setIsProcessing(true);
     setSelectedPages(new Set());
+    setRotations({});
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
@@ -9107,7 +9132,12 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
     setIsProcessing(true);
     try {
       const zip = new JSZip();
-      for (const page of pages) { zip.file(page.name, page.blob); }
+      for (let i = 0; i < pages.length; i++) {
+        const page = displayPages[i];
+        const deg = rotations[i] ?? 0;
+        const rotatedBlob = await applyRotationToBlob(pages[i].blob, deg);
+        zip.file(page.name, rotatedBlob);
+      }
       const content = await zip.generateAsync({ type: 'blob' });
       const today = new Date();
       const dd = String(today.getDate()).padStart(2, '0');
@@ -9177,7 +9207,7 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
         {pages.length > 0 && (
           <button
             onClick={downloadAll}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-500/30 shrink-0"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl text-[12px] font-black uppercase tracking-widest transition-all shadow-lg shadow-green-500/30 shrink-0"
           >
             <ArrowDownToLine size={15} />
             Tải tất cả ({pages.length} trang)
@@ -9284,7 +9314,8 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                       <img
                         src={page.thumbnail}
                         alt={`Trang ${i + 1}`}
-                        className="absolute inset-0 w-full h-full object-contain"
+                        className="absolute inset-0 w-full h-full object-contain transition-transform duration-300"
+                        style={{ transform: `rotate(${rotations[i] ?? 0}deg)` }}
                         draggable={false}
                       />
                     ) : (
@@ -9292,8 +9323,32 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                         <FileText size={32} className="text-slate-300" />
                       </div>
                     )}
-                    {/* Overlay khi hover */}
-                    <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-all flex items-center justify-center">
+                    {/* Rotate buttons — bottom of thumbnail on hover */}
+                    <div
+                      className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-all"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={e => rotatePage(i, 'ccw', e)}
+                        className="bg-white/90 hover:bg-blue-600 hover:text-white text-slate-700 rounded-full p-1.5 shadow transition-all"
+                        title="Xoay trái 90°"
+                      >
+                        <RotateCcw size={13} />
+                      </button>
+                      <button
+                        onClick={e => rotatePage(i, 'cw', e)}
+                        className="bg-white/90 hover:bg-blue-600 hover:text-white text-slate-700 rounded-full p-1.5 shadow transition-all"
+                        title="Xoay phải 90°"
+                      >
+                        <RotateCw size={13} />
+                      </button>
+                    </div>
+                    {/* Rotation badge */}
+                    {(rotations[i] ?? 0) !== 0 && (
+                      <div className="absolute bottom-2 right-2 z-20 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow">
+                        {rotations[i]}°
+                      </div>
+                    )}
                       <div className="opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
                         <div className="bg-white rounded-full p-2.5 shadow-lg">
                           <ZoomInIcon size={18} className="text-blue-600" />
@@ -9324,15 +9379,23 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                     <span className="text-[10px] font-bold text-slate-600 truncate flex-1" title={page.name}>
                       {page.name.split('_Trang_')[1]?.replace('.pdf','') ? `Trang ${i+1}` : page.name}
                     </span>
-                    <a
-                      href={page.url}
-                      download={page.name}
-                      onClick={e => e.stopPropagation()}
+                    <button
+                      onClick={async e => {
+                        e.stopPropagation();
+                        const deg = rotations[i] ?? 0;
+                        const rotatedBlob = await applyRotationToBlob(pages[i].blob, deg);
+                        const url = URL.createObjectURL(rotatedBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = page.name;
+                        a.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      }}
                       className="shrink-0 p-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white rounded-lg transition-all"
                       title={`Tải ${page.name}`}
                     >
                       <ArrowDownToLine size={13} />
-                    </a>
+                    </button>
                   </div>
                 </div>
               );
@@ -9378,13 +9441,36 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                 >
                   <ChevronRight size={16} />
                 </button>
-                <a
-                  href={previewPage.url}
-                  download={previewPage.name}
+                {/* Rotate buttons */}
+                <button
+                  onClick={() => rotatePage(previewPage.index, 'ccw')}
+                  className="p-2 bg-white/10 hover:bg-amber-500 text-white rounded-lg transition-all"
+                  title="Xoay trái 90°"
+                >
+                  <RotateCcw size={16} />
+                </button>
+                <button
+                  onClick={() => rotatePage(previewPage.index, 'cw')}
+                  className="p-2 bg-white/10 hover:bg-amber-500 text-white rounded-lg transition-all"
+                  title="Xoay phải 90°"
+                >
+                  <RotateCw size={16} />
+                </button>
+                <button
+                  onClick={async () => {
+                    const deg = rotations[previewPage.index] ?? 0;
+                    const rotatedBlob = await applyRotationToBlob(pages[previewPage.index].blob, deg);
+                    const url = URL.createObjectURL(rotatedBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = displayPages[previewPage.index].name;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-lg text-[11px] font-black uppercase tracking-widest transition-all"
                 >
                   <ArrowDownToLine size={13} /> Tải xuống
-                </a>
+                </button>
                 <button
                   onClick={() => togglePageSelect(previewPage.index, { stopPropagation: () => {} } as any)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${selectedPages.has(previewPage.index) ? 'bg-blue-500 hover:bg-blue-400 text-white' : 'bg-white/10 hover:bg-white/20 text-white'}`}
@@ -9403,7 +9489,8 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                 <img
                   src={displayPages[previewPage.index].thumbnail}
                   alt={previewPage.name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg"
+                  className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg transition-transform duration-300"
+                  style={{ transform: `rotate(${rotations[previewPage.index] ?? 0}deg)` }}
                   draggable={false}
                 />
               ) : (
