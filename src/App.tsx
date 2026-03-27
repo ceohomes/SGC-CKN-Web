@@ -9719,7 +9719,10 @@ function PileRegistryView({
           const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
           if (totalChunks > 1) setSaveProgress(`Đang lưu... (${chunkNum}/${totalChunks})`);
           console.log(`[PileRegistry] Đang lưu batch ${chunkNum}/${totalChunks} (${chunk.length} cọc)...`);
-          const { data: insertData, error } = await supabase.from('app_pile_registry').insert(chunk).select();
+          const { data: insertData, error } = await supabase
+            .from('app_pile_registry')
+            .upsert(chunk, { onConflict: 'project_id,pile_code_canonical', ignoreDuplicates: true })
+            .select();
           if (error) {
             console.error(`[PileRegistry] Lỗi batch ${chunkNum}:`, JSON.stringify(error, null, 2));
             throw new Error(`Lỗi khi lưu cọc ${i + 1}–${i + chunk.length}: ${error.message} (code: ${error.code})`);
