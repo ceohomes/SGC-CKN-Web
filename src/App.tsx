@@ -9655,7 +9655,6 @@ function PileRegistryView({
           pile_code_raw: editForm.raw,
           pile_code_canonical: canonical,
           item: editForm.item,
-          diameter: editForm.diameter,
         }).eq('id', editingPile.id);
         if (error) {
           console.error("Supabase Update Error:", error);
@@ -9669,7 +9668,6 @@ function PileRegistryView({
           pile_code_raw: editForm.raw,
           pile_code_canonical: canonical,
           item: editForm.item,
-          diameter: editForm.diameter,
         } : p);
         localStorage.setItem(`pile_registry_${editingPile.project_id}`, JSON.stringify(updated));
       }
@@ -9679,7 +9677,6 @@ function PileRegistryView({
         pile_code_raw: editForm.raw,
         pile_code_canonical: canonical,
         item: editForm.item,
-        diameter: editForm.diameter,
       } : p));
       setEditingPile(null);
     } catch (err: any) {
