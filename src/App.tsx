@@ -10163,11 +10163,14 @@ function PileRegistryView({
 
                   {/* Pile input table */}
                   <div>
-                    <label style={{ display:'block', fontSize:10, fontWeight:800, color:'#64748b', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6 }}>
-                      Dán danh sách tên cọc
-                    </label>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                      <div style={{ width:3, height:18, borderRadius:2, background:mt2.accent }} />
+                      <label style={{ display:'block', fontSize:11, fontWeight:900, color:'#334155', textTransform:'uppercase', letterSpacing:'1px' }}>
+                        Danh sách tên cọc
+                      </label>
+                    </div>
                     <p style={{ fontSize:11, color:'#94a3b8', marginBottom:12, lineHeight:1.5 }}>
-                      Mẹo: Bạn có thể copy danh sách tên cọc từ Excel và dán trực tiếp vào ô bên dưới.
+                      💡 Mẹo: Copy danh sách tên cọc từ Excel và dán thẳng vào ô bên dưới.
                     </p>
                     <div style={{
                       border:`1.5px solid #e2e8f0`, borderRadius:12,
@@ -10175,17 +10178,13 @@ function PileRegistryView({
                       boxShadow:'0 1px 4px rgba(0,0,0,0.05)'
                     }}>
                       {/* Table header */}
-                      <div style={{ display:'grid', gridTemplateColumns:'36px 1fr 110px', background:mt2.accentLight, borderBottom:`1px solid ${mt2.accentBorder}` }}>
-                        <div style={{ padding:'7px 0', textAlign:'center', fontSize:9, fontWeight:800, color:mt2.accentText, letterSpacing:'0.5px' }}>#</div>
-                        <div style={{ padding:'7px 12px', fontSize:9, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px' }}>Tên cọc</div>
-                        <div style={{ padding:'7px 10px', fontSize:9, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'0.5px', borderLeft:`1px solid ${mt2.accentBorder}` }}>
-                          Đường kính
-                          <span style={{ fontSize:8, fontWeight:600, color:mt2.accentText, opacity:0.6, marginLeft:4 }}>Ctrl+D</span>
-                        </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'36px 1fr', background:mt2.accentLight, borderBottom:`1px solid ${mt2.accentBorder}` }}>
+                        <div style={{ padding:'8px 0', textAlign:'center', fontSize:10, fontWeight:800, color:mt2.accentText, letterSpacing:'0.5px' }}>#</div>
+                        <div style={{ padding:'8px 12px', fontSize:10, fontWeight:800, color:mt2.accentText, textTransform:'uppercase', letterSpacing:'1px' }}>Tên cọc</div>
                       </div>
                       <div style={{ maxHeight:320, overflowY:'auto' }}>
                         {gridRows.map((row, i) => (
-                          <div key={i} style={{ display:'grid', gridTemplateColumns:'36px 1fr 110px', borderBottom:'1px solid #f1f5f9' }}>
+                          <div key={i} style={{ display:'grid', gridTemplateColumns:'36px 1fr', borderBottom:'1px solid #f1f5f9' }}>
                             {/* Row number */}
                             <div style={{ background:'#f8fafc', display:'flex', alignItems:'center', justifyContent:'center', borderRight:'1px solid #f1f5f9' }}>
                               <span style={{ fontSize:10, color:'#cbd5e1', fontWeight:600 }}>{i+1}</span>
@@ -10205,28 +10204,6 @@ function PileRegistryView({
                                 border:'none', outline:'none', letterSpacing:'0.3px',
                               }}
                             />
-                            {/* Đường kính dropdown */}
-                            <div style={{ borderLeft:'1px solid #f1f5f9', display:'flex', alignItems:'center', padding:'0 6px' }}>
-                              <select
-                                value={row.diameter}
-                                onChange={e => updateGridCell(i, 'diameter', e.target.value)}
-                                onKeyDown={e => handleGridKeyDown(e, i, 'diameter')}
-                                style={{
-                                  width:'100%', height:28, fontSize:11, fontWeight:600,
-                                  color: row.diameter ? mt2.accentText : '#94a3b8',
-                                  background:'transparent', border:`1px solid ${row.diameter ? mt2.accentBorder : '#e2e8f0'}`,
-                                  borderRadius:6, padding:'0 4px', cursor:'pointer', outline:'none',
-                                  transition:'border-color 0.15s',
-                                }}
-                                onFocus={e => (e.target.style.borderColor = mt2.accent)}
-                                onBlur={e => (e.target.style.borderColor = row.diameter ? mt2.accentBorder : '#e2e8f0')}
-                              >
-                                <option value="">—</option>
-                                {diameterOptions.map(d => (
-                                  <option key={d} value={d}>{d}</option>
-                                ))}
-                              </select>
-                            </div>
                           </div>
                         ))}
                       </div>
