@@ -9688,7 +9688,6 @@ function PileRegistryView({
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
       item: p.item,
-      diameter: p.diameter || '',
       created_at: new Date().toISOString(),
       created_by: currentUser?.fullName || 'Admin',
     }));
