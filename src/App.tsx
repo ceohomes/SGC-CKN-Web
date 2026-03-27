@@ -9349,6 +9349,8 @@ function PdfSplitterView({ onSendToUpload }: { onSendToUpload?: (files: File[]) 
                         {rotations[i]}°
                       </div>
                     )}
+                    {/* Overlay zoom icon khi hover */}
+                    <div className="absolute inset-0 bg-blue-900/0 group-hover:bg-blue-900/20 transition-all flex items-center justify-center pointer-events-none">
                       <div className="opacity-0 group-hover:opacity-100 transition-all transform scale-75 group-hover:scale-100">
                         <div className="bg-white rounded-full p-2.5 shadow-lg">
                           <ZoomInIcon size={18} className="text-blue-600" />
