@@ -9571,13 +9571,31 @@ function PileRegistryView({
     setLoading(true);
     try {
       if (supabase) {
-        const { data, error } = await supabase.from('app_pile_registry').select('*').order('item', { ascending: true });
-        if (error) {
-          console.error('[PileRegistry] Lỗi load cọc từ Supabase:', JSON.stringify(error, null, 2));
-        } else if (data) {
-          console.log(`[PileRegistry] Đã load ${data.length} cọc từ Supabase`);
-          setAllPiles(data);
+        // Fetch toàn bộ, vượt giới hạn 1000 rows mặc định của Supabase
+        const PAGE_SIZE = 1000;
+        let allData: any[] = [];
+        let from = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('app_pile_registry')
+            .select('*')
+            .order('item', { ascending: true })
+            .range(from, from + PAGE_SIZE - 1);
+          if (error) {
+            console.error('[PileRegistry] Lỗi load cọc từ Supabase:', JSON.stringify(error, null, 2));
+            break;
+          }
+          if (data && data.length > 0) {
+            allData = [...allData, ...data];
+            from += PAGE_SIZE;
+            hasMore = data.length === PAGE_SIZE;
+          } else {
+            hasMore = false;
+          }
         }
+        console.log(`[PileRegistry] Đã load tổng ${allData.length} cọc từ Supabase`);
+        setAllPiles(allData);
       } else {
         const all: PileEntry[] = [];
         projects.forEach(p => {
