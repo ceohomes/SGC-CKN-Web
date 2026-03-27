@@ -10639,8 +10639,7 @@ function PileRegistryView({
                         {saveProgress || (mustPickItem ? '⚠️ Chọn hạng mục trước!' : `Lưu ${newCount} cọc`)}
                       </button>
                     );
-                  })()
-                  )}
+                  })()}
                 </div>
               </div>
             );
