@@ -9563,6 +9563,7 @@ function PileRegistryView({
     status: 'new' | 'duplicate_in_paste' | 'duplicate_in_db';
   }[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<'new' | 'existing'>('new');
 
@@ -9687,11 +9688,19 @@ function PileRegistryView({
     }));
     try {
       if (supabase) {
-        const { error } = await supabase.from('app_pile_registry').insert(newEntries);
-        if (error) {
-          console.error("Supabase Insert Error:", error);
-          throw error;
+        const CHUNK_SIZE = 500;
+        const totalChunks = Math.ceil(newEntries.length / CHUNK_SIZE);
+        for (let i = 0; i < newEntries.length; i += CHUNK_SIZE) {
+          const chunk = newEntries.slice(i, i + CHUNK_SIZE);
+          const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+          if (totalChunks > 1) setSaveProgress(`Đang lưu... (${chunkNum}/${totalChunks})`);
+          const { error } = await supabase.from('app_pile_registry').insert(chunk);
+          if (error) {
+            console.error(`Supabase Insert Error (chunk ${i}–${i + chunk.length}):`, error);
+            throw new Error(`Lỗi khi lưu cọc ${i + 1}–${i + chunk.length}: ${error.message}`);
+          }
         }
+        setSaveProgress(null);
       } else {
         const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}`, diameter: '' }));
         const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${addProjectId}`) || '[]');
@@ -9704,10 +9713,12 @@ function PileRegistryView({
         setGridRows(Array.from({ length: 15 }, (_, i) => ({ stt: String(i + 1), name: '', item: '', diameter: '' })));
         setParsePreview(null);
         setSaveMsg('');
+        setSaveProgress(null);
       }, 1500);
     } catch (err: any) {
       console.error("Save error details:", err);
       setSaveMsg(`✗ Lỗi: ${err?.message || 'Không thể lưu dữ liệu'}`);
+      setSaveProgress(null);
     } finally {
       setSaving(false);
     }
@@ -10527,7 +10538,7 @@ function PileRegistryView({
                       }}
                     >
                       {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                      Lưu {newCount} cọc
+                      {saveProgress || `Lưu ${newCount} cọc`}
                     </button>
                   )}
                 </div>
