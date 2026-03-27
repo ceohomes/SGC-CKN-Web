@@ -9587,7 +9587,6 @@ function PileRegistryView({
       pile_code_raw: p.raw,
       pile_code_canonical: p.canonical,
       item: p.item,
-      diameter: p.diameter || '',
       created_at: new Date().toISOString(),
       created_by: currentUser?.fullName || 'Admin',
     }));
@@ -9599,7 +9598,7 @@ function PileRegistryView({
           throw error;
         }
       } else {
-        const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}`, diameter: e.diameter || '' }));
+        const fakes: PileEntry[] = newEntries.map((e, i) => ({ ...e, id: `local_${Date.now()}_${i}`, diameter: '' }));
         const currentLocal = JSON.parse(localStorage.getItem(`pile_registry_${addProjectId}`) || '[]');
         localStorage.setItem(`pile_registry_${addProjectId}`, JSON.stringify([...currentLocal, ...fakes]));
       }
