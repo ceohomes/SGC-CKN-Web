@@ -5,7 +5,7 @@ import {
   Clock, User, Ruler, Layers, Calendar, PenLine,
   Play, RotateCcw, Archive, Info
 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 // ─────────────────────────────────────────
 // Types
@@ -209,6 +209,7 @@ CHỈ trả về JSON sau, KHÔNG có text nào khác, KHÔNG có markdown:
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
+    config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
     contents: [{
       parts: [
         { inlineData: { mimeType, data: imageBase64 } },

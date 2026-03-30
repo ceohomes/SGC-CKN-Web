@@ -27,6 +27,7 @@ import {
   RotateCcw,
   ImageIcon,
   Trash2,
+  Truck,
   ExternalLink,
   Cloud,
   Github,
@@ -112,7 +113,7 @@ const convertPdfToImages = async (data: ArrayBuffer | Blob | File | string): Pro
 
     for (let i = 1; i <= numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2.0 });
+      const viewport = page.getViewport({ scale: 1.5 });
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -121,7 +122,7 @@ const convertPdfToImages = async (data: ArrayBuffer | Blob | File | string): Pro
 
       if (context) {
         await (page as any).render({ canvasContext: context, viewport }).promise;
-        images.push(canvas.toDataURL('image/jpeg', 0.8));
+        images.push(canvas.toDataURL('image/jpeg', 0.7));
       }
     }
     
@@ -293,7 +294,7 @@ const prepareFile = async (file: File): Promise<{ images: { base64: string; mime
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(bitmap, 0, 0, w, h);
       bitmap.close();
-      return canvas.toDataURL('image/jpeg', 0.82);
+      return canvas.toDataURL('image/jpeg', 0.7);
     } catch {
       return new Promise((res, rej) => {
         const reader = new FileReader();
@@ -308,7 +309,7 @@ const prepareFile = async (file: File): Promise<{ images: { base64: string; mime
             canvas.width = Math.round(img.width * scale);
             canvas.height = Math.round(img.height * scale);
             canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
-            res(canvas.toDataURL('image/jpeg', 0.82));
+            res(canvas.toDataURL('image/jpeg', 0.7));
           };
           img.onerror = rej;
         };
@@ -776,7 +777,7 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
       }
     ],
     config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -3061,6 +3062,12 @@ export default function App() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    if (files.length > 5) {
+      alert("Bạn chỉ được phép tải lên tối đa 5 tệp cùng lúc.");
+      if (e.target) e.target.value = '';
+      return;
+    }
+
     const newFiles: ProcessingFile[] = Array.from(files).map(file => ({
       id: crypto.randomUUID(),
       fileName: file.name,
@@ -3152,7 +3159,7 @@ export default function App() {
 
         // ── Xử lý song song: tất cả file chạy đồng thời (không chờ tuần tự) ──
         // Giới hạn CONCURRENCY = 3 để tránh spam API / quá tải trình duyệt
-        const CONCURRENCY = 3;
+        const CONCURRENCY = 5;
         const fileList = Array.from(files);
         for (let i = 0; i < fileList.length; i += CONCURRENCY) {
           const batch = fileList.slice(i, i + CONCURRENCY);
@@ -5262,7 +5269,7 @@ LƯU Ý:
           model: "gemini-3-flash-preview",
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             responseMimeType: "application/json",
           }
         });
@@ -5331,7 +5338,7 @@ LƯU Ý:
           model: "gemini-3-flash-preview",
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             responseMimeType: "application/json",
           }
         });
@@ -5833,10 +5840,10 @@ LƯU Ý:
 
         {/* Create new project / item / machine panel - only shown in project tab */}
         {activeTab === 'project' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="flex flex-wrap gap-x-12 gap-y-8 items-start mb-10">
             {/* Dự án */}
-            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <div className="flex gap-2">
+            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={newProjectName}
@@ -5857,154 +5864,156 @@ LƯU Ý:
             </div>
 
             {/* Máy khoan */}
-            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newMachineName}
-                  onChange={e => setNewMachineName(e.target.value)}
-                  placeholder="Tên máy khoan..."
-                  disabled={currentUser?.role !== 'admin'}
-                  className={`flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
-                />
-                <button
-                  onClick={handleCreateMachine}
-                  disabled={!newMachineName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
-                >
-                  {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Tạo máy khoan
-                </button>
-              </div>
-              {/* Nút đồng bộ máy khoan từ biên bản */}
-              {(() => {
-                const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
-                const unsynced = [...new Set(
-                  history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
-                )].sort();
-                if (unsynced.length === 0) return null;
-                return (
-                  <div className="mt-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
-                          Phát hiện {unsynced.length} máy khoan từ biên bản chưa được thêm vào danh mục:
-                        </p>
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {unsynced.map(name => (
-                            <span key={name} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">{name}</span>
-                          ))}
-                        </div>
+            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newMachineName}
+                    onChange={e => setNewMachineName(e.target.value)}
+                    placeholder="Tên máy khoan..."
+                    disabled={currentUser?.role !== 'admin'}
+                    className={`flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                  />
+                  <button
+                    onClick={handleCreateMachine}
+                    disabled={!newMachineName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
+                  >
+                    {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    Tạo máy khoan
+                  </button>
+                </div>
+                {/* Nút đồng bộ máy khoan từ biên bản */}
+                {(() => {
+                  const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
+                  const unsynced = [...new Set(
+                    history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
+                  )].sort();
+                  if (unsynced.length === 0) return null;
+                  return (
+                    <div className="mt-1">
+                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
+                        Phát hiện {unsynced.length} máy khoan chưa đồng bộ:
+                      </p>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {unsynced.map(name => (
+                          <span key={name} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">{name}</span>
+                        ))}
                       </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
-                        setIsSavingNewProject(true);
-                        try {
-                          const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
-                            id: crypto.randomUUID(),
-                            projectId: 'global',
-                            name,
-                            createdAt: new Date().toISOString(),
-                            createdBy: currentUser?.username || 'admin',
-                          }));
-                          const updated = [...drillingMachines, ...toAdd];
-                          setDrillingMachines(updated);
-                          localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
-                          if (supabase) {
-                            await supabase.from('app_drilling_machines').insert(
-                              toAdd.map(m => ({ id: m.id, project_id: (m.projectId && m.projectId !== 'global') ? m.projectId : null, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
-                            );
+                      <button
+                        onClick={async () => {
+                          if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
+                          setIsSavingNewProject(true);
+                          try {
+                            const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
+                              id: crypto.randomUUID(),
+                              projectId: 'global',
+                              name,
+                              createdAt: new Date().toISOString(),
+                              createdBy: currentUser?.username || 'admin',
+                            }));
+                            const updated = [...drillingMachines, ...toAdd];
+                            setDrillingMachines(updated);
+                            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+                            if (supabase) {
+                              await supabase.from('app_drilling_machines').insert(
+                                toAdd.map(m => ({ id: m.id, project_id: (m.projectId && m.projectId !== 'global') ? m.projectId : null, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
+                              );
+                            }
+                            showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
+                          } catch (e: any) {
+                            showToast(`Lỗi: ${e?.message}`, 'error');
+                          } finally {
+                            setIsSavingNewProject(false);
                           }
-                          showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
-                        } catch (e: any) {
-                          showToast(`Lỗi: ${e?.message}`, 'error');
-                        } finally {
-                          setIsSavingNewProject(false);
-                        }
-                      }}
-                      disabled={isSavingNewProject}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white bg-orange-500 hover:bg-orange-600 transition-all disabled:opacity-50 whitespace-nowrap"
-                    >
-                      {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                      Đồng bộ {unsynced.length} máy khoan vào danh mục
-                    </button>
-                  </div>
-                );
-              })()}
+                        }}
+                        disabled={isSavingNewProject}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-white bg-orange-500 hover:bg-orange-600 transition-all disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {isSavingNewProject ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        Đồng bộ {unsynced.length} máy khoan
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Đường kính */}
-            <div className={`lg:col-span-3 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={newDiameterName}
-                  onChange={e => setNewDiameterName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleCreateDiameter()}
-                  placeholder="Đường kính cọc (VD: D800)..."
-                  disabled={currentUser?.role !== 'admin'}
-                  className={`px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white w-52 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
-                />
-                <button
-                  onClick={handleCreateDiameter}
-                  disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
-                >
-                  <Save size={14} />
-                  Tạo đường kính
-                </button>
+            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newDiameterName}
+                    onChange={e => setNewDiameterName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateDiameter()}
+                    placeholder="Đường kính cọc (VD: D800)..."
+                    disabled={currentUser?.role !== 'admin'}
+                    className={`px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white w-52 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                  />
+                  <button
+                    onClick={handleCreateDiameter}
+                    disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
+                  >
+                    <Save size={14} />
+                    Tạo đường kính
+                  </button>
+                </div>
                 {/* Badges inline — click để sửa tên */}
-                {(() => {
-                  const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
-                  const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                  const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
-                  const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
-                  const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
-                    const na = parseInt(a.replace(/\D/g, '')) || 0;
-                    const nb = parseInt(b.replace(/\D/g, '')) || 0;
-                    return na - nb;
-                  });
-                  return allDiameters.map(d => {
-                    const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
-                    const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
-                    return (
-                      <DiameterBadge
-                        key={d}
-                        value={d}
-                        count={count}
-                        isFromHistory={isFromHistory}
-                        isAdmin={currentUser?.role === 'admin'}
-                        onRename={async (oldVal, newVal) => {
-                          if (!newVal.trim() || newVal.trim() === oldVal) return;
-                          const trimmed = newVal.trim();
-                          // Cập nhật history (Supabase)
-                          if (supabase) {
-                            const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
-                            for (const res of affected) {
-                              await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
+                <div className="flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
+                    const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                    const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
+                    const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
+                    const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
+                      const na = parseInt(a.replace(/\D/g, '')) || 0;
+                      const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                      return na - nb;
+                    });
+                    return allDiameters.map(d => {
+                      const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
+                      const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
+                      return (
+                        <DiameterBadge
+                          key={d}
+                          value={d}
+                          count={count}
+                          isFromHistory={isFromHistory}
+                          isAdmin={currentUser?.role === 'admin'}
+                          onRename={async (oldVal, newVal) => {
+                            if (!newVal.trim() || newVal.trim() === oldVal) return;
+                            const trimmed = newVal.trim();
+                            // Cập nhật history (Supabase)
+                            if (supabase) {
+                              const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
+                              for (const res of affected) {
+                                await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
+                              }
                             }
-                          }
-                          setHistory((prev: any[]) => prev.map(r =>
-                            (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase()
-                              ? { ...r, diameter: trimmed } : r
-                          ));
-                          // Cập nhật localStorage nếu có
-                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                          const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
-                          localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
-                          showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
-                        }}
-                        onDelete={isFromHistory ? undefined : () => {
-                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                          localStorage.setItem('sgc_diameter_list', JSON.stringify(stored.filter(x => x.toLowerCase() !== d.toLowerCase())));
-                          setNewDiameterName(p => p + '');
-                        }}
-                      />
-                    );
-                  });
-                })()}
+                            setHistory((prev: any[]) => prev.map(r =>
+                              (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase()
+                                ? { ...r, diameter: trimmed } : r
+                            ));
+                            // Cập nhật localStorage nếu có
+                            const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                            const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
+                            localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
+                            showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
+                          }}
+                          onDelete={isFromHistory ? undefined : () => {
+                            const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                            localStorage.setItem('sgc_diameter_list', JSON.stringify(stored.filter(x => x.toLowerCase() !== d.toLowerCase())));
+                            setNewDiameterName(p => p + '');
+                          }}
+                        />
+                      );
+                    });
+                  })()}
+                </div>
               </div>
             </div>
           </div>
@@ -6274,9 +6283,18 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-500 shadow-md overflow-hidden">
-            <div className="flex gap-0 divide-x divide-slate-500">
-              {cols.map((colRows, colIdx) => (
+          <div className="space-y-6">
+            {activeTab === 'project' && (
+              <div className="bg-blue-900 px-6 py-3 rounded-2xl flex items-center gap-3 shadow-lg">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Layers size={20} className="text-white" />
+                </div>
+                <h3 className="text-sm font-black text-white uppercase tracking-[0.2em]">Danh sách dự án</h3>
+              </div>
+            )}
+            <div className="bg-white rounded-2xl border border-slate-500 shadow-md overflow-hidden">
+              <div className="flex gap-0 divide-x divide-slate-500">
+                {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
                     <thead>
@@ -6458,7 +6476,8 @@ LƯU Ý:
               ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
         {/* ── Bảng Kanban Máy Khoan ── */}
         {activeTab === 'project' && (() => {
@@ -6557,12 +6576,18 @@ LƯU Ý:
           const projectColumns = projects;
 
           return (
-            <div className="mt-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            <div className="mt-12 space-y-6">
+              <div className="bg-blue-900 px-6 py-3 rounded-2xl flex items-center gap-3 shadow-lg">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Truck size={20} className="text-white" />
+                </div>
+                <h3 className="text-sm font-black text-white uppercase tracking-[0.2em]">Phân bổ máy khoan theo dự án</h3>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-5 bg-amber-500 rounded-full" />
-                  <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
-                  <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
+                  <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Kéo thả để phân bổ</h3>
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -7579,14 +7604,14 @@ LƯU Ý:
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
                     {/* Files đang xử lý */}
-                    {processingFiles.map((file) => (
+                    {processingFiles.map((file, idx) => (
                       <div
                         key={file.id}
                         onClick={() => file.status === 'completed' && file.result && setCurrentResult(file.result)}
                         className={cn(
-                          "p-4 rounded-2xl transition-all group relative border border-transparent",
+                          "p-2.5 rounded-xl transition-all group relative border border-transparent",
                           file.status === 'completed' && file.result
                             ? currentResult?.id === file.result?.id
                               ? "bg-blue-600 border-blue-400/30 cursor-pointer shadow-lg"
@@ -7594,46 +7619,43 @@ LƯU Ý:
                             : "bg-blue-900/30 cursor-default"
                         )}
                       >
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3">
                           <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
+                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors text-[11px] font-bold",
                             file.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" :
                             file.status === 'error' ? "bg-red-500/20 text-red-400" :
                             "bg-blue-800 text-blue-300"
                           )}>
-                            {file.status === 'completed' ? <CheckCircle2 size={18} /> :
-                             file.status === 'error' ? <AlertCircle size={18} /> :
-                             file.status === 'processing' ? <Loader2 size={18} className="animate-spin" /> :
-                             <FileText size={18} />}
+                            {file.status === 'completed' ? <CheckCircle2 size={14} /> :
+                             file.status === 'error' ? <AlertCircle size={14} /> :
+                             file.status === 'processing' ? <Loader2 size={14} className="animate-spin" /> :
+                             <span>{idx + 1}</span>}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-bold text-white truncate">{file.fileName}</p>
-                              {file.status === 'completed' && !currentResult && (
-                                <span className="text-[9px] font-black text-orange-400/80 uppercase tracking-tighter bg-orange-500/10 px-1.5 py-0.5 rounded">Chờ lưu</span>
-                              )}
+                              <p className="text-[12px] font-bold text-white truncate">{file.fileName}</p>
                             </div>
                             <p className={cn(
-                              "text-[11px] font-medium mt-1",
+                              "text-[10px] font-medium leading-tight",
                               file.status === 'completed' ? "text-emerald-400" :
                               file.status === 'error' ? "text-red-400" :
                               file.status === 'processing' ? "text-orange-400" : "text-blue-400"
                             )}>
-                              {file.status === 'pending' ? 'Đang chờ...' :
-                               file.status === 'processing' ? `Phân tích... ${file.progress}%` :
-                               file.status === 'completed' ? 'Chờ lưu' : 'Lỗi xử lý'}
+                              {file.status === 'pending' ? 'Chờ...' :
+                               file.status === 'processing' ? `Phân tích ${file.progress}%` :
+                               file.status === 'completed' ? 'Chờ lưu' : 'Lỗi'}
                             </p>
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); removeProcessingFile(file.id); }}
-                            className="opacity-0 group-hover:opacity-100 p-2 text-blue-400 hover:text-red-400 transition-all"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 text-blue-400 hover:text-red-400 transition-all"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={12} />
                           </button>
                         </div>
                         {(file.status === 'processing' || file.status === 'pending') && (
-                          <div className="mt-3 h-1.5 bg-blue-950 rounded-full overflow-hidden">
-                            <div className="h-full bg-orange-500 transition-all duration-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]" style={{ width: `${file.progress}%` }} />
+                          <div className="mt-2 h-1 bg-blue-950 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 transition-all duration-500" style={{ width: `${file.progress}%` }} />
                           </div>
                         )}
                       </div>
@@ -7655,13 +7677,6 @@ LƯU Ý:
                       )}
                       
                       <div className="flex gap-3">
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/40"
-                        >
-                          <Upload size={14} />
-                          Thêm file
-                        </button>
                         {processingFiles.every(f => f.status === 'completed' || f.status === 'error') && processingFiles.length > 0 && (
                           <button
                             onClick={() => {
@@ -7672,7 +7687,7 @@ LƯU Ý:
                               setPendingResults([]);
                               setCurrentResult(null);
                             }}
-                            className="px-4 py-3 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                            className="w-full py-3 bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
                           >
                             Xóa hết
                           </button>
