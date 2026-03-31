@@ -27,7 +27,6 @@ import {
   RotateCcw,
   ImageIcon,
   Trash2,
-  Truck,
   ExternalLink,
   Cloud,
   Github,
@@ -108,12 +107,12 @@ const convertPdfToImages = async (data: ArrayBuffer | Blob | File | string): Pro
 
     const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
-    const numPages = pdf.numPages;
+    const numPages = Math.min(pdf.numPages, 10); // Giới hạn 10 trang để tránh quá tải
     const images: string[] = [];
 
     for (let i = 1; i <= numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 1.5 });
+      const viewport = page.getViewport({ scale: 2.0 });
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -122,7 +121,7 @@ const convertPdfToImages = async (data: ArrayBuffer | Blob | File | string): Pro
 
       if (context) {
         await (page as any).render({ canvasContext: context, viewport }).promise;
-        images.push(canvas.toDataURL('image/jpeg', 0.7));
+        images.push(canvas.toDataURL('image/jpeg', 0.95));
       }
     }
     
@@ -145,12 +144,14 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // Helper: Lấy giá trị hiển thị cho cột "Địa chất thực tế"
-// Loại A: actualGeology là số (1,2,3) → hiển thị số đó
-// Loại B: actualGeology là chữ dài → hiển thị designLayerCode (STT tự đánh)
+// Loại A: actualGeology là mã ngắn (VD: 2, 2(M1), TK) → hiển thị mã đó
+// Loại B: actualGeology là mô tả dài → hiển thị designLayerCode (STT 1, 2, 3...)
 function getGeoDisplay(layer: { actualGeology?: string; designLayerCode?: string }): string {
   const geo = (layer.actualGeology || '').trim();
   const code = (layer.designLayerCode || '').trim();
-  if (/^\d+$/.test(geo)) return geo;
+  // Nếu geo ngắn (dưới 20 ký tự) thì coi là mã địa chất thực tế
+  if (geo.length > 0 && geo.length < 20) return geo;
+  // Ngược lại dùng code (STT)
   if (code) return code;
   return geo;
 }
@@ -169,8 +170,8 @@ function normalizeLayerName(s: string): string {
 function stripLayerPrefix(desc: string): string {
   if (!desc) return desc;
   // Khớp: số (1 hoặc nhiều chữ số) theo sau là dấu chấm/gạch/ngoặc rồi khoảng trắng tuỳ ý
-  // VD: "2.", "11.", "2. ", "2 - ", "2) "
-  return desc.replace(/^\d+[\.\-\)]\s*/, '').trim();
+  // VD: "2.", "11.", "2. ", "2 - ", "2) ", "Lớp 2: ", "Lớp 2. "
+  return desc.replace(/^(Lớp\s+)?\d+[\.\-\):\s]*\s*/i, '').trim();
 }
 
 // ── Ép kiểu an toàn về number — tránh lỗi "toFixed is not a function" ──
@@ -285,7 +286,7 @@ const prepareFile = async (file: File): Promise<{ images: { base64: string; mime
   const compressImage = async (f: File): Promise<string> => {
     try {
       const bitmap = await createImageBitmap(f);
-      const MAX = 2000;
+      const MAX = 3500;
       const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
       const w = Math.round(bitmap.width * scale);
       const h = Math.round(bitmap.height * scale);
@@ -294,7 +295,7 @@ const prepareFile = async (file: File): Promise<{ images: { base64: string; mime
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(bitmap, 0, 0, w, h);
       bitmap.close();
-      return canvas.toDataURL('image/jpeg', 0.7);
+      return canvas.toDataURL('image/jpeg', 0.95);
     } catch {
       return new Promise((res, rej) => {
         const reader = new FileReader();
@@ -303,13 +304,13 @@ const prepareFile = async (file: File): Promise<{ images: { base64: string; mime
           const img = new Image();
           img.src = ev.target?.result as string;
           img.onload = () => {
-            const MAX = 2000;
+            const MAX = 3500;
             const scale = Math.min(1, MAX / Math.max(img.width, img.height));
             const canvas = document.createElement('canvas');
             canvas.width = Math.round(img.width * scale);
             canvas.height = Math.round(img.height * scale);
             canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
-            res(canvas.toDataURL('image/jpeg', 0.7));
+            res(canvas.toDataURL('image/jpeg', 0.95));
           };
           img.onerror = rej;
         };
@@ -356,9 +357,11 @@ interface ProcessingFile {
   id: string;
   fileName: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
+  statusText?: string;
   progress: number;
   result?: ExtractionResult;
   error?: string;
+  originalFile?: File; // Lưu lại để thử lại
 }
 
 type AppSheet = 'upload' | 'summary' | 'pdf-splitter' | 'geology' | 'account-config' | 'pile-registry';
@@ -663,12 +666,38 @@ const isQuotaError = (err: any): boolean => {
     msg.includes('too many requests') ||
     msg.includes('429') ||
     msg.includes('ratelimitexceeded') ||
+    msg.includes('exhausted') ||
     (err?.status === 429) ||
     (err?.code === 429)
   );
 };
 
-const extractDataFromFile = async (images: { base64: string; mimeType: string }[], userApiKey?: string, diameterList?: string[]): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
+// Kiểm tra lỗi tạm thời (có thể thử lại được)
+const isTransientError = (err: any): boolean => {
+  const msg = (err?.message || err?.toString() || '').toLowerCase();
+  return (
+    msg.includes('500') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('internal error') ||
+    msg.includes('service unavailable') ||
+    msg.includes('deadline exceeded') ||
+    msg.includes('timeout') ||
+    msg.includes('fetch failed') ||
+    msg.includes('network error') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('json') || // Lỗi parse JSON cũng coi là tạm thời để thử lại
+    msg.includes('unexpected token')
+  );
+};
+
+// Kiểm tra lỗi an toàn (safety filters)
+const isSafetyError = (err: any): boolean => {
+  const msg = (err?.message || err?.toString() || '').toLowerCase();
+  return msg.includes('safety') || msg.includes('blocked') || msg.includes('finish_reason_safety') || msg.includes('candidate was blocked');
+};
+
+const extractDataFromFile = async (images: { base64: string; mimeType: string }[], userApiKey?: string, diameterList?: string[], modelName: string = "gemini-3-flash-preview"): Promise<Omit<ExtractionResult, 'id' | 'timestamp'>> => {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("API Key không tồn tại. Vui lòng cấu hình trong phần Cài đặt.");
   
@@ -689,7 +718,7 @@ const extractDataFromFile = async (images: { base64: string; mimeType: string }[
   });
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: modelName,
     contents: [
       {
         parts: [
@@ -702,8 +731,17 @@ Nhiệm vụ của bạn là trích xuất dữ liệu từ ${images.length} hì
 QUY TẮC TỔNG QUÁT:
 1. TỔNG HỢP ĐA TRANG: Kết hợp dữ liệu từ TẤT CẢ các trang. Nếu bảng kéo dài qua nhiều trang, hãy nối các dòng lại theo đúng thứ tự thời gian và độ sâu.
 2. KHÔNG HỎI LẠI: Trả về kết quả dưới dạng JSON duy nhất, không có văn bản giải thích bên ngoài.
-3. XỬ LÝ CHỮ VIẾT TAY: Đây là dữ liệu viết tay, hãy cực kỳ cẩn thận với các con số dễ nhầm lẫn (0/1, 1/7, 4/9, 5/8, 2/7).
-4. TÍNH LOGIC: Dữ liệu phải tăng dần về thời gian và độ sâu. Nếu có mâu thuẫn, hãy ưu tiên con số rõ nét nhất và ghi chú vào trường "notes".
+6. TRÍCH XUẤT TẤT CẢ CÁC DÒNG: Mỗi dòng trong bảng viết tay PHẢI tương ứng với một đối tượng trong mảng 'layers'. Tuyệt đối không được bỏ sót bất kỳ dòng nào, ngay cả khi chúng có cùng số hiệu lớp (ví dụ: 3(M3), 3(M4), 3(M5)... là các dòng riêng biệt).
+7. KHÔNG GỘP DÒNG: Tuyệt đối không được gộp các dòng có cùng số hiệu lớp hoặc cùng mô tả địa chất. Mỗi dòng vật lý trong biên bản phải là một dòng dữ liệu trong JSON.
+8. ĐẾM SỐ DÒNG: Trước khi xuất JSON, hãy đếm tổng số dòng trong bảng viết tay và so sánh với số lượng đối tượng trong mảng 'layers'. Chúng phải khớp nhau hoàn toàn.
+9. XỬ LÝ CHỮ VIẾT TAY: Đây là dữ liệu viết tay, hãy cực kỳ cẩn thận với các con số dễ nhầm lẫn (0/1, 1/7, 4/9, 5/8, 2/7).
+10. TÍNH LOGIC: Dữ liệu phải tăng dần về thời gian và độ sâu. Nếu có mâu thuẫn, hãy ưu tiên con số rõ nét nhất.
+11. ĐIỀN TIẾP DỮ LIỆU: Nếu cột "Ngày" hoặc "Lớp thiết kế" chỉ ghi ở dòng đầu và để trống các dòng sau, hãy tự động điền tiếp giá trị đó xuống cho đến khi có giá trị mới.
+12. KHÔNG ĐƯỢC TỰ Ý DỪNG LẠI: Phải trích xuất cho đến khi hết bảng dữ liệu trong biên bản. Nếu bảng có 37 dòng, JSON phải có 37 đối tượng trong mảng 'layers'. Tuyệt đối không được tóm tắt hoặc bỏ qua các dòng ở cuối bảng.
+13. PHÂN BIỆT SỐ 3 VÀ CHỮ TK: Hãy cực kỳ cẩn thận khi phân biệt số '3' và chữ 'TK' (Thiết kế) trong cột Địa chất thực tế. Nhìn vào các dòng xung quanh để đảm bảo tính nhất quán của số hiệu lớp.
+14. KIỂM TRA HẬU TỐ: Các hậu tố trong ngoặc (ví dụ: M1, M2, M3...) thường là một chuỗi liên tục. Nếu hậu tố là liên tục (ví dụ: M6 tiếp theo là M7), hãy kiểm tra kỹ xem số hiệu lớp phía trước có thực sự thay đổi hay không (ví dụ: 3(M6) tiếp theo là 3(M7) chứ không phải TK(M7)).
+15. TÍNH LIÊN TỤC CỦA LỚP: Một lớp địa chất thường kéo dài qua nhiều dòng liên tiếp. Nếu các dòng đang là số '3' và các cột khác (Độ sâu, Thời gian) vẫn đang tiếp diễn bình thường, hãy cẩn thận khi thấy một ký tự lạ như 'TK' xuất hiện đột ngột giữa chừng. Hãy ưu tiên tính nhất quán của số hiệu lớp.
+16. KHÔNG ĐƯỢC ĐOÁN MÔ TẢ THEO ĐỘ SÂU: Đối với Loại A, mô tả địa chất thiết kế PHẢI được lấy từ bảng tra cứu dựa trên số hiệu lớp (ví dụ: lớp 3 thì phải lấy mô tả của lớp 3). Tuyệt đối không được tự ý thay đổi mô tả sang lớp 4 hay lớp khác chỉ vì độ sâu đã vượt quá phạm vi thiết kế. Dữ liệu thực tế có thể sai lệch so với thiết kế, nhiệm vụ của bạn là trích xuất trung thực những gì ghi trên biên bản.
 
 ════════════════════════════════════════════════════
 BƯỚC 0: PHÂN LOẠI BIÊN BẢN (CỰC KỲ QUAN TRỌNG)
@@ -728,6 +766,7 @@ BƯỚC 1: TRÍCH XUẤT HEADER (THÔNG TIN CHUNG)
 - item: Hạng mục (PHẢI lấy đúng dòng "Hạng mục", không lấy nhầm "Dự án").
 - pileId: Số hiệu cọc (ví dụ: "C9", "17-05").
 - reportNumber: Tên máy khoan (Drilling Machine). Ví dụ: "SANY 285", "XCMG 360", "Bauer BG28". Đọc từ header biên bản.
+- designLayerMap: Trích xuất bảng "Căn cứ Hồ sơ BVBPCT" hoặc "Lớp thiết kế". Key là số hiệu lớp (ví dụ: "2", "3", "TK"), Value là mô tả địa chất thiết kế tương ứng.
 - diameter: Đường kính cọc. Tham chiếu danh sách đường kính đã chuẩn hóa: ${diameterList && diameterList.length > 0 ? diameterList.join(", ") : "không có danh sách"}. Nếu giá trị trên biên bản khớp hoặc gần khớp (ví dụ: D800 ≈ 800), hãy dùng giá trị trong danh sách. Nếu không khớp, đọc trực tiếp từ biên bản.
 - constructionStart / constructionEnd: Thời gian bắt đầu/kết thúc tổng thể (HH:mm DD/MM/YYYY).
 - casingElevation: Cao độ đỉnh casing (chỉ có ở Loại B). Đọc số viết tay (ví dụ: "0,71").
@@ -737,9 +776,9 @@ BƯỚC 2: CHI TIẾT CÁC LỚP ĐỊA TẦNG
 ════════════════════════════════════════════════════
 
 --- ĐỐI VỚI LOẠI A ---
-- actualGeology: Lấy SỐ hiệu lớp (1, 2, 3...).
-- designLayerCode: Giống actualGeology.
-- layerDesign: Tra cứu mô tả từ bảng "Căn cứ Hồ sơ..." tương ứng với số hiệu.
+- actualGeology: Lấy ĐẦY ĐỦ chuỗi ký tự trong cột "Địa chất thực tế" (ví dụ: "2(M1)", "3(M3)", "TK(M17)"). KHÔNG ĐƯỢC BỎ PHẦN TRONG NGOẶC.
+- designLayerCode: Lấy PHẦN SỐ/CHỮ ĐẦU TIÊN trước dấu ngoặc (ví dụ: "2", "3", "TK"). Dùng để tra cứu bảng thiết kế.
+- layerDesign: Tra cứu mô tả từ bảng "Căn cứ Hồ sơ..." tương ứng với designLayerCode.
 - elevationFrom / elevationTo: Lấy số ÂM trong bảng.
 
 --- ĐỐI VỚI LOẠI B ---
@@ -778,6 +817,7 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
     ],
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      maxOutputTokens: 8192,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -794,6 +834,7 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
             type: Type.OBJECT,
             description: "Bảng tra cứu: key = designLayerCode (\"1\",\"2\"...), value = mô tả địa chất thiết kế"
           },
+          reportType: { type: Type.STRING, description: "Loại biên bản: 'A' hoặc 'B'" },
           layers: {
             type: Type.ARRAY,
             items: {
@@ -810,10 +851,10 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
                 elevationTo: { type: Type.NUMBER, description: "Loại B: Tích lũy CUỐI lớp (số LỚN). Loại A: Cao độ CUỐI lớp (số ÂM)." },
                 lengthMeters: { type: Type.NUMBER, description: "Chiều dài lớp (m). Đọc từ cột 'Chiều dài' (Loại B) hoặc tự tính (Loại A). VD: 1,6 hoặc 10,2." },
                 cumulativeDepth: { type: Type.NUMBER, description: "Loại B: Số LỚN (tích lũy từ đỉnh casing đến cuối lớp này). VD: 2,78 hoặc 12,96. Loại A: để 0." },
-                actualGeology: { type: Type.STRING, description: "Số hiệu lớp địa chất thực tế (ví dụ: \"1\", \"2\"). Tuyệt đối không lấy mô tả chữ." },
+                actualGeology: { type: Type.STRING, description: "Số hiệu lớp (Loại A) hoặc mô tả chữ (Loại B). Tuyệt đối không để trống." },
                 notes: { type: Type.STRING, description: "Ghi chú cho lớp địa chất này (nếu có)" }
               },
-              required: ["layerNumber", "designLayerCode", "layerDesign", "timeFrom", "timeTo", "dateFrom", "dateTo", "elevationFrom", "elevationTo", "actualGeology"]
+              required: ["layerNumber", "designLayerCode", "layerDesign", "elevationFrom", "elevationTo", "actualGeology"]
             }
           },
           notes: { type: Type.STRING, description: "Ghi chú tổng hợp cho toàn bộ biên bản" },
@@ -890,10 +931,11 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
     });
   };
 
-  // Phát hiện Loại B: designLayerMap rỗng VÀ actualGeology lớp đầu là chữ (không phải số thuần)
+  // Phát hiện Loại B: Ưu tiên dùng reportType từ AI, nếu không có thì fallback logic cũ
+  const aiReportType = rawData.reportType?.toString().toUpperCase();
   const hasVlookupMap = Object.keys(vlookupMap).length > 0;
   const firstLayerGeo = (rawData.layers?.[0]?.actualGeology || '').toString().trim();
-  const isTypeB = !hasVlookupMap && firstLayerGeo.length > 2 && !/^\d+$/.test(firstLayerGeo);
+  const isTypeB = aiReportType === 'B' || (!aiReportType && !hasVlookupMap && firstLayerGeo.length > 2 && !/^\d+$/.test(firstLayerGeo));
 
   // ── Loại B: Tính tổng tích lũy từ rawData để có thể xác nhận chéo ──
   // typeBCumulative[i] = tổng chiều dài tích lũy đến hết lớp i (theo rawData)
@@ -911,7 +953,10 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
 
   const processedLayers = fixDroppedHourDigit(rawData.layers).map((layer: any, idx: number) => {
     const geoCode = (layer.actualGeology || '').toString().trim();
-    
+    // Trích xuất mã cơ bản để tra cứu (VD: "2(M1)" -> "2", "3 M5)" -> "3", "TK(M17)" -> "TK")
+    // Dùng regex để lấy phần chữ/số đầu tiên trước dấu cách hoặc dấu ngoặc
+    const baseGeoCode = geoCode.split(/[\s(]/)[0].trim();
+
     if (isTypeB) {
       // Loại B: actualGeology là mô tả chữ → layerDesign = actualGeology (không VLOOKUP)
       if (!layer.layerDesign || layer.layerDesign.trim().length < 3) {
@@ -923,11 +968,24 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
       layer.designLayerCode = String(idx + 1);
       layer.layerNumber = idx + 1;
     } else {
-      // Loại A: VLOOKUP từ designLayerMap
+      // Loại A: VLOOKUP từ designLayerMap dùng baseGeoCode
+      // Ưu tiên khớp chính xác geoCode, sau đó mới thử baseGeoCode, sau đó thử tìm key là prefix
+      let foundDesign = '';
       if (geoCode && vlookupMap[geoCode]) {
-        layer.layerDesign = vlookupMap[geoCode];
+        foundDesign = vlookupMap[geoCode];
+      } else if (baseGeoCode && vlookupMap[baseGeoCode]) {
+        foundDesign = vlookupMap[baseGeoCode];
+      } else {
+        // Tìm key trong vlookupMap là phần bắt đầu của geoCode (VD: "3" là bắt đầu của "3M5")
+        const matchingKey = Object.keys(vlookupMap).find(k => geoCode.startsWith(k));
+        if (matchingKey) foundDesign = vlookupMap[matchingKey];
+      }
+
+      if (foundDesign) {
+        layer.layerDesign = foundDesign;
         layer.designLayerCode = geoCode;
       }
+      
       // ⭐ Bỏ số thứ tự đầu mô tả cho Loại A (VD: "2.Sét pha..." → "Sét pha...")
       if (layer.layerDesign) {
         layer.layerDesign = stripLayerPrefix(layer.layerDesign);
@@ -2113,6 +2171,14 @@ export default function App() {
     }
   };
 
+  // ── P.TQT permission helpers ──
+  // P.TQT: xem toàn bộ + xuất Excel, KHÔNG được thêm/sửa/xóa dữ liệu
+  const isPTQT = currentUser?.role === 'P. TQT';
+  const isAdmin = currentUser?.role === 'admin';
+  const isQSQC = currentUser?.role === 'QS-QC';
+  const canEdit = isAdmin || isQSQC; // P.TQT KHÔNG được sửa/xóa
+  const canExport = isAdmin || isQSQC || isPTQT; // P.TQT được xuất Excel
+
   const handleStopImpersonation = () => {
     if (originalAdmin) {
       setCurrentUser(originalAdmin);
@@ -2156,6 +2222,7 @@ export default function App() {
   const [filterMachine, setFilterMachine] = useState('');
   const [showMachineDropdown, setShowMachineDropdown] = useState(false);
   const machineDropdownRef = useRef<HTMLDivElement>(null);
+  const [sortPileId, setSortPileId] = useState<'none' | 'asc' | 'desc'>('none');
 
   // Đóng dropdown khi click ngoài
   useEffect(() => {
@@ -2926,34 +2993,71 @@ export default function App() {
       startIdx = (startIdx + 1) % geminiApiKeys.length;
     }
 
+    const modelsToTry = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview"];
+
     for (let attempt = 0; attempt < geminiApiKeys.length; attempt++) {
       const idx = (startIdx + attempt) % geminiApiKeys.length;
       const key = geminiApiKeys[idx]?.trim();
-      if (!key || tried.has(idx)) continue;
+      if (!key || (attempt > 0 && tried.has(idx))) continue;
       tried.add(idx);
 
-      try {
-        console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1}`);
-        const _diaFromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-        const _diaFromHistory = [...new Set(history.map((r: any) => (r.diameter || '').trim()).filter(Boolean))];
-        const diameterList: string[] = [...new Set([..._diaFromHistory, ..._diaFromStorage])];
-        const result = await extractDataFromFile(images, key, diameterList);
-        // Thành công — cập nhật activeKeyIndex
-        if (idx !== activeKeyIndex) {
-          setActiveKeyIndex(idx);
-          setUserApiKey(key);
-          console.log(`[KeyRotation] Đã chuyển sang Key #\${idx + 1} thành công`);
+      // Thử từng model cho mỗi key
+      for (const modelName of modelsToTry) {
+        // Thử lại tối đa 3 lần cho mỗi model/key nếu gặp lỗi tạm thời
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            if (retry > 0) {
+              console.log(`[Retry] Thử lại lần \${retry} cho Key #\${idx + 1} với model \${modelName}...`);
+              await new Promise(res => setTimeout(res, 2000 * retry)); // Chờ một chút trước khi thử lại
+            }
+            
+            console.log(`[KeyRotation] Đang dùng API Key #\${idx + 1} với model \${modelName}`);
+            const _diaFromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+            const _diaFromHistory = [...new Set(history.map((r: any) => (r.diameter || '').trim()).filter(Boolean))];
+            const diameterList: string[] = [...new Set([..._diaFromHistory, ..._diaFromStorage])];
+            const result = await extractDataFromFile(images, key, diameterList, modelName);
+            
+            // Thành công — cập nhật activeKeyIndex
+            if (idx !== activeKeyIndex) {
+              setActiveKeyIndex(idx);
+              setUserApiKey(key);
+              console.log(`[KeyRotation] Đã chuyển sang Key #\${idx + 1} thành công`);
+            }
+            return result;
+          } catch (err: any) {
+            lastError = err;
+            
+            if (isQuotaError(err)) {
+              console.warn(`[KeyRotation] Key #\${idx + 1} hết quota cho model \${modelName}, thử model tiếp theo hoặc key tiếp theo...`);
+              // Nếu là lỗi quota, có thể model khác vẫn còn quota hoặc key khác
+              if (modelName === modelsToTry[modelsToTry.length - 1]) {
+                setExhaustedKeys(prev => new Set(prev).add(idx));
+                break; // Hết model cho key này, chuyển sang key tiếp theo
+              }
+              continue; // Thử model tiếp theo cho cùng key
+            }
+
+            if (isSafetyError(err)) {
+              console.warn(`[KeyRotation] Key #\${idx + 1} bị chặn bởi bộ lọc an toàn cho model \${modelName}. Thử model khác...`);
+              if (modelName === modelsToTry[modelsToTry.length - 1]) {
+                break; // Chuyển sang key tiếp theo
+              }
+              continue; // Thử model tiếp theo (có thể model khác lỏng hơn)
+            }
+            
+            if (isTransientError(err) && retry < 1) {
+              console.warn(`[Retry] Lỗi tạm thời trên Key #\${idx + 1} (\${modelName}): \${err.message || err}. Đang thử lại...`);
+              continue; // Thử lại với cùng model/key
+            }
+            
+            // Nếu lỗi không phải quota và đã hết lượt retry cho model này
+            console.error(`[KeyRotation] Lỗi trên Key #\${idx + 1} (\${modelName}): \${err.message || err}.`);
+            if (modelName === modelsToTry[modelsToTry.length - 1]) {
+              break; // Chuyển sang key tiếp theo
+            }
+            // Thử model tiếp theo cho cùng key
+          }
         }
-        return result;
-      } catch (err: any) {
-        if (isQuotaError(err)) {
-          console.warn(`[KeyRotation] Key #\${idx + 1} hết quota, thử key tiếp theo...`);
-          setExhaustedKeys(prev => new Set(prev).add(idx));
-          lastError = err;
-          continue;
-        }
-        // Lỗi khác (không phải quota) → ném ra ngay
-        throw err;
       }
     }
 
@@ -3062,6 +3166,12 @@ export default function App() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    if (isPTQT) {
+      showToast('Tài khoản P.TQT không có quyền tải lên biên bản', 'error');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
     if (files.length > 5) {
       alert("Bạn chỉ được phép tải lên tối đa 5 tệp cùng lúc.");
       if (e.target) e.target.value = '';
@@ -3072,7 +3182,8 @@ export default function App() {
       id: crypto.randomUUID(),
       fileName: file.name,
       status: 'pending',
-      progress: 0
+      progress: 0,
+      originalFile: file
     }));
 
     setProcessingFiles(prev => [...newFiles, ...prev]);
@@ -3084,11 +3195,11 @@ export default function App() {
         // ── Chuẩn bị file: đọc + nén/convert (CPU-bound, chạy song song 100%) ──
 
         const processFile = async (pFile: ProcessingFile, file: File) => {
-          setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10 } : f));
+          setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10, statusText: 'Đang chuẩn bị tệp...' } : f));
           try {
             // Bước 1: chuẩn bị (nén/convert) — 10→40%
             const { images, fileName } = await prepareFile(file);
-            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40 } : f));
+            setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40, statusText: 'Đang phân tích bằng AI...' } : f));
 
             // Bước 2: gọi AI — 40→90%
             const rawResult = await callExtractWithRotation(images);
@@ -3099,16 +3210,17 @@ export default function App() {
             const map = rawResult.designLayerMap || {};
             const hasMap = Object.keys(map).length > 0;
             const normalizedLayers = (rawResult.layers || []).map(layer => {
-              const geoCode = (layer.actualGeology || '').trim();
+              const code = (layer.designLayerCode || '').trim();
               const currentDesign = (layer.layerDesign || '').trim();
               
-              // Chỉ VLOOKUP nếu có map VÀ geoCode là số (Loại A)
-              if (hasMap && geoCode && /^\d+$/.test(geoCode) && map[geoCode]) {
-                if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-                  return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
+              // Ưu tiên VLOOKUP từ map dựa trên designLayerCode (Loại A)
+              if (hasMap && code && map[code]) {
+                // Nếu mô tả hiện tại trống, quá ngắn hoặc khác với map -> Cập nhật từ map
+                if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[code]) {
+                  return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[code]) });
                 }
               }
-              // Loại B: giữ nguyên nhưng strip số thứ tự đầu mô tả
+              // Loại B hoặc không có map: giữ nguyên nhưng strip số thứ tự đầu mô tả
               return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
             });
 
@@ -3174,6 +3286,67 @@ export default function App() {
     // Tự động chọn file đầu tiên để hiển thị nếu chưa chọn file nào
     if (collectedResults.length > 0 && !currentResult) {
       setCurrentResult(collectedResults[0]);
+    }
+  };
+
+  const handleRetryFile = async (pFile: ProcessingFile) => {
+    if (!pFile.originalFile) return;
+    
+    setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'processing', progress: 10, error: undefined, statusText: 'Đang chuẩn bị tệp...' } : f));
+    
+    try {
+      const { images, fileName } = await prepareFile(pFile.originalFile);
+      setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 40, statusText: 'Đang phân tích bằng AI...' } : f));
+
+      const rawResult = await callExtractWithRotation(images);
+      setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, progress: 90 } : f));
+
+      const map = rawResult.designLayerMap || {};
+      const hasMap = Object.keys(map).length > 0;
+      const normalizedLayers = (rawResult.layers || []).map(layer => {
+        const geoCode = (layer.actualGeology || '').trim();
+        const currentDesign = (layer.layerDesign || '').trim();
+        if (hasMap && geoCode && /^\d+$/.test(geoCode) && map[geoCode]) {
+          if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
+            return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
+          }
+        }
+        return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
+      });
+
+      const result: ExtractionResult = {
+        ...rawResult,
+        layers: normalizedLayers,
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        fileName,
+        _base64: images[0]?.base64,
+        _mimeType: images[0]?.mimeType,
+      };
+
+      if (currentUser && currentUser.role !== 'admin') {
+        const assignedProjs = currentUser.assignedProjects && currentUser.assignedProjects.length > 0
+          ? currentUser.assignedProjects
+          : projects.map(p => p.name);
+
+        if (assignedProjs.length === 1) {
+          result.project = assignedProjs[0];
+        } else if (assignedProjs.length > 1) {
+          const aiProject = (result.project || '').trim().toLowerCase();
+          const matched = assignedProjs.find(p =>
+            aiProject.includes(p.toLowerCase()) || p.toLowerCase().includes(aiProject)
+          );
+          if (matched) {
+            result.project = matched;
+          }
+        }
+      }
+
+      setPendingResults(prev => [result, ...prev]);
+      setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'completed', progress: 100, result } : f));
+    } catch (err: any) {
+      console.error(err);
+      setProcessingFiles(prev => prev.map(f => f.id === pFile.id ? { ...f, status: 'error', error: err.message || 'Lỗi không xác định' } : f));
     }
   };
 
@@ -3760,6 +3933,7 @@ export default function App() {
   };
 
   const handleSaveAll = async () => {
+    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền lưu biên bản', 'error'); return; }
     if (pendingResults.length === 0) return;
 
     // ── QUAN TRỌNG: Merge currentResult (data đang chỉnh sửa) vào pendingResults ──
@@ -3848,6 +4022,7 @@ export default function App() {
   };
 
   const handleDelete = (id: string) => {
+    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền xóa biên bản', 'error'); return; }
     const itemToDelete = history.find(item => item.id === id);
     const filesToDelete: string[] = [];
     if (itemToDelete?.fileUrl)  filesToDelete.push(`📄 File ảnh/PDF: ${itemToDelete.fileName || 'file gốc'}`);
@@ -3912,6 +4087,7 @@ export default function App() {
   };
 
   const handleEdit = async (result: ExtractionResult) => {
+    // P.TQT được xem chi tiết biên bản nhưng không lưu được (handleSaveEdit đã block)
     // Nếu layers chưa có (lazy-load), fetch từ Supabase trước khi mở modal
     let safeResult = { ...result, layers: Array.isArray(result.layers) ? result.layers : [] };
     if (safeResult.layers.length === 0 && supabase) {
@@ -4512,6 +4688,7 @@ export default function App() {
   };
 
   const handleSaveEdit = (updatedResult: ExtractionResult) => {
+    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền chỉnh sửa biên bản', 'error'); return; }
     // Normalize item: nếu tên AI quét khớp chuẩn hóa với app_items → dùng tên chuẩn
     const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
     const selectedProj = projects.find(p => p.name === updatedResult.project);
@@ -4632,8 +4809,8 @@ export default function App() {
 
     const projectItems = items.filter(it => it.projectId === project.id);
 
-    // Phân quyền: Admin và QS-QC được phép quản lý hạng mục
-    const canManageItems = currentUser?.role === 'admin' || currentUser?.role === 'QS-QC';
+    // Phân quyền: Admin và QS-QC được phép quản lý hạng mục. P.TQT chỉ xem.
+    const canManageItems = (currentUser?.role === 'admin' || currentUser?.role === 'QS-QC') && currentUser?.role !== 'P. TQT';
 
     const handleCreate = async () => {
       if (!canManageItems) { showToast('Bạn không có quyền thực hiện thao tác này', 'error'); return; }
@@ -4862,7 +5039,7 @@ export default function App() {
   }
 
   // ── ChuanHoaDataView: Chuẩn hóa data (2 tab: Địa chất / Dự án) ──
-    const GeologyView = ({ editingKey: stableEditingKey, setEditingKey: setStableEditingKey, editValue: stableEditValue, setEditValue: setStableEditValue }: { editingKey: string|null, setEditingKey: (v:string|null)=>void, editValue: string, setEditValue: (v:string)=>void }) => {
+    const GeologyView = ({ editingKey: stableEditingKey, setEditingKey: setStableEditingKey, editValue: stableEditValue, setEditValue: setStableEditValue, readOnly = false }: { editingKey: string|null, setEditingKey: (v:string|null)=>void, editValue: string, setEditValue: (v:string)=>void, readOnly?: boolean }) => {
       type DataTab = 'geology' | 'project';
       const activeTab = geologyChuanHoaTab;
       const setActiveTab = setGeologyChuanHoaTab;
@@ -4876,6 +5053,103 @@ export default function App() {
       const [aiClassificationPreview, setAiClassificationPreview] = React.useState<{ originalName: string; oldClass: string; newClass: string }[]>([]);
       const [showClassificationModal, setShowClassificationModal] = React.useState(false);
       const [searchQuery, setSearchQuery] = React.useState('');
+
+      const [isSyncingSoilClass, setIsSyncingSoilClass] = React.useState(false);
+      const [syncSoilClassResult, setSyncSoilClassResult] = React.useState<{
+        updated: number;
+        notClassified: { pileId: string; project: string; layerDesign: string }[];
+      } | null>(null);
+      const [showSyncResultModal, setShowSyncResultModal] = React.useState(false);
+
+      // ── Đồng bộ soilClass: VLOOKUP từ bảng đã phân định → áp lại toàn bộ biên bản ──
+      const handleSyncSoilClass = async () => {
+        if (!supabase) { showToast('Chưa kết nối Supabase', 'error'); return; }
+        setIsSyncingSoilClass(true);
+        try {
+          // Bước 1: Xây dựng bảng tra cứu soilClass từ toàn bộ history
+          // Ưu tiên soilClass đã được phân định (khác 'Chưa Phân định nhóm')
+          const soilClassLookup = new Map<string, string>();
+          history.forEach(res => {
+            (res.layers || []).forEach(layer => {
+              const key = normalizeLayerName(layer.layerDesign || '');
+              if (!key) return;
+              const sc = (layer.soilClass || '').trim();
+              if (SOIL_CLASSES.includes(sc) && sc !== 'Chưa Phân định nhóm') {
+                soilClassLookup.set(key, sc);
+              } else if (!soilClassLookup.has(key)) {
+                soilClassLookup.set(key, sc || 'Chưa Phân định nhóm');
+              }
+            });
+          });
+
+          // Bước 2: Duyệt biên bản, cập nhật các lớp có soilClass chưa khớp với lookup
+          const toUpdateList: { result: ExtractionResult; newLayers: DrillLayer[] }[] = [];
+          // Thu thập lớp thực sự chưa phân định (không tìm được class tốt trong lookup)
+          const notClassifiedMap = new Map<string, { pileId: string; project: string; layerDesign: string }[]>();
+
+          history.forEach(res => {
+            let changed = false;
+            const newLayers = (res.layers || []).map(layer => {
+              const key = normalizeLayerName(layer.layerDesign || '');
+              if (!key) return layer;
+              const correctClass = soilClassLookup.get(key);
+              const currentClass = (layer.soilClass || '').trim();
+              if (correctClass && SOIL_CLASSES.includes(correctClass) && correctClass !== 'Chưa Phân định nhóm' && currentClass !== correctClass) {
+                changed = true;
+                return { ...layer, soilClass: correctClass };
+              }
+              return layer;
+            });
+            if (changed) toUpdateList.push({ result: res, newLayers });
+
+            // Thu thập lớp chưa phân định
+            (res.layers || []).forEach(layer => {
+              const key = normalizeLayerName(layer.layerDesign || '');
+              const design = (layer.layerDesign || '').trim();
+              if (!key || !design) return;
+              const mappedClass = soilClassLookup.get(key) || 'Chưa Phân định nhóm';
+              if (!SOIL_CLASSES.includes(mappedClass) || mappedClass === 'Chưa Phân định nhóm') {
+                if (!notClassifiedMap.has(design)) notClassifiedMap.set(design, []);
+                const entries = notClassifiedMap.get(design)!;
+                const already = entries.some(x => x.pileId === (res.pileId || res.id));
+                if (!already) entries.push({ pileId: res.pileId || res.id, project: res.project || '', layerDesign: design });
+              }
+            });
+          });
+
+          // Bước 3: Lưu lên Supabase theo batch
+          let updatedCount = 0;
+          if (toUpdateList.length > 0) {
+            const CHUNK = 20;
+            for (let i = 0; i < toUpdateList.length; i += CHUNK) {
+              const batch = toUpdateList.slice(i, i + CHUNK);
+              await Promise.all(batch.map(({ result, newLayers }) =>
+                supabase.from('drill_extractions').update({ layers: newLayers }).eq('id', result.id)
+              ));
+              updatedCount += batch.length;
+            }
+            const updMap = new Map(toUpdateList.map(u => [u.result.id, u.newLayers]));
+            setHistory(prev => prev.map(res => {
+              const nl = updMap.get(res.id);
+              return nl ? { ...res, layers: nl } : res;
+            }));
+          }
+
+          // Flatten notClassifiedMap → array, dedupe theo layerDesign
+          const notClassifiedArr: { pileId: string; project: string; layerDesign: string }[] = [];
+          notClassifiedMap.forEach((entries) => {
+            entries.forEach(e => notClassifiedArr.push(e));
+          });
+
+          setSyncSoilClassResult({ updated: updatedCount, notClassified: notClassifiedArr });
+          setShowSyncResultModal(true);
+          showToast(updatedCount > 0 ? `✅ Đã đồng bộ ${updatedCount} biên bản!` : '✅ Dữ liệu đã chuẩn, không cần cập nhật!', 'success', 4000);
+        } catch (e: any) {
+          showToast(`Lỗi đồng bộ: ${e.message}`, 'error');
+        } finally {
+          setIsSyncingSoilClass(false);
+        }
+      };
 
       const updateAiSuggestionName = (idx: number, newName: string) => {
         if (!aiSuggestions) return;
@@ -5742,8 +6016,17 @@ LƯU Ý:
               {activeTab === 'geology' && items.length > 0 && (
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={handleSyncSoilClass}
+                    disabled={isSyncingSoilClass || isAiClassifying || isAiNormalizing}
+                    className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl shadow-lg shadow-teal-200 transition-all disabled:opacity-50"
+                    title="Đồng bộ phân nhóm đất đá: VLOOKUP từ bảng đã phân định → áp lại toàn bộ biên bản"
+                  >
+                    {isSyncingSoilClass ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    Đồng bộ nhóm
+                  </button>
+                  <button
                     onClick={handleAiClassifySoilClasses}
-                    disabled={isAiClassifying || isAiNormalizing}
+                    disabled={isAiClassifying || isAiNormalizing || isSyncingSoilClass}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
                     title="Phân định nhóm bằng AI"
                   >
@@ -5752,7 +6035,7 @@ LƯU Ý:
                   </button>
                   <button
                     onClick={handleAiNormalizeGeology}
-                    disabled={isAiNormalizing || isAiClassifying}
+                    disabled={isAiNormalizing || isAiClassifying || isSyncingSoilClass}
                     className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-black uppercase tracking-widest px-5 py-2.5 rounded-xl shadow-lg shadow-orange-200 transition-all disabled:opacity-50"
                     title="Chuẩn hóa bằng AI"
                   >
@@ -5840,10 +6123,10 @@ LƯU Ý:
 
         {/* Create new project / item / machine panel - only shown in project tab */}
         {activeTab === 'project' && (
-          <div className="flex flex-wrap gap-x-12 gap-y-8 items-start mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Dự án */}
-            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
-              <div className="flex items-center gap-2">
+            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={newProjectName}
@@ -5864,156 +6147,154 @@ LƯU Ý:
             </div>
 
             {/* Máy khoan */}
-            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newMachineName}
-                    onChange={e => setNewMachineName(e.target.value)}
-                    placeholder="Tên máy khoan..."
-                    disabled={currentUser?.role !== 'admin'}
-                    className={`flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
-                  />
-                  <button
-                    onClick={handleCreateMachine}
-                    disabled={!newMachineName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
-                  >
-                    {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                    Tạo máy khoan
-                  </button>
-                </div>
-                {/* Nút đồng bộ máy khoan từ biên bản */}
-                {(() => {
-                  const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
-                  const unsynced = [...new Set(
-                    history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
-                  )].sort();
-                  if (unsynced.length === 0) return null;
-                  return (
-                    <div className="mt-1">
-                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
-                        Phát hiện {unsynced.length} máy khoan chưa đồng bộ:
-                      </p>
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {unsynced.map(name => (
-                          <span key={name} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">{name}</span>
-                        ))}
-                      </div>
-                      <button
-                        onClick={async () => {
-                          if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
-                          setIsSavingNewProject(true);
-                          try {
-                            const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
-                              id: crypto.randomUUID(),
-                              projectId: 'global',
-                              name,
-                              createdAt: new Date().toISOString(),
-                              createdBy: currentUser?.username || 'admin',
-                            }));
-                            const updated = [...drillingMachines, ...toAdd];
-                            setDrillingMachines(updated);
-                            localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
-                            if (supabase) {
-                              await supabase.from('app_drilling_machines').insert(
-                                toAdd.map(m => ({ id: m.id, project_id: (m.projectId && m.projectId !== 'global') ? m.projectId : null, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
-                              );
-                            }
-                            showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
-                          } catch (e: any) {
-                            showToast(`Lỗi: ${e?.message}`, 'error');
-                          } finally {
-                            setIsSavingNewProject(false);
-                          }
-                        }}
-                        disabled={isSavingNewProject}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-white bg-orange-500 hover:bg-orange-600 transition-all disabled:opacity-50 whitespace-nowrap"
-                      >
-                        {isSavingNewProject ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        Đồng bộ {unsynced.length} máy khoan
-                      </button>
-                    </div>
-                  );
-                })()}
+            <div className={`${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMachineName}
+                  onChange={e => setNewMachineName(e.target.value)}
+                  placeholder="Tên máy khoan..."
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`flex-1 px-4 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-xl text-sm font-medium outline-none transition-all bg-white ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                />
+                <button
+                  onClick={handleCreateMachine}
+                  disabled={!newMachineName.trim() || isSavingNewProject || currentUser?.role !== 'admin'}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-amber-600 whitespace-nowrap"
+                >
+                  {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Tạo máy khoan
+                </button>
               </div>
+              {/* Nút đồng bộ máy khoan từ biên bản */}
+              {(() => {
+                const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
+                const unsynced = [...new Set(
+                  history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
+                )].sort();
+                if (unsynced.length === 0) return null;
+                return (
+                  <div className="mt-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-1">
+                          Phát hiện {unsynced.length} máy khoan từ biên bản chưa được thêm vào danh mục:
+                        </p>
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {unsynced.map(name => (
+                            <span key={name} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg border border-amber-300">{name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
+                        setIsSavingNewProject(true);
+                        try {
+                          const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
+                            id: crypto.randomUUID(),
+                            projectId: 'global',
+                            name,
+                            createdAt: new Date().toISOString(),
+                            createdBy: currentUser?.username || 'admin',
+                          }));
+                          const updated = [...drillingMachines, ...toAdd];
+                          setDrillingMachines(updated);
+                          localStorage.setItem('sgc_app_drilling_machines', JSON.stringify(updated));
+                          if (supabase) {
+                            await supabase.from('app_drilling_machines').insert(
+                              toAdd.map(m => ({ id: m.id, project_id: (m.projectId && m.projectId !== 'global') ? m.projectId : null, name: m.name, created_at: m.createdAt, created_by: m.createdBy }))
+                            );
+                          }
+                          showToast(`✅ Đã đồng bộ ${toAdd.length} máy khoan vào danh mục!`, 'success');
+                        } catch (e: any) {
+                          showToast(`Lỗi: ${e?.message}`, 'error');
+                        } finally {
+                          setIsSavingNewProject(false);
+                        }
+                      }}
+                      disabled={isSavingNewProject}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white bg-orange-500 hover:bg-orange-600 transition-all disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {isSavingNewProject ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                      Đồng bộ {unsynced.length} máy khoan vào danh mục
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Đường kính */}
-            <div className={cn("flex-1 min-w-[320px] max-w-md", currentUser?.role !== 'admin' ? 'opacity-60' : '')}>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newDiameterName}
-                    onChange={e => setNewDiameterName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleCreateDiameter()}
-                    placeholder="Đường kính cọc (VD: D800)..."
-                    disabled={currentUser?.role !== 'admin'}
-                    className={`px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white w-52 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
-                  />
-                  <button
-                    onClick={handleCreateDiameter}
-                    disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
-                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
-                  >
-                    <Save size={14} />
-                    Tạo đường kính
-                  </button>
-                </div>
+            <div className={`lg:col-span-3 ${currentUser?.role !== 'admin' ? 'opacity-60' : ''}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={newDiameterName}
+                  onChange={e => setNewDiameterName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreateDiameter()}
+                  placeholder="Đường kính cọc (VD: D800)..."
+                  disabled={currentUser?.role !== 'admin'}
+                  className={`px-4 py-2 border-2 border-violet-200 focus:border-violet-500 rounded-xl text-sm font-medium outline-none transition-all bg-white w-52 ${currentUser?.role !== 'admin' ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                />
+                <button
+                  onClick={handleCreateDiameter}
+                  disabled={!newDiameterName.trim() || currentUser?.role !== 'admin'}
+                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-white transition-all disabled:opacity-50 bg-violet-600 hover:bg-violet-700 whitespace-nowrap"
+                >
+                  <Save size={14} />
+                  Tạo đường kính
+                </button>
                 {/* Badges inline — click để sửa tên */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {(() => {
-                    const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
-                    const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                    const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
-                    const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
-                    const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
-                      const na = parseInt(a.replace(/\D/g, '')) || 0;
-                      const nb = parseInt(b.replace(/\D/g, '')) || 0;
-                      return na - nb;
-                    });
-                    return allDiameters.map(d => {
-                      const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
-                      const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
-                      return (
-                        <DiameterBadge
-                          key={d}
-                          value={d}
-                          count={count}
-                          isFromHistory={isFromHistory}
-                          isAdmin={currentUser?.role === 'admin'}
-                          onRename={async (oldVal, newVal) => {
-                            if (!newVal.trim() || newVal.trim() === oldVal) return;
-                            const trimmed = newVal.trim();
-                            // Cập nhật history (Supabase)
-                            if (supabase) {
-                              const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
-                              for (const res of affected) {
-                                await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
-                              }
+                {(() => {
+                  const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
+                  const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                  const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
+                  const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
+                  const allDiameters = [...fromHistory, ...storageOnly].sort((a, b) => {
+                    const na = parseInt(a.replace(/\D/g, '')) || 0;
+                    const nb = parseInt(b.replace(/\D/g, '')) || 0;
+                    return na - nb;
+                  });
+                  return allDiameters.map(d => {
+                    const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
+                    const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
+                    return (
+                      <DiameterBadge
+                        key={d}
+                        value={d}
+                        count={count}
+                        isFromHistory={isFromHistory}
+                        isAdmin={currentUser?.role === 'admin' && !readOnly}
+                        onRename={async (oldVal, newVal) => {
+                          if (!newVal.trim() || newVal.trim() === oldVal) return;
+                          const trimmed = newVal.trim();
+                          // Cập nhật history (Supabase)
+                          if (supabase) {
+                            const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
+                            for (const res of affected) {
+                              await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
                             }
-                            setHistory((prev: any[]) => prev.map(r =>
-                              (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase()
-                                ? { ...r, diameter: trimmed } : r
-                            ));
-                            // Cập nhật localStorage nếu có
-                            const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                            const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
-                            localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
-                            showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
-                          }}
-                          onDelete={isFromHistory ? undefined : () => {
-                            const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
-                            localStorage.setItem('sgc_diameter_list', JSON.stringify(stored.filter(x => x.toLowerCase() !== d.toLowerCase())));
-                            setNewDiameterName(p => p + '');
-                          }}
-                        />
-                      );
-                    });
-                  })()}
-                </div>
+                          }
+                          setHistory((prev: any[]) => prev.map(r =>
+                            (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase()
+                              ? { ...r, diameter: trimmed } : r
+                          ));
+                          // Cập nhật localStorage nếu có
+                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                          const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
+                          localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
+                          showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
+                        }}
+                        onDelete={isFromHistory ? undefined : () => {
+                          const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
+                          localStorage.setItem('sgc_diameter_list', JSON.stringify(stored.filter(x => x.toLowerCase() !== d.toLowerCase())));
+                          setNewDiameterName(p => p + '');
+                        }}
+                      />
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>
@@ -6254,12 +6535,14 @@ LƯU Ý:
                                       >
                                         <div className="flex items-start justify-between gap-2">
                                           <span className="text-xs text-slate-700 font-medium leading-tight group-hover/card:text-blue-600 transition-colors">{row.value}</span>
+                                          {!readOnly && (
                                           <button 
                                             onClick={(e) => { e.stopPropagation(); startEdit(row.value); }} 
                                             className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-100 rounded-lg transition-all"
                                           >
                                             <Edit2 size={12} className="text-blue-500" />
                                           </button>
+                                          )}
                                         </div>
                                         <div className="flex items-center justify-between">
                                           <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-100 group-hover/card:bg-blue-100 transition-colors">
@@ -6283,18 +6566,9 @@ LƯU Ý:
             </div>
           </DragDropContext>
         ) : (
-          <div className="space-y-6">
-            {activeTab === 'project' && (
-              <div className="bg-blue-900 px-6 py-3 rounded-2xl flex items-center gap-3 shadow-lg">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <Layers size={20} className="text-white" />
-                </div>
-                <h3 className="text-sm font-black text-white uppercase tracking-[0.2em]">Danh sách dự án</h3>
-              </div>
-            )}
-            <div className="bg-white rounded-2xl border border-slate-500 shadow-md overflow-hidden">
-              <div className="flex gap-0 divide-x divide-slate-500">
-                {cols.map((colRows, colIdx) => (
+          <div className="bg-white rounded-2xl border border-slate-500 shadow-md overflow-hidden">
+            <div className="flex gap-0 divide-x divide-slate-500">
+              {cols.map((colRows, colIdx) => (
                 <div key={colIdx} className="flex-1 min-w-0">
                   <table className="w-full text-sm border-collapse">
                     <thead>
@@ -6476,8 +6750,7 @@ LƯU Ý:
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
         {/* ── Bảng Kanban Máy Khoan ── */}
         {activeTab === 'project' && (() => {
@@ -6576,18 +6849,12 @@ LƯU Ý:
           const projectColumns = projects;
 
           return (
-            <div className="mt-12 space-y-6">
-              <div className="bg-blue-900 px-6 py-3 rounded-2xl flex items-center gap-3 shadow-lg">
-                <div className="p-2 bg-white/20 rounded-xl">
-                  <Truck size={20} className="text-white" />
-                </div>
-                <h3 className="text-sm font-black text-white uppercase tracking-[0.2em]">Phân bổ máy khoan theo dự án</h3>
-              </div>
-
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="mt-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-5 bg-amber-500 rounded-full" />
-                  <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Kéo thả để phân bổ</h3>
+                  <h3 className="text-[12px] font-black uppercase tracking-widest text-amber-700">Phân bổ Máy Khoan theo Dự Án</h3>
+                  <span className="text-[10px] text-slate-400 font-medium">(kéo thả để phân bổ)</span>
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -6957,6 +7224,101 @@ LƯU Ý:
           </div>
         )}
 
+        {/* ── Modal kết quả Đồng bộ soilClass ── */}
+        {showSyncResultModal && syncSoilClassResult && (
+          <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+              {/* Header */}
+              <div className="px-6 py-5 flex items-center justify-between border-b border-slate-100" style={{ background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-xl"><RefreshCw size={20} className="text-white" /></div>
+                  <div>
+                    <h3 className="text-white font-black text-lg uppercase tracking-tight">Kết quả đồng bộ phân nhóm</h3>
+                    <p className="text-teal-100 text-[11px] font-medium mt-0.5">
+                      {syncSoilClassResult.updated > 0
+                        ? `Đã cập nhật ${syncSoilClassResult.updated} biên bản từ bảng tra cứu`
+                        : 'Tất cả biên bản đã được phân nhóm đúng — không cần cập nhật'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowSyncResultModal(false)} className="p-2 hover:bg-white/20 rounded-full text-white transition-colors"><X size={20} /></button>
+              </div>
+
+              {/* Summary badges */}
+              <div className="px-6 py-4 flex items-center gap-4 border-b border-slate-100 bg-slate-50 flex-wrap">
+                <div className="flex items-center gap-2 bg-teal-100 border border-teal-200 rounded-xl px-4 py-2">
+                  <CheckCircle2 size={14} className="text-teal-600" />
+                  <span className="text-[11px] font-black text-teal-700 uppercase tracking-widest">Đã đồng bộ: {syncSoilClassResult.updated} biên bản</span>
+                </div>
+                <div className={`flex items-center gap-2 rounded-xl px-4 py-2 border ${syncSoilClassResult.notClassified.length > 0 ? 'bg-amber-100 border-amber-200' : 'bg-emerald-100 border-emerald-200'}`}>
+                  <AlertCircle size={14} className={syncSoilClassResult.notClassified.length > 0 ? 'text-amber-600' : 'text-emerald-600'} />
+                  <span className={`text-[11px] font-black uppercase tracking-widest ${syncSoilClassResult.notClassified.length > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    Chưa phân định: {syncSoilClassResult.notClassified.length} bản ghi
+                  </span>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto">
+                {syncSoilClassResult.notClassified.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <CheckCircle2 size={48} className="text-emerald-500" />
+                    <p className="text-lg font-black text-emerald-700 uppercase tracking-tight">Hoàn tất! Tất cả lớp đã được phân nhóm.</p>
+                    <p className="text-sm text-slate-400 font-medium">Không còn lớp địa chất nào ở trạng thái "Chưa Phân định nhóm"</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="px-6 py-3 bg-amber-50 border-b border-amber-100">
+                      <p className="text-[11px] font-bold text-amber-700">
+                        ⚠️ Các bản ghi dưới đây có lớp địa chất chưa được phân nhóm trong bảng chuẩn hóa. Hãy kéo thả các lớp này vào nhóm phù hợp trong bảng Kanban bên dưới.
+                      </p>
+                    </div>
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr style={{ background: '#92400e' }}>
+                          <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/20 w-12">STT</th>
+                          <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/20">Tên lớp địa chất (chưa phân định)</th>
+                          <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/20">Dự án</th>
+                          <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest">Số hiệu cọc</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {syncSoilClassResult.notClassified.map((item, idx) => (
+                          <tr key={idx} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'} hover:bg-amber-50 transition-colors`}>
+                            <td className="px-4 py-3 text-center border-r border-slate-200">
+                              <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black flex items-center justify-center mx-auto">{idx + 1}</span>
+                            </td>
+                            <td className="px-4 py-3 border-r border-slate-200">
+                              <span className="text-[12px] font-medium text-slate-800">{item.layerDesign || '(Trống)'}</span>
+                            </td>
+                            <td className="px-4 py-3 border-r border-slate-200">
+                              <span className="text-[12px] text-slate-600">{item.project || '—'}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-lg border border-slate-200">{item.pileId || '—'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-slate-100 bg-white flex justify-end">
+                <button
+                  onClick={() => setShowSyncResultModal(false)}
+                  className="px-8 py-3 rounded-xl text-sm font-bold text-white uppercase tracking-widest transition-all"
+                  style={{ background: 'linear-gradient(135deg, #0f766e, #0d9488)' }}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Viewing Reports Modal */}
         {viewingReports && (
           <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
@@ -6976,51 +7338,52 @@ LƯU Ý:
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {viewingReports.reports.map((report, idx) => (
-                    <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold text-xs">
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{report.boreholeId || "N/A"}</p>
-                            <p className="text-[10px] text-slate-400 font-medium">{report.project || "Dự án không xác định"}</p>
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
-                          {report.diameter || "N/A"} mm
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-slate-400">Độ sâu:</span>
-                          <span className="font-bold text-slate-700">{report.depth || 0}m</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-slate-400">Số lớp:</span>
-                          <span className="font-bold text-slate-700">{(report.layers || []).length}</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
-                        <button 
-                          onClick={() => {
-                            setViewingReports(null);
-                            setActiveSheet('upload');
-                            handleEdit(report);
-                          }}
-                          className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                        >
-                          Xem chi tiết <ArrowRight size={10} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="flex-1 overflow-y-auto bg-white">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr style={{ background: 'linear-gradient(135deg, #1a3a6b 0%, #1e4480 100%)' }}>
+                      <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10 w-14">STT</th>
+                      <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Tên lớp địa chất</th>
+                      <th className="px-4 py-3 text-left text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10">Dự án</th>
+                      <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest border-r border-white/10 w-28">Đường kính</th>
+                      <th className="px-4 py-3 text-center text-[11px] font-black text-white uppercase tracking-widest w-28">Xem chi tiết</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewingReports.reports.map((report, idx) => (
+                      <tr key={idx} className={`border-b border-slate-100 hover:bg-blue-50/40 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                        <td className="px-4 py-3 text-center border-r border-slate-200">
+                          <span className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center mx-auto">{idx + 1}</span>
+                        </td>
+                        <td className="px-4 py-3 border-r border-slate-200">
+                          <p className="text-[12px] font-bold text-slate-800">{report.pileId || report.boreholeId || "N/A"}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{report.componentName || ''}</p>
+                        </td>
+                        <td className="px-4 py-3 border-r border-slate-200">
+                          <p className="text-[12px] text-slate-700 font-medium">{report.project || "Dự án không xác định"}</p>
+                          {report.item && <p className="text-[10px] text-slate-400 mt-0.5">{report.item}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-center border-r border-slate-200">
+                          <span className="inline-block px-2 py-1 bg-violet-100 text-violet-700 text-[11px] font-bold rounded-lg border border-violet-200">
+                            {report.diameter || "N/A"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => {
+                              setViewingReports(null);
+                              setActiveSheet('upload');
+                              handleEdit(report);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
+                          >
+                            Xem <ArrowRight size={10} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
               <div className="p-6 border-t border-slate-100 bg-white flex justify-end">
@@ -7406,7 +7769,7 @@ LƯU Ý:
               <span className="font-medium text-sm">Dashboard tổng hợp</span>
             </button>
 
-            {currentUser?.role === 'admin' && (
+            {(currentUser?.role === 'admin' || isPTQT) && (
             <button 
               onClick={() => { setActiveSheet('geology'); setIsSidebarOpen(false); }}
               className={cn(
@@ -7642,10 +8005,19 @@ LƯU Ý:
                               file.status === 'processing' ? "text-orange-400" : "text-blue-400"
                             )}>
                               {file.status === 'pending' ? 'Chờ...' :
-                               file.status === 'processing' ? `Phân tích ${file.progress}%` :
+                               file.status === 'processing' ? `${file.statusText || 'Phân tích'} ${file.progress}%` :
                                file.status === 'completed' ? 'Chờ lưu' : 'Lỗi'}
                             </p>
                           </div>
+                          {file.status === 'error' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRetryFile(file); }}
+                              className="p-1.5 text-blue-400 hover:text-blue-300 transition-all"
+                              title="Thử lại"
+                            >
+                              <RotateCcw size={12} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => { e.stopPropagation(); removeProcessingFile(file.id); }}
                             className="opacity-0 group-hover:opacity-100 p-1.5 text-blue-400 hover:text-red-400 transition-all"
@@ -7665,7 +8037,7 @@ LƯU Ý:
                   {/* Footer cột trái */}
                   <div className="p-6 border-t border-[#1e3a5f] bg-blue-950/20">
                     <div className="flex flex-col gap-4">
-                      {pendingResults.length > 0 && (
+                      {pendingResults.length > 0 && !isPTQT && (
                         <button
                           onClick={handleSaveAll}
                           disabled={isProcessing}
@@ -7786,6 +8158,16 @@ LƯU Ý:
 
               const hasActiveFilter = filterProject || filterItem || filterComponentName || filterPileId || filterDiameter || filterDateFrom || filterDateTo || filterStt || filterMachine;
 
+              // Sort theo Số hiệu cọc nếu được bật
+              if (sortPileId !== 'none') {
+                filtered.sort((a, b) => {
+                  const va = (a.pileId || '').trim();
+                  const vb = (b.pileId || '').trim();
+                  const natCmp = va.localeCompare(vb, 'vi', { numeric: true, sensitivity: 'base' });
+                  return sortPileId === 'asc' ? natCmp : -natCmp;
+                });
+              }
+
               const resetFilters = () => {
                 setFilterProject(''); setFilterItem(''); setFilterComponentName('');
                 setFilterPileId(''); setFilterDiameter('');
@@ -7841,7 +8223,7 @@ LƯU Ý:
                     })()}
                   </div>
                   <div className="flex items-center gap-3">
-                    {currentUser?.role === 'admin' && (
+                    {(currentUser?.role === 'admin' || isPTQT) && (
                       <button
                         onClick={() => setActiveSheet('pile-registry')}
                         className="flex items-center gap-2.5 px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] transition-all border border-white/10 text-white shadow-lg shadow-indigo-500/30 active:scale-95 bg-gradient-to-br from-indigo-500 to-indigo-700 hover:from-indigo-600 hover:to-indigo-800"
@@ -7850,6 +8232,7 @@ LƯU Ý:
                         Danh sách cọc
                       </button>
                     )}
+                    {!isPTQT && (
                     <button 
                       onClick={() => fileInputRef.current?.click()}
                       className="bg-gradient-to-br from-orange-400 to-orange-600 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] hover:from-orange-500 hover:to-orange-700 transition-all flex items-center gap-3 shadow-lg shadow-orange-500/30 border border-white/10 active:scale-95"
@@ -7857,6 +8240,7 @@ LƯU Ý:
                       <Upload size={16} strokeWidth={2.5} />
                       Up File
                     </button>
+                    )}
                     {hasActiveFilter && (
                       <button
                         onClick={resetFilters}
@@ -8146,7 +8530,24 @@ LƯU Ý:
                           <th className="text-center w-12">STT</th>
                           <th>Dự án</th>
                           <th>Hạng mục</th>
-                          <th>Số hiệu</th>
+                          <th
+                            className="cursor-pointer select-none group"
+                            onClick={() => setSortPileId(prev => prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none')}
+                            title="Sắp xếp theo Số hiệu cọc"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              Số hiệu
+                              <span className="inline-flex flex-col leading-none text-[9px] opacity-60 group-hover:opacity-100 transition-opacity">
+                                {sortPileId === 'asc' ? (
+                                  <span className="text-blue-300 font-black text-[11px] leading-none">▲</span>
+                                ) : sortPileId === 'desc' ? (
+                                  <span className="text-blue-300 font-black text-[11px] leading-none">▼</span>
+                                ) : (
+                                  <span className="text-white/40 font-black text-[11px] leading-none">⇅</span>
+                                )}
+                              </span>
+                            </span>
+                          </th>
                           <th>Tên Máy khoan</th>
                           <th>Đường kính</th>
                           <th>Bắt đầu</th>
@@ -8231,6 +8632,7 @@ LƯU Ý:
                             </td>
                             <td className="text-center">
                               <div className="flex items-center justify-end gap-1.5">
+                                {!isPTQT && (<>
                                 <button
                                   onClick={() => handleEdit(item)}
                                   className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
@@ -8245,6 +8647,7 @@ LƯU Ý:
                                 >
                                   <Trash2 size={14} />
                                 </button>
+                                </>)}
                               </div>
                             </td>
                           </tr>
@@ -8262,8 +8665,11 @@ LƯU Ý:
                 </div>
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-3">Chưa có dữ liệu biên bản</h3>
                 <p className="text-slate-500 max-w-md text-center mb-10 font-medium">
-                  Hệ thống chưa ghi nhận biên bản nào. Hãy tải lên các tệp ảnh hoặc PDF của biên bản hiện trường để bắt đầu phân tích.
+                  {isPTQT
+                    ? 'Hệ thống chưa ghi nhận biên bản nào. Vui lòng liên hệ QS-QC để tải lên dữ liệu.'
+                    : 'Hệ thống chưa ghi nhận biên bản nào. Hãy tải lên các tệp ảnh hoặc PDF của biên bản hiện trường để bắt đầu phân tích.'}
                 </p>
+                {!isPTQT && (
                 <button 
                   onClick={() => fileInputRef.current?.click()}
                   className="px-10 py-5 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/20 flex items-center gap-4 active:scale-95"
@@ -8271,6 +8677,7 @@ LƯU Ý:
                   <Upload size={24} />
                   Tải lên biên bản ngay
                 </button>
+                )}
               </div>
             ))}
           </div>
@@ -8286,7 +8693,7 @@ LƯU Ý:
             handleFileUpload(fakeEvent);
           }} />
         ) : activeSheet === 'pile-registry' ? (
-          currentUser?.role === 'admin' ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} items={items} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} items={items} readOnly={isPTQT} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -8296,7 +8703,7 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'geology' ? (
-          currentUser?.role === 'admin' ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} readOnly={isPTQT} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -8316,8 +8723,8 @@ LƯU Ý:
           <SummaryView 
             history={visibleHistory} 
             onSelectResult={(res) => { setCurrentResult({ ...res, layers: Array.isArray(res.layers) ? res.layers : [] }); setActiveSheet('upload'); }} 
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            onEdit={isPTQT ? undefined : handleEdit}
+            onDelete={isPTQT ? undefined : handleDelete}
             onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
             isExportingAll={isExportingAll}
             onExportAll={exportAllToExcel}
@@ -8785,6 +9192,7 @@ LƯU Ý:
           items={items}
           drillingMachines={drillingMachines}
           diameterOptions={[...new Set([...(Array.isArray(history) ? history : []).map((r: any) => (r.diameter||'').trim()).filter(Boolean), ...JSON.parse(localStorage.getItem('sgc_diameter_list')||'[]')])].sort((a,b)=>(parseInt(a.replace(/\D/g,''))||0)-(parseInt(b.replace(/\D/g,''))||0))}
+          readOnly={isPTQT}
         />
       )}
 
@@ -9626,12 +10034,14 @@ function PileRegistryView({
   currentUser, 
   supabase,
   items,
+  readOnly = false,
 }: { 
   projects: AppProject[]; 
   history: ExtractionResult[]; 
   currentUser: AppUser | null;
   supabase: any;
   items: AppItem[];
+  readOnly?: boolean;
 }) {
   const [allPiles, setAllPiles] = useState<PileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -10204,6 +10614,7 @@ function PileRegistryView({
                         />
                         <Search size={11} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.7)', pointerEvents:'none' }} />
                       </div>
+                      {!readOnly && (
                       <button
                         onClick={() => { setAddProjectId(project.id); setAddSelectedItemId(''); setIsAddModalOpen(true); }}
                         style={{
@@ -10220,6 +10631,7 @@ function PileRegistryView({
                       >
                         <Plus size={15} strokeWidth={2.5} />
                       </button>
+                      )}
                     </div>
                   </div>
 
@@ -10804,6 +11216,7 @@ function PileRegistryView({
                     />
                   </div>
                   <div style={{ display:'flex', gap:10 }}>
+                    {!readOnly && (<>
                     <button
                       onClick={handleUpdate}
                       style={{
@@ -10826,6 +11239,7 @@ function PileRegistryView({
                     >
                       Xóa
                     </button>
+                    </>)}
                     <button
                       onClick={() => setEditingPile(null)}
                       style={{
@@ -10860,8 +11274,8 @@ function SummaryView({
 }: { 
   history: ExtractionResult[], 
   onSelectResult: (res: ExtractionResult) => void,
-  onEdit: (res: ExtractionResult) => void,
-  onDelete: (id: string) => void,
+  onEdit?: (res: ExtractionResult) => void,
+  onDelete?: (id: string) => void,
   onUploadClick: () => void,
   isExportingAll: boolean,
   onExportAll: (rows: ExtractionResult[]) => void,
@@ -12883,7 +13297,7 @@ function SummaryView({
                                   </td>
                                   <td className="px-4 py-3 text-center">
                                     <button
-                                      onClick={() => onEdit(r)}
+                                      onClick={() => onEdit && onEdit(r)}
                                       className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1 mx-auto"
                                     >
                                       <Edit2 size={10} /> Xem
@@ -13066,6 +13480,7 @@ function SummaryView({
                   <span className="text-[10px] text-red-500 font-medium flex-1">
                     MK: {rec.reportNumber || '—'} · {rec.constructionStart || '—'} → {rec.constructionEnd || '—'}
                   </span>
+                  {onEdit && (<>
                   <button
                     onClick={() => onEdit(rec)}
                     className="px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
@@ -13078,6 +13493,7 @@ function SummaryView({
                   >
                     <Edit2 size={11} /> Chỉnh sửa
                   </button>
+                  </>)}
                 </div>
               </div>
             ))}
@@ -13131,18 +13547,22 @@ function SummaryView({
                         </p>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {onEdit && (
                         <button
                           onClick={() => onEdit(rec)}
                           className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
                         >
                           Xem
                         </button>
+                        )}
+                        {onDelete && (
                         <button
                           onClick={() => onDelete(rec.id)}
                           className="px-3 py-1 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all border border-red-100"
                         >
                           Xóa
                         </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -13234,12 +13654,14 @@ function SummaryView({
                     >
                       Xem
                     </button>
+                    {onEdit && (
                     <button
                       onClick={() => onEdit(rec)}
                       className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
                     >
                       Sửa
                     </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -13464,12 +13886,14 @@ function SummaryView({
                         <p className="text-[11px] text-slate-500">{res.componentName || ''} · {res.constructionEnd || ''}</p>
                       </div>
                     </div>
+                    {onEdit && (
                     <button
-                      onClick={() => { setSoilDrillDown(null); onEdit(res); }}
+                      onClick={() => { setSoilDrillDown(null); onEdit && onEdit(res); }}
                       className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-[11px] font-black hover:bg-teal-700 transition-all whitespace-nowrap"
                     >
                       Xem chi tiết →
                     </button>
+                    )}
                   </div>
                 ))
               )}
@@ -13733,6 +14157,7 @@ function EditSplitView({
   items,
   drillingMachines,
   diameterOptions = [],
+  readOnly = false,
 }: { 
   result: ExtractionResult; 
   onClose: () => void; 
@@ -13745,6 +14170,7 @@ function EditSplitView({
   items: AppItem[];
   drillingMachines: AppDrillingMachine[];
   diameterOptions?: string[];
+  readOnly?: boolean;
 }) {
   const [data, setData] = useState<ExtractionResult>(result);
   // Ref luôn giữ data mới nhất — tránh stale closure khi onSave gọi từ button
@@ -13937,14 +14363,14 @@ function EditSplitView({
             const img = new Image();
             img.onload = () => {
               const canvas = document.createElement('canvas');
-              const MAX = 3000;
+              const MAX = 3500;
               let w = img.width, h = img.height;
               if (w > MAX || h > MAX) { if (w > h) { h *= MAX/w; w = MAX; } else { w *= MAX/h; h = MAX; } }
               canvas.width = w; canvas.height = h;
               const ctx = canvas.getContext('2d')!;
               ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
               ctx.drawImage(img, 0, 0, w, h);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
               resolve({ base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
             };
             img.onerror = () => reject(new Error('Không thể tải ảnh'));
@@ -13955,11 +14381,15 @@ function EditSplitView({
             ? await onExtract([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }])
             : await extractDataFromFile([{ base64: `data:image/jpeg;base64,${normalized.base64}`, mimeType: normalized.mime }], userApiKey, (() => { const _s: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]'); return _s; })());
           const map = rawResult.designLayerMap || {};
+          const hasMap = Object.keys(map).length > 0;
           const normalizedLayers = (rawResult.layers || []).map((layer: any) => {
-            const geoCode = (layer.actualGeology || '').trim();
+            const code = (layer.designLayerCode || '').trim();
             const currentDesign = (layer.layerDesign || '').trim();
-            if (geoCode && map[geoCode] && (!currentDesign || currentDesign.length < 5)) {
-              return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
+            
+            if (hasMap && code && map[code]) {
+              if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[code]) {
+                return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[code]) });
+              }
             }
             return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
           });
@@ -14016,7 +14446,7 @@ function EditSplitView({
           image.onload = () => {
             const canvas = document.createElement('canvas');
             // Giới hạn kích thước tối đa để tránh lỗi API (Gemini thích ảnh rõ nhưng không quá khổng lồ)
-            const MAX_DIM = 3000;
+            const MAX_DIM = 3500;
             let width = image.width;
             let height = image.height;
             if (width > MAX_DIM || height > MAX_DIM) {
@@ -14038,8 +14468,8 @@ function EditSplitView({
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(image, 0, 0, width, height);
-            // Xuất ra JPEG chất lượng cao (0.9) để AI đọc rõ chữ
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            // Xuất ra JPEG chất lượng cao (0.95) để AI đọc rõ chữ
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
             resolve({
               base64: dataUrl.split(',')[1],
               mime: 'image/jpeg'
@@ -14059,13 +14489,14 @@ function EditSplitView({
 
       // Tự động tra cứu (VLOOKUP) mô tả địa chất dựa trên mã địa chất thực tế
       const map = rawResult.designLayerMap || {};
+      const hasMap = Object.keys(map).length > 0;
       const normalizedLayers = (rawResult.layers || []).map(layer => {
-        const geoCode = (layer.actualGeology || '').trim();
+        const code = (layer.designLayerCode || '').trim();
         const currentDesign = (layer.layerDesign || '').trim();
         
-        if (geoCode && map[geoCode]) {
-          if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[geoCode]) {
-            return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[geoCode]) });
+        if (hasMap && code && map[code]) {
+          if (!currentDesign || currentDesign.length < 5 || currentDesign !== map[code]) {
+            return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(map[code]) });
           }
         }
         return sanitizeLayer({ ...layer, layerDesign: stripLayerPrefix(layer.layerDesign || '') });
@@ -14430,7 +14861,7 @@ function EditSplitView({
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const PDF_RENDER_WIDTH = 2400;
+  const PDF_RENDER_WIDTH = 3000;
   const PDF_DISPLAY_WIDTH = 600;
 
   // Global mouse events để pan không bị mất khi kéo ra ngoài container
@@ -14831,6 +15262,7 @@ function EditSplitView({
           >
             Hủy bỏ
           </button>
+          {!readOnly && (
           <button 
             onClick={() => {
               if (hasDroplistError) {
@@ -14846,6 +15278,7 @@ function EditSplitView({
             <Save size={14} />
             {hasDroplistError ? `Cần chọn lại: ${droplistErrors.join(', ')}` : 'Lưu thay đổi'}
           </button>
+          )}
         </div>
       </div>
       )} {/* end !embedded header */}
@@ -15298,18 +15731,18 @@ function EditSplitView({
                       let groupCount = 0;
                       let prevKey = '';
                       data.layers.forEach((layer) => {
-                        const key = layer.layerDesign?.trim() || '(Chưa có)';
+                        const key = normalizeLayerName(layer.layerDesign || '(Chưa có)');
                         if (key !== prevKey) { groupCount++; prevKey = key; }
                         const colorIdx = Math.max(0, groupCount - 1) % groupColors.length;
                         const last = groups[groups.length - 1];
-                        if (last && last.layerDesign === key) {
+                        if (last && normalizeLayerName(last.layerDesign) === key) {
                           last.segments += 1;
                           last.elevationTo = layer.elevationTo;
                           last.totalDuration += layer.durationHours;
                           last.totalLength += layer.lengthMeters;
                         } else {
                           groups.push({
-                            layerDesign: key,
+                            layerDesign: layer.layerDesign || '(Chưa có)',
                             segments: 1,
                             elevationFrom: layer.elevationFrom,
                             elevationTo: layer.elevationTo,
