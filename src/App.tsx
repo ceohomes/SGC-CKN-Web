@@ -8531,20 +8531,20 @@ LƯU Ý:
                           <th>Dự án</th>
                           <th>Hạng mục</th>
                           <th
-                            className="cursor-pointer select-none group"
+                            className="cursor-pointer select-none group relative"
                             onClick={() => setSortPileId(prev => prev === 'none' ? 'asc' : prev === 'asc' ? 'desc' : 'none')}
                             title="Sắp xếp theo Số hiệu cọc"
                           >
-                            <span className="inline-flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1.5">
                               Số hiệu
-                              <span className="inline-flex flex-col leading-none text-[9px] opacity-60 group-hover:opacity-100 transition-opacity">
-                                {sortPileId === 'asc' ? (
-                                  <span className="text-blue-300 font-black text-[11px] leading-none">▲</span>
-                                ) : sortPileId === 'desc' ? (
-                                  <span className="text-blue-300 font-black text-[11px] leading-none">▼</span>
-                                ) : (
-                                  <span className="text-white/40 font-black text-[11px] leading-none">⇅</span>
-                                )}
+                              <span className={`inline-flex items-center justify-center w-5 h-5 rounded font-black text-[11px] leading-none transition-all shadow-sm
+                                ${sortPileId === 'asc'
+                                  ? 'bg-yellow-400 text-gray-900 shadow-yellow-300/60 scale-110'
+                                  : sortPileId === 'desc'
+                                  ? 'bg-yellow-400 text-gray-900 shadow-yellow-300/60 scale-110'
+                                  : 'bg-white/20 text-white/70 group-hover:bg-white/30 group-hover:text-white'
+                                }`}>
+                                {sortPileId === 'asc' ? '▲' : sortPileId === 'desc' ? '▼' : '⇅'}
                               </span>
                             </span>
                           </th>
