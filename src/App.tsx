@@ -9347,8 +9347,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                     <div>{layer.timeTo}</div>
                     {layer.dateTo && <div className="text-[9px] text-slate-500">{layer.dateTo}</div>}
                   </td>
-                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.elevationFrom)}</td>
-                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.elevationTo)}</td>
+                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(Math.abs(layer.elevationFrom))}</td>
+                  <td className="text-center text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(Math.abs(layer.elevationTo))}</td>
                   <td className="text-center font-normal text-black bg-slate-50 px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.durationHours)}</td>
                   <td className="text-center font-normal text-black px-4 py-3 text-[12px] border-r border-slate-200">{formatNumber(layer.lengthMeters)}</td>
                   <td className={cn(
@@ -15429,7 +15429,7 @@ function EditSplitView({
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Độ sâu từ</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
@@ -15439,7 +15439,7 @@ function EditSplitView({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Độ sâu đến</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
@@ -15602,16 +15602,16 @@ function EditSplitView({
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <NumericCell
-                            value={layer.elevationFrom}
-                            onChange={(val) => updateLayer(idx, 'elevationFrom', val)}
+                            value={Math.abs(layer.elevationFrom)}
+                            onChange={(val) => updateLayer(idx, 'elevationFrom', -Math.abs(val))}
                             className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
                         </td>
                         <td className={`p-0 border-r border-slate-200 align-middle whitespace-nowrap ${rowBg}`}>
                           <NumericCell
-                            value={layer.elevationTo}
-                            onChange={(val) => updateLayer(idx, 'elevationTo', val)}
+                            value={Math.abs(layer.elevationTo)}
+                            onChange={(val) => updateLayer(idx, 'elevationTo', -Math.abs(val))}
                             className="w-full bg-transparent border-none text-[12px] text-black font-normal focus:bg-yellow-50 focus:ring-1 focus:ring-yellow-400 focus:rounded px-2 py-1 outline-none text-center transition-all cursor-text"
                             style={{ minWidth: '80px', width: '80px' }}
                           />
@@ -15766,8 +15766,8 @@ function EditSplitView({
                             <td className={`px-3 py-2 text-[12px] text-black text-center border-r border-slate-200 ${rowBg}`}>{data.diameter}</td>
                             <td className={`px-3 py-2 text-[12px] font-normal border-r border-slate-200 ${rowBg} text-black whitespace-pre-wrap break-words`}>{g.layerDesign}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{g.segments}</td>
-                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationFrom)}</td>
-                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.elevationTo)}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(Math.abs(g.elevationFrom))}</td>
+                            <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(Math.abs(g.elevationTo))}</td>
                             <td className={`px-3 py-2 text-[12px] text-center border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalDuration)}</td>
                             <td className={`px-3 py-2 text-[12px] text-center font-semibold border-r border-slate-200 ${rowBg}`}>{formatNumber(g.totalLength)}</td>
                             <td className={cn(
@@ -15795,10 +15795,10 @@ function EditSplitView({
                         {data.layers.length}
                       </td>
                       <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
-                        {data.layers.length > 0 ? formatNumber(data.layers[0].elevationFrom) : '—'}
+                        {data.layers.length > 0 ? formatNumber(Math.abs(data.layers[0].elevationFrom)) : '—'}
                       </td>
                       <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
-                        {data.layers.length > 0 ? formatNumber(data.layers[data.layers.length - 1].elevationTo) : '—'}
+                        {data.layers.length > 0 ? formatNumber(Math.abs(data.layers[data.layers.length - 1].elevationTo)) : '—'}
                       </td>
                       <td className="px-3 py-2 text-[12px] font-black text-center text-black border-r border-slate-300">
                         {formatNumber(data.layers.reduce((s, l) => s + l.durationHours, 0))}
