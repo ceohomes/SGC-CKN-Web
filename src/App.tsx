@@ -9312,8 +9312,8 @@ function ResultDisplay({ result, onSave, onCancel }: { result: ExtractionResult;
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Cấp đất đá</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Từ (h)</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">Đến (h)</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ từ</th>
-                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Cao độ đến</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Độ sâu từ</th>
+                <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[100px]">Độ sâu đến</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">T.Gian</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[80px]">Dài (m)</th>
                 <th className="px-4 py-3 text-center text-[12px] font-black text-blue-900 uppercase tracking-wider border-r border-slate-300 w-[120px]">V (m/h)</th>
@@ -13501,77 +13501,7 @@ function SummaryView({
         </div>
       )}
 
-      {duplicateGroups.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="p-1.5 bg-amber-500 rounded-lg">
-              <AlertCircle size={16} className="text-white" />
-            </div>
-            <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-widest">
-              Cảnh báo trùng Tên bộ phận &amp; Số hiệu cọc
-            </h4>
-            <span className="ml-auto bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-              {duplicateGroups.length} nhóm trùng
-            </span>
-          </div>
-          <p className="text-[11px] text-amber-700 font-medium mb-4">
-            Các biên bản dưới đây có cùng <strong>Tên bộ phận</strong> và <strong>Số hiệu cọc</strong>. Vui lòng kiểm tra lại để tránh nhập liệu trùng lặp.
-          </p>
-          <div className="space-y-3">
-            {duplicateGroups.map((group) => (
-              <div key={group.key} className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
-                {/* Group header */}
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-100 border-b border-amber-200">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Tên bộ phận:</span>
-                    <span className="text-[12px] font-bold text-amber-900 truncate">{group.item || '(Chưa có)'}</span>
-                    <span className="mx-2 text-amber-400">|</span>
-                    <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest shrink-0">Số hiệu cọc:</span>
-                    <span className="text-[13px] font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0">{group.pileId || '(Chưa có)'}</span>
-                  </div>
-                  <span className="text-[10px] font-black text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0">
-                    {group.records.length} bản ghi
-                  </span>
-                </div>
-                {/* Records list */}
-                <div className="divide-y divide-amber-100">
-                  {group.records.map((rec, ri) => (
-                    <div key={rec.id} className="flex items-center gap-3 px-4 py-2 hover:bg-amber-50 transition-colors group">
-                      <span className="text-[10px] font-black text-amber-400 w-5 shrink-0">#{ri + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-bold text-slate-800 truncate">{rec.project || '—'}</p>
-                        <p className="text-[10px] text-slate-500 truncate">
-                          MK: <span className="font-bold">{rec.reportNumber || '—'}</span>
-                          {rec.constructionStart && <> · Bắt đầu: <span className="font-bold">{rec.constructionStart}</span></>}
-                          {rec.fileName && <> · File: <span className="font-bold">{rec.fileName}</span></>}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {onEdit && (
-                        <button
-                          onClick={() => onEdit(rec)}
-                          className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all border border-blue-100"
-                        >
-                          Xem
-                        </button>
-                        )}
-                        {onDelete && (
-                        <button
-                          onClick={() => onDelete(rec.id)}
-                          className="px-3 py-1 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all border border-red-100"
-                        >
-                          Xóa
-                        </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* ── Cảnh báo biên bản thiếu dữ liệu ── */}
       {missingDataRecords.length > 0 && (
@@ -15429,7 +15359,7 @@ function EditSplitView({
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Độ sâu từ</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Bắt đầu thi công</label>
               <input 
                 value={data.constructionStart} 
                 onChange={(e) => updateField('constructionStart', e.target.value)}
@@ -15439,7 +15369,7 @@ function EditSplitView({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Độ sâu đến</label>
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Kết thúc thi công</label>
               <input 
                 value={data.constructionEnd} 
                 onChange={(e) => updateField('constructionEnd', e.target.value)}
@@ -15476,8 +15406,8 @@ function EditSplitView({
                       <th className="px-2 py-2 text-left text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300" style={{minWidth:'220px'}}>Mô tả lớp thiết kế</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Từ (h)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Đến (h)</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ từ</th>
-                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Cao độ đến</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Độ sâu từ</th>
+                      <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>Độ sâu đến</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'80px'}}>T.Gian</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>Dài (m)</th>
                       <th className="px-2 py-2 text-center text-[12px] font-black text-black uppercase tracking-wider border-r border-slate-300 whitespace-nowrap" style={{width:'75px'}}>V (m/h)</th>
@@ -15692,8 +15622,8 @@ function EditSplitView({
                       <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Đường kính</th>
                       <th className="px-3 py-2 text-left text-[12px] font-black uppercase tracking-wider border-r border-blue-700" style={{minWidth:'220px'}}>Lớp Thiết Kế</th>
                       <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Số đoạn</th>
-                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ từ (m)</th>
-                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Cao độ đến (m)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Độ sâu từ (m)</th>
+                      <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Độ sâu đến (m)</th>
                       <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng T.Gian (h)</th>
                       <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider border-r border-blue-700 whitespace-nowrap">Tổng Dài (m)</th>
                       <th className="px-3 py-2 text-center text-[12px] font-black uppercase tracking-wider whitespace-nowrap">V TB (m/h)</th>
