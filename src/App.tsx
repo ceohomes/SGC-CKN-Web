@@ -1990,7 +1990,7 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
                       <button
                         type="button"
                         onClick={() => {
-                          if (currentUser?.role !== 'admin') return;
+                          if (!isAdmin) return;
                           if (formAssignedProjects.length === allProjects.length) {
                             setFormAssignedProjects([]);
                           } else {
@@ -2018,7 +2018,7 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
                               type="button"
                               disabled={currentUser?.role !== 'admin'}
                               onClick={() => {
-                                if (currentUser?.role !== 'admin') return;
+                                if (!isAdmin) return;
                                 setFormAssignedProjects(prev =>
                                   isSelected ? prev.filter(p => p !== proj) : [...prev, proj]
                                 );
@@ -2172,12 +2172,12 @@ export default function App() {
   };
 
   // ── P.TQT permission helpers ──
-  // P.TQT: xem toàn bộ + xuất Excel, KHÔNG được thêm/sửa/xóa dữ liệu
-  const isPTQT = currentUser?.role === 'P. TQT';
-  const isAdmin = currentUser?.role === 'admin';
+  // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel)
+  const isPTQT = false; // P.TQT giờ có quyền như Admin, không còn bị hạn chế
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'P. TQT';
   const isQSQC = currentUser?.role === 'QS-QC';
-  const canEdit = isAdmin || isQSQC; // P.TQT KHÔNG được sửa/xóa
-  const canExport = isAdmin || isQSQC || isPTQT; // P.TQT được xuất Excel
+  const canEdit = isAdmin || isQSQC; // P.TQT được sửa/xóa như Admin
+  const canExport = isAdmin || isQSQC; // P.TQT được xuất Excel
 
   const handleStopImpersonation = () => {
     if (originalAdmin) {
@@ -4809,8 +4809,8 @@ export default function App() {
 
     const projectItems = items.filter(it => it.projectId === project.id);
 
-    // Phân quyền: Admin và QS-QC được phép quản lý hạng mục. P.TQT chỉ xem.
-    const canManageItems = (currentUser?.role === 'admin' || currentUser?.role === 'QS-QC') && currentUser?.role !== 'P. TQT';
+    // Phân quyền: Admin, QS-QC và P.TQT đều được phép quản lý hạng mục.
+    const canManageItems = currentUser?.role === 'admin' || currentUser?.role === 'QS-QC' || currentUser?.role === 'P. TQT';
 
     const handleCreate = async () => {
       if (!canManageItems) { showToast('Bạn không có quyền thực hiện thao tác này', 'error'); return; }
@@ -5775,7 +5775,7 @@ LƯU Ý:
     const [isSavingNewProject, setIsSavingNewProject] = React.useState(false);
 
     const handleCreateProject = async () => {
-      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo dự án', 'error'); return; }
+      if (!isAdmin) { showToast('Chỉ Admin mới có quyền tạo dự án', 'error'); return; }
       const trimmed = newProjectName.trim();
       if (!trimmed) return;
       const exists = projects.some(p => p.name.trim().toLowerCase() === trimmed.toLowerCase());
@@ -5843,7 +5843,7 @@ LƯU Ý:
     };
 
     const handleCreateMachine = async () => {
-      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền tạo máy khoan', 'error'); return; }
+      if (!isAdmin) { showToast('Chỉ Admin mới có quyền tạo máy khoan', 'error'); return; }
       const trimmed = newMachineName.trim();
       if (!trimmed) return;
       // Kiểm tra trùng tên
@@ -5881,7 +5881,7 @@ LƯU Ý:
 
 
     const handleCreateDiameter = async () => {
-      if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền thêm đường kính', 'error'); return; }
+      if (!isAdmin) { showToast('Chỉ Admin mới có quyền thêm đường kính', 'error'); return; }
       const trimmed = newDiameterName.trim();
       if (!trimmed) return;
       // Lấy danh sách đường kính hiện có từ history + localStorage
@@ -6189,7 +6189,7 @@ LƯU Ý:
                     </div>
                     <button
                       onClick={async () => {
-                        if (currentUser?.role !== 'admin') { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
+                        if (!isAdmin) { showToast('Chỉ Admin mới có quyền đồng bộ máy khoan', 'error'); return; }
                         setIsSavingNewProject(true);
                         try {
                           const toAdd: AppDrillingMachine[] = unsynced.map(name => ({
@@ -6365,7 +6365,7 @@ LƯU Ý:
                       ))}
                     </div>
                     {/* Nút thêm nhanh */}
-                    {currentUser?.role === 'admin' && projId && (
+                    {isAdmin && projId && (
                       <button
                         onClick={async () => {
                           if (!projId) return;
@@ -6404,7 +6404,7 @@ LƯU Ý:
                 ))}
               </div>
               {/* Footer: nút thêm tất cả luôn (nếu nhiều dự án) */}
-              {currentUser?.role === 'admin' && warnings.length > 1 && (
+              {isAdmin && warnings.length > 1 && (
                 <div className="px-5 py-3 bg-teal-50 border-t border-teal-200 flex items-center justify-between gap-3">
                   <span className="text-[10px] text-teal-600 font-medium">
                     Thêm tất cả {totalUnsynced} hạng mục vào đúng dự án tương ứng
@@ -6631,13 +6631,13 @@ LƯU Ý:
                               ) : (
                                 <div className="flex items-center justify-between group">
                                   <div 
-                                    className={`flex items-center gap-1.5 flex-1 ${currentUser?.role === 'admin' ? 'cursor-pointer' : 'cursor-default'}`}
+                                    className={`flex items-center gap-1.5 flex-1 ${isAdmin ? 'cursor-pointer' : 'cursor-default'}`}
                                     onClick={() => {
-                                      if (currentUser?.role !== 'admin') return;
+                                      if (!isAdmin) return;
                                       setStableEditingKey(row.value);
                                       setStableEditValue(row.value);
                                     }}
-                                    title={currentUser?.role === 'admin' ? "Click để chỉnh sửa" : "Chỉ Admin mới có quyền chỉnh sửa"}
+                                    title={isAdmin ? "Click để chỉnh sửa" : "Chỉ Admin mới có quyền chỉnh sửa"}
                                   >
                                     {isSaving ? (
                                       <span className="flex items-center gap-1.5 text-blue-600 text-xs">
@@ -6710,7 +6710,7 @@ LƯU Ý:
                             </td>
                             {activeTab === 'project' && (
                               <td className="px-2 py-2.5 text-center border-b border-r border-slate-400">
-                                {row.count === 0 && currentUser?.role === 'admin' && (
+                                {row.count === 0 && isAdmin && (
                                   <button
                                     title="Xóa dự án này (chưa có biên bản)"
                                     onClick={async () => {
@@ -7863,7 +7863,7 @@ LƯU Ý:
               </div>
             </div>
           )}
-          {currentUser?.role === 'admin' && (
+          {isAdmin && (
             <button 
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 bg-white/10 border border-white/10 text-white rounded-xl hover:bg-white/20 transition-all shadow-sm"
@@ -7914,7 +7914,7 @@ LƯU Ý:
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf" multiple onChange={handleFileUpload} />
 
       {/* ── BANNER CẢNH BÁO: Tất cả API Key hết quota ── */}
-          {currentUser?.role === 'admin' && geminiApiKeys.some(k => k.trim()) && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
+          {isAdmin && geminiApiKeys.some(k => k.trim()) && geminiApiKeys.every((k, i) => !k.trim() || exhaustedKeys.has(i)) && (
             <div className="bg-red-600 text-white px-6 py-3 flex items-center gap-3 sticky top-[64px] z-20 shadow-lg">
           <span className="text-xl shrink-0">⛔</span>
           <div className="flex-1">
