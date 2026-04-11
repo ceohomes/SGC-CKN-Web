@@ -3961,7 +3961,12 @@ export default function App() {
   };
 
   const handleSaveAll = async () => {
-    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền lưu biên bản', 'error'); return; }
+    // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel) nhưng bị giới hạn theo dự án
+    if (isPTQT) {
+      // Cho phép P.TQT lưu
+    } else if (isQSQC) {
+      // Cho phép QS-QC lưu
+    }
     if (pendingResults.length === 0) return;
 
     // ── QUAN TRỌNG: Merge currentResult (data đang chỉnh sửa) vào pendingResults ──
@@ -4050,7 +4055,12 @@ export default function App() {
   };
 
   const handleDelete = (id: string) => {
-    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền xóa biên bản', 'error'); return; }
+    // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel) nhưng bị giới hạn theo dự án
+    if (isPTQT) {
+      // Cho phép P.TQT xóa
+    } else if (isQSQC) {
+      // Cho phép QS-QC xóa
+    }
     const itemToDelete = history.find(item => item.id === id);
     const filesToDelete: string[] = [];
     if (itemToDelete?.fileUrl)  filesToDelete.push(`📄 File ảnh/PDF: ${itemToDelete.fileName || 'file gốc'}`);
@@ -4716,7 +4726,12 @@ export default function App() {
   };
 
   const handleSaveEdit = (updatedResult: ExtractionResult) => {
-    if (isPTQT) { showToast('Tài khoản P.TQT không có quyền chỉnh sửa biên bản', 'error'); return; }
+    // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel) nhưng bị giới hạn theo dự án
+    if (isPTQT) {
+      // Cho phép P.TQT sửa
+    } else if (isQSQC) {
+      // Cho phép QS-QC sửa
+    }
     // Normalize item: nếu tên AI quét khớp chuẩn hóa với app_items → dùng tên chuẩn
     const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
     const selectedProj = visibleProjects.find(p => p.name === updatedResult.project);
@@ -8260,7 +8275,6 @@ LƯU Ý:
                         Danh sách cọc
                       </button>
                     )}
-                    {!isPTQT && (
                     <button 
                       onClick={() => fileInputRef.current?.click()}
                       className="bg-gradient-to-br from-orange-400 to-orange-600 text-white px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-[0.1em] hover:from-orange-500 hover:to-orange-700 transition-all flex items-center gap-3 shadow-lg shadow-orange-500/30 border border-white/10 active:scale-95"
@@ -8268,7 +8282,6 @@ LƯU Ý:
                       <Upload size={16} strokeWidth={2.5} />
                       Up File
                     </button>
-                    )}
                     {hasActiveFilter && (
                       <button
                         onClick={resetFilters}
@@ -8660,7 +8673,6 @@ LƯU Ý:
                             </td>
                             <td className="text-center">
                               <div className="flex items-center justify-end gap-1.5">
-                                {!isPTQT && (<>
                                 <button
                                   onClick={() => handleEdit(item)}
                                   className="p-2 bg-sky-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-sky-100"
@@ -8675,7 +8687,6 @@ LƯU Ý:
                                 >
                                   <Trash2 size={14} />
                                 </button>
-                                </>)}
                               </div>
                             </td>
                           </tr>
@@ -8697,7 +8708,6 @@ LƯU Ý:
                     ? 'Hệ thống chưa ghi nhận biên bản nào. Vui lòng liên hệ QS-QC để tải lên dữ liệu.'
                     : 'Hệ thống chưa ghi nhận biên bản nào. Hãy tải lên các tệp ảnh hoặc PDF của biên bản hiện trường để bắt đầu phân tích.'}
                 </p>
-                {!isPTQT && (
                 <button 
                   onClick={() => fileInputRef.current?.click()}
                   className="px-10 py-5 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-orange-900/20 flex items-center gap-4 active:scale-95"
@@ -8705,7 +8715,6 @@ LƯU Ý:
                   <Upload size={24} />
                   Tải lên biên bản ngay
                 </button>
-                )}
               </div>
             ))}
           </div>
@@ -8721,7 +8730,7 @@ LƯU Ý:
             handleFileUpload(fakeEvent);
           }} />
         ) : activeSheet === 'pile-registry' ? (
-          (currentUser?.role === 'admin' || isPTQT) ? <PileRegistryView projects={visibleProjects} history={visibleHistory} currentUser={currentUser} supabase={supabase} items={visibleItems} readOnly={isPTQT} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <PileRegistryView projects={visibleProjects} history={visibleHistory} currentUser={currentUser} supabase={supabase} items={visibleItems} readOnly={false} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -8731,7 +8740,7 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'geology' ? (
-          (currentUser?.role === 'admin' || isPTQT) ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} readOnly={isPTQT} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} readOnly={false} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -8752,8 +8761,8 @@ LƯU Ý:
             history={visibleHistory} 
             visibleProjects={visibleProjects}
             onSelectResult={(res) => { setCurrentResult({ ...res, layers: Array.isArray(res.layers) ? res.layers : [] }); setActiveSheet('upload'); }} 
-            onEdit={isPTQT ? undefined : handleEdit}
-            onDelete={isPTQT ? undefined : handleDelete}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
             onUploadClick={() => { setActiveSheet('upload'); setTimeout(() => fileInputRef.current?.click(), 100); }}
             isExportingAll={isExportingAll}
             onExportAll={exportAllToExcel}
@@ -9221,7 +9230,7 @@ LƯU Ý:
           items={items}
           drillingMachines={drillingMachines}
           diameterOptions={[...new Set([...(Array.isArray(history) ? history : []).map((r: any) => (r.diameter||'').trim()).filter(Boolean), ...JSON.parse(localStorage.getItem('sgc_diameter_list')||'[]')])].sort((a,b)=>(parseInt(a.replace(/\D/g,''))||0)-(parseInt(b.replace(/\D/g,''))||0))}
-          readOnly={isPTQT}
+          readOnly={!canEdit}
         />
       )}
 
