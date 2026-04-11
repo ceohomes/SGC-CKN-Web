@@ -2108,6 +2108,7 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
 export default function App() {
   const [activeSheet, setActiveSheet] = useState<AppSheet>('upload');
   const [geologyChuanHoaTab, setGeologyChuanHoaTab] = useState<'geology' | 'project'>('geology');
+  const [geologySearchQuery, setGeologySearchQuery] = useState('');
   // Stable edit states tách riêng ở component level để tránh reset khi re-render
   const [stableEditingKey, setStableEditingKey] = useState<string | null>(null);
   const [stableEditValue, setStableEditValue] = useState('');
@@ -5082,7 +5083,23 @@ export default function App() {
   }
 
   // ── ChuanHoaDataView: Chuẩn hóa data (2 tab: Địa chất / Dự án) ──
-    const GeologyView = ({ editingKey: stableEditingKey, setEditingKey: setStableEditingKey, editValue: stableEditValue, setEditValue: setStableEditValue, readOnly = false }: { editingKey: string|null, setEditingKey: (v:string|null)=>void, editValue: string, setEditValue: (v:string)=>void, readOnly?: boolean }) => {
+    const GeologyView = ({ 
+      editingKey: stableEditingKey, 
+      setEditingKey: setStableEditingKey, 
+      editValue: stableEditValue, 
+      setEditValue: setStableEditValue, 
+      searchQuery,
+      setSearchQuery,
+      readOnly = false 
+    }: { 
+      editingKey: string|null, 
+      setEditingKey: (v:string|null)=>void, 
+      editValue: string, 
+      setEditValue: (v:string)=>void, 
+      searchQuery: string,
+      setSearchQuery: (v: string) => void,
+      readOnly?: boolean 
+    }) => {
       type DataTab = 'geology' | 'project';
       const activeTab = geologyChuanHoaTab;
       const setActiveTab = setGeologyChuanHoaTab;
@@ -5095,7 +5112,6 @@ export default function App() {
       const [isAiClassifying, setIsAiClassifying] = React.useState(false);
       const [aiClassificationPreview, setAiClassificationPreview] = React.useState<{ originalName: string; oldClass: string; newClass: string }[]>([]);
       const [showClassificationModal, setShowClassificationModal] = React.useState(false);
-      const [searchQuery, setSearchQuery] = React.useState('');
 
       const [isSyncingSoilClass, setIsSyncingSoilClass] = React.useState(false);
       const [syncSoilClassResult, setSyncSoilClassResult] = React.useState<{
@@ -8740,7 +8756,7 @@ LƯU Ý:
             </div>
           )
         ) : activeSheet === 'geology' ? (
-          (currentUser?.role === 'admin' || isPTQT) ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} readOnly={false} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <GeologyView editingKey={stableEditingKey} setEditingKey={setStableEditingKey} editValue={stableEditValue} setEditValue={setStableEditValue} searchQuery={geologySearchQuery} setSearchQuery={setGeologySearchQuery} readOnly={false} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
