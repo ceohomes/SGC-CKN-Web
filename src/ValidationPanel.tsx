@@ -130,7 +130,7 @@ function runRuleEngine(result: ExtractionResult): ValidationIssue[] {
     const eFrom = toN(layer.elevationFrom);
     const eTo = toN(layer.elevationTo);
     if (!isNaN(eFrom) && !isNaN(eTo)) {
-      const expectedLen = round2(Math.abs(eTo - eFrom));
+      const expectedLen = round2(Math.abs(Math.abs(eTo) - Math.abs(eFrom)));
       const storedLen = toN(layer.lengthMeters);
       if (!isNaN(storedLen) && Math.abs(expectedLen - storedLen) > 0.05) {
         issues.push({
@@ -139,7 +139,7 @@ function runRuleEngine(result: ExtractionResult): ValidationIssue[] {
           severity: 'error',
           type: 'math',
           message: `Chiều dài không khớp cao độ`,
-          expected: `${fmt(expectedLen)} m (|${fmt(eTo)} − ${fmt(eFrom)}|)`,
+          expected: `${fmt(expectedLen)} m (|abs(${fmt(eTo)}) − abs(${fmt(eFrom)})|)`,
           actual: `${fmt(storedLen)} m`,
         });
       }
@@ -395,7 +395,7 @@ HƯỚNG DẪN KIỂM TRA (QUAN TRỌNG):
 3. KIỂM TRA TÍNH LOGIC:
    - Thời gian phải tăng dần.
    - Cao độ phải liên tục (elevationTo lớp N = elevationFrom lớp N+1).
-   - Toán học: (Cao độ từ) - (Chiều dài) = (Cao độ đến).
+   - Toán học: |abs(Cao độ đến) - abs(Cao độ từ)| = Chiều dài.
 
 YÊU CẦU ĐẦU RA (JSON thuần):
 {

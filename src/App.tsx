@@ -952,9 +952,7 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
   if (isTypeB) {
     let cum = 0;
     rawData.layers.forEach((layer: any) => {
-      const len = layer.elevationFrom === 0
-        ? Math.abs(layer.elevationTo)
-        : Math.abs(layer.elevationTo - layer.elevationFrom);
+      const len = Math.abs(Math.abs(toNum(layer.elevationTo)) - Math.abs(toNum(layer.elevationFrom)));
       cum += (len || 0);
       typeBCumulative.push(parseFloat(cum.toFixed(3)));
     });
@@ -1017,13 +1015,13 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
       // Chỉ tính length tạm, sẽ tính lại chính xác trong finalLayers
       const elevFrom = toNum(layer.elevationFrom, 0);
       const elevTo   = toNum(layer.elevationTo, 0);
-      length = Math.abs(elevTo - elevFrom);
+      length = Math.abs(Math.abs(elevTo) - Math.abs(elevFrom));
       if (length < 0.01) length = Math.abs(elevTo); // fallback
       finalElevationFrom = elevFrom;
       finalElevationTo   = elevTo;
     } else {
       // Loại A: chiều dài = khoảng cách tuyệt đối giữa 2 cao độ
-      length = Math.abs(toNum(layer.elevationTo) - toNum(layer.elevationFrom));
+      length = Math.abs(Math.abs(toNum(layer.elevationTo)) - Math.abs(toNum(layer.elevationFrom)));
       finalElevationFrom = toNum(layer.elevationFrom);
       finalElevationTo   = toNum(layer.elevationTo);
     }
@@ -1061,14 +1059,14 @@ Nếu phát hiện mâu thuẫn không thể giải quyết, hãy ghi chú chi t
   let finalLayers = processedLayers;
 
   // ── Loại B: AI đọc trực tiếp elevationFrom/To từ biên bản (đã có dấu âm) ──
-  // Chỉ cần tính lại lengthMeters = |elevationTo - elevationFrom|
+  // Chỉ cần tính lại lengthMeters = |abs(elevationTo) - abs(elevationFrom)|
   // Không tính toán gì thêm — tin tưởng giá trị AI đọc được
   if (isTypeB) {
     let prevElevTo = toNum(processedLayers[0]?.elevationFrom, 0);
     finalLayers = processedLayers.map((layer: any) => {
       const elevFrom = toNum(layer.elevationFrom, 0);
       const elevTo   = toNum(layer.elevationTo, 0);
-      const newLength = Math.abs(elevTo - elevFrom);
+      const newLength = Math.abs(Math.abs(elevTo) - Math.abs(elevFrom));
       const newSpeed  = toNum(layer.durationHours) > 0 ? newLength / toNum(layer.durationHours) : toNum(layer.speedMph);
       return {
         ...layer,
@@ -1418,6 +1416,8 @@ function AccountConfigView({ history, appProjects, currentUser, onImpersonate }:
     'QS-QC':  { bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
     'P. TQT': { bg: 'bg-orange-100',  text: 'text-orange-800',  border: 'border-orange-300' },
   };
+
+  const isAdmin = currentUser?.role === 'admin';
 
   const loadUsers = (): AppUser[] => {
     try {
@@ -2181,12 +2181,31 @@ export default function App() {
   };
 
   // ── P.TQT permission helpers ──
-  // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel)
-  const isPTQT = false; // P.TQT giờ có quyền như Admin, không còn bị hạn chế
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'P. TQT';
+  // P.TQT: có đầy đủ quyền như Admin (thêm/sửa/xóa/xuất Excel) nhưng bị giới hạn theo dự án
+  const isPTQT = currentUser?.role === 'P. TQT';
+  const isAdmin = currentUser?.role === 'admin';
   const isQSQC = currentUser?.role === 'QS-QC';
-  const canEdit = isAdmin || isQSQC; // P.TQT được sửa/xóa như Admin
-  const canExport = isAdmin || isQSQC; // P.TQT được xuất Excel
+  const canEdit = isAdmin || isPTQT || isQSQC; // P.TQT được sửa/xóa như Admin
+  const canExport = isAdmin || isPTQT || isQSQC; // P.TQT được xuất Excel
+
+  const visibleProjects = React.useMemo(() => {
+    if (!currentUser || currentUser.role === 'admin') return projects;
+    const assigned = currentUser.assignedProjects;
+    if (!assigned || assigned.length === 0) return projects;
+    return projects.filter(p => assigned.some(ap => ap.trim() === (p.name || '').trim()));
+  }, [projects, currentUser]);
+
+  const visibleItems = React.useMemo(() => {
+    if (!currentUser || currentUser.role === 'admin') return items;
+    const visibleProjIds = new Set(visibleProjects.map(p => p.id));
+    return items.filter(it => visibleProjIds.has(it.projectId));
+  }, [items, visibleProjects, currentUser]);
+
+  const visibleDrillingMachines = React.useMemo(() => {
+    if (!currentUser || currentUser.role === 'admin') return drillingMachines;
+    const visibleProjIds = new Set(visibleProjects.map(p => p.id));
+    return drillingMachines.filter(m => visibleProjIds.has(m.projectId));
+  }, [drillingMachines, visibleProjects, currentUser]);
 
   const handleStopImpersonation = () => {
     if (originalAdmin) {
@@ -2196,13 +2215,13 @@ export default function App() {
     }
   };
 
-  // ── visibleHistory: lọc theo phân quyền dự án của QS-QC ──
-  // Admin / P.TQT → thấy tất cả
-  // QS-QC có assignedProjects → chỉ thấy biên bản thuộc dự án được phân quyền
+  // ── visibleHistory: lọc theo phân quyền dự án của QS-QC & P.TQT ──
+  // Admin → thấy tất cả
+  // P.TQT / QS-QC có assignedProjects → chỉ thấy biên bản thuộc dự án được phân quyền
   const visibleHistory = React.useMemo(() => {
     if (!currentUser) return history;
-    if (currentUser.role === 'admin' || currentUser.role === 'P. TQT') return history;
-    // QS-QC
+    if (currentUser.role === 'admin') return history;
+    // P.TQT / QS-QC
     const assigned = currentUser.assignedProjects;
     if (!assigned || assigned.length === 0) return history; // không giới hạn nếu chưa gán
     return history.filter(r => assigned.some(p => p.trim() === (r.project || '').trim()));
@@ -3249,7 +3268,7 @@ export default function App() {
             if (currentUser && currentUser.role !== 'admin') {
               const assignedProjs = currentUser.assignedProjects && currentUser.assignedProjects.length > 0
                 ? currentUser.assignedProjects
-                : projects.map(p => p.name); // Nếu không có phân quyền cụ thể → dùng tất cả
+                : visibleProjects.map(p => p.name); // Nếu không có phân quyền cụ thể → dùng tất cả dự án được thấy
 
               if (assignedProjs.length === 1) {
                 // Chỉ 1 dự án → gán luôn, ghi đè AI
@@ -3336,7 +3355,7 @@ export default function App() {
       if (currentUser && currentUser.role !== 'admin') {
         const assignedProjs = currentUser.assignedProjects && currentUser.assignedProjects.length > 0
           ? currentUser.assignedProjects
-          : projects.map(p => p.name);
+          : visibleProjects.map(p => p.name);
 
         if (assignedProjs.length === 1) {
           result.project = assignedProjs[0];
@@ -3964,8 +3983,8 @@ export default function App() {
     ])];
     for (const r of latestPending) {
       const proj = projects.find(p => p.name === r.project);
-      const projItems = proj ? items.filter(it => it.projectId === proj.id) : [];
-      const projMachines = proj ? drillingMachines.filter(m => m.projectId === proj.id) : [];
+      const projItems = proj ? visibleItems.filter(it => it.projectId === proj.id) : [];
+      const projMachines = proj ? visibleDrillingMachines.filter(m => m.projectId === proj.id) : [];
       const invalidFields: string[] = [];
 
       if (projects.length > 0 && (!r.project || !projects.some(p => p.name === r.project)))
@@ -4700,8 +4719,8 @@ export default function App() {
     if (isPTQT) { showToast('Tài khoản P.TQT không có quyền chỉnh sửa biên bản', 'error'); return; }
     // Normalize item: nếu tên AI quét khớp chuẩn hóa với app_items → dùng tên chuẩn
     const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-    const selectedProj = projects.find(p => p.name === updatedResult.project);
-    const projItems = selectedProj ? items.filter(it => it.projectId === selectedProj.id) : [];
+    const selectedProj = visibleProjects.find(p => p.name === updatedResult.project);
+    const projItems = selectedProj ? visibleItems.filter(it => it.projectId === selectedProj.id) : [];
     const matchedItem = projItems.find(it => normalize(it.name) === normalize(updatedResult.item || ''));
     const normalizedResult = matchedItem && matchedItem.name !== updatedResult.item
       ? { ...updatedResult, item: matchedItem.name }
@@ -4816,7 +4835,7 @@ export default function App() {
     const [editValue, setEditValue] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    const projectItems = items.filter(it => it.projectId === project.id);
+    const projectItems = visibleItems.filter(it => it.projectId === project.id);
 
     // Phân quyền: Admin, QS-QC và P.TQT đều được phép quản lý hạng mục.
     const canManageItems = currentUser?.role === 'admin' || currentUser?.role === 'QS-QC' || currentUser?.role === 'P. TQT';
@@ -5078,7 +5097,7 @@ export default function App() {
           // Bước 1: Xây dựng bảng tra cứu soilClass từ toàn bộ history
           // Ưu tiên soilClass đã được phân định (khác 'Chưa Phân định nhóm')
           const soilClassLookup = new Map<string, string>();
-          history.forEach(res => {
+          visibleHistory.forEach(res => {
             (res.layers || []).forEach(layer => {
               const key = normalizeLayerName(layer.layerDesign || '');
               if (!key) return;
@@ -5096,7 +5115,7 @@ export default function App() {
           // Thu thập lớp thực sự chưa phân định (không tìm được class tốt trong lookup)
           const notClassifiedMap = new Map<string, { pileId: string; project: string; layerDesign: string }[]>();
 
-          history.forEach(res => {
+          visibleHistory.forEach(res => {
             let changed = false;
             const newLayers = (res.layers || []).map(layer => {
               const key = normalizeLayerName(layer.layerDesign || '');
@@ -5179,11 +5198,11 @@ export default function App() {
       const showReportsForItem = (value: string) => {
         let reports: any[] = [];
         if (activeTab === 'geology') {
-          reports = history.filter(res => 
+          reports = visibleHistory.filter(res => 
             (res.layers || []).some(layer => (layer.layerDesign || '').trim() === value)
           );
         } else if (activeTab === 'project') {
-          reports = history.filter(res => (res.project || '').trim() === value);
+          reports = visibleHistory.filter(res => (res.project || '').trim() === value);
         }
         setViewingReports({ value, reports });
       };
@@ -5223,7 +5242,7 @@ export default function App() {
         if (!searchQuery.trim()) return allItems;
         const q = searchQuery.toLowerCase().trim();
         return allItems.filter(it => it.value.toLowerCase().includes(q));
-      }, [history, searchQuery]);
+      }, [visibleHistory, searchQuery]);
 
       const startEdit = (key: string) => { setEditingKey(key); setEditValue(key); };
       const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
@@ -5235,7 +5254,7 @@ export default function App() {
         type ToUpdate = { result: ExtractionResult; newLayers?: DrillLayer[]; newRes?: Partial<ExtractionResult> };
         const toUpdateList: ToUpdate[] = [];
 
-        history.forEach(res => {
+        visibleHistory.forEach(res => {
           // Nếu có setResField (cho project/diameter) → cập nhật cả header biên bản
           if (setResField && getResField) {
             const resVal = (getResField(res) || '').trim();
@@ -5893,8 +5912,8 @@ LƯU Ý:
       if (!isAdmin) { showToast('Chỉ Admin mới có quyền thêm đường kính', 'error'); return; }
       const trimmed = newDiameterName.trim();
       if (!trimmed) return;
-      // Lấy danh sách đường kính hiện có từ history + localStorage
-      const fromHistory = history.map(r => (r.diameter || '').trim()).filter(Boolean);
+      // Lấy danh sách đường kính hiện có từ visibleHistory + localStorage
+      const fromHistory = visibleHistory.map(r => (r.diameter || '').trim()).filter(Boolean);
       const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
       const allDiameters = [...new Set([...fromHistory, ...fromStorage])];
       const isDuplicate = allDiameters.some(d => d.toLowerCase() === trimmed.toLowerCase());
@@ -5916,11 +5935,11 @@ LƯU Ý:
 
     const projectList = useEditableList(
       () => {
-        // Merge: dự án từ app_projects + dự án xuất hiện trong biên bản (history)
+        // Merge: dự án từ app_projects + dự án xuất hiện trong biên bản (visibleHistory)
         const nameMap = new Map<string, { value: string; count: number; soilClass?: string }>();
         
-        // 1. Từ bảng app_projects (nguồn chính)
-        projects.forEach(p => {
+        // 1. Từ bảng visibleProjects (nguồn chính)
+        visibleProjects.forEach(p => {
           const trimmed = p.name.trim();
           if (!trimmed) return;
           const key = trimmed.toLowerCase();
@@ -5929,8 +5948,8 @@ LƯU Ý:
           }
         });
 
-        // 2. Đếm biên bản từ history
-        history.forEach(res => {
+        // 2. Đếm biên bản từ visibleHistory
+        visibleHistory.forEach(res => {
           const v = (res.project || '').trim();
           if (!v) return;
           const key = v.toLowerCase();
@@ -5954,7 +5973,7 @@ LƯU Ý:
     const diameterList = useEditableList(
       () => {
         const map = new Map<string, { value: string; count: number; soilClass?: string }>();
-        history.forEach(res => {
+        visibleHistory.forEach(res => {
           const v = (res.diameter || '').trim();
           if (!v) return;
           map.has(v) ? map.get(v)!.count++ : map.set(v, { value: v, count: 1 });
@@ -6179,7 +6198,7 @@ LƯU Ý:
               {(() => {
                 const existingNames = new Set(drillingMachines.map(m => m.name.trim().toLowerCase()));
                 const unsynced = [...new Set(
-                  history.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
+                  visibleHistory.map(r => (r.reportNumber || '').trim()).filter(n => n && !existingNames.has(n.toLowerCase()))
                 )].sort();
                 if (unsynced.length === 0) return null;
                 return (
@@ -6256,7 +6275,7 @@ LƯU Ý:
                 </button>
                 {/* Badges inline — click để sửa tên */}
                 {(() => {
-                  const fromHistory = [...new Set(history.map(r => (r.diameter || '').trim()).filter(Boolean))];
+                  const fromHistory = [...new Set(visibleHistory.map(r => (r.diameter || '').trim()).filter(Boolean))];
                   const fromStorage: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
                   const allSet = new Set(fromHistory.map(d => d.toLowerCase()));
                   const storageOnly = fromStorage.filter(d => !allSet.has(d.toLowerCase()));
@@ -6266,7 +6285,7 @@ LƯU Ý:
                     return na - nb;
                   });
                   return allDiameters.map(d => {
-                    const count = history.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
+                    const count = visibleHistory.filter(r => (r.diameter || '').trim().toLowerCase() === d.toLowerCase()).length;
                     const isFromHistory = fromHistory.some(h => h.toLowerCase() === d.toLowerCase());
                     return (
                       <DiameterBadge
@@ -6280,7 +6299,7 @@ LƯU Ý:
                           const trimmed = newVal.trim();
                           // Cập nhật history (Supabase)
                           if (supabase) {
-                            const affected = history.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
+                            const affected = visibleHistory.filter(r => (r.diameter || '').trim().toLowerCase() === oldVal.toLowerCase());
                             for (const res of affected) {
                               await supabase.from('drill_extractions').update({ diameter: trimmed }).eq('id', res.id);
                             }
@@ -6293,7 +6312,7 @@ LƯU Ý:
                           const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
                           const updated = stored.map(x => x.toLowerCase() === oldVal.toLowerCase() ? trimmed : x);
                           localStorage.setItem('sgc_diameter_list', JSON.stringify(updated));
-                          showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${history.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
+                          showToast(`✅ Đã đổi "${oldVal}" → "${trimmed}" và đồng bộ ${visibleHistory.filter(r => (r.diameter||'').trim().toLowerCase()===oldVal.toLowerCase()).length} biên bản`, 'success');
                         }}
                         onDelete={isFromHistory ? undefined : () => {
                           const stored: string[] = JSON.parse(localStorage.getItem('sgc_diameter_list') || '[]');
@@ -6313,14 +6332,14 @@ LƯU Ý:
         {activeTab === 'project' && (() => {
           // Với mỗi dự án, tìm các tên item xuất hiện trong history nhưng chưa có trong app_items
           const warnings: { projName: string; projId: string | undefined; unsyncedItems: string[] }[] = [];
-          const allProjNames = [...new Set(history.map(r => (r.project || '').trim()).filter(Boolean))];
+          const allProjNames = [...new Set(visibleHistory.map(r => (r.project || '').trim()).filter(Boolean))];
           allProjNames.forEach(projName => {
-            const proj = projects.find(p => p.name.trim() === projName.trim());
+            const proj = visibleProjects.find(p => p.name.trim() === projName.trim());
             const officialItems = proj
-              ? items.filter(it => it.projectId === proj.id).map(it => it.name.trim().toLowerCase())
+              ? visibleItems.filter(it => it.projectId === proj.id).map(it => it.name.trim().toLowerCase())
               : [];
             const itemsInHistory = [...new Set(
-              history
+              visibleHistory
                 .filter(r => (r.project || '').trim() === projName)
                 .map(r => (r.item || '').trim())
                 .filter(Boolean)
@@ -8702,7 +8721,7 @@ LƯU Ý:
             handleFileUpload(fakeEvent);
           }} />
         ) : activeSheet === 'pile-registry' ? (
-          (currentUser?.role === 'admin' || isPTQT) ? <PileRegistryView projects={projects} history={history} currentUser={currentUser} supabase={supabase} items={items} readOnly={isPTQT} /> : (
+          (currentUser?.role === 'admin' || isPTQT) ? <PileRegistryView projects={visibleProjects} history={visibleHistory} currentUser={currentUser} supabase={supabase} items={visibleItems} readOnly={isPTQT} /> : (
             <div className="flex flex-col items-center justify-center py-40 text-center animate-in fade-in duration-500">
               <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mb-6">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-red-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -8723,14 +8742,15 @@ LƯU Ý:
           )
         ) : activeSheet === 'account-config' ? (
           <AccountConfigView 
-            history={history} 
-            appProjects={projects} 
+            history={visibleHistory} 
+            appProjects={visibleProjects} 
             currentUser={currentUser} 
             onImpersonate={handleImpersonate}
           />
         ) : (
           <SummaryView 
             history={visibleHistory} 
+            visibleProjects={visibleProjects}
             onSelectResult={(res) => { setCurrentResult({ ...res, layers: Array.isArray(res.layers) ? res.layers : [] }); setActiveSheet('upload'); }} 
             onEdit={isPTQT ? undefined : handleEdit}
             onDelete={isPTQT ? undefined : handleDelete}
@@ -11273,6 +11293,7 @@ function PileRegistryView({
 
 function SummaryView({ 
   history, 
+  visibleProjects,
   onSelectResult, 
   onEdit, 
   onDelete,
@@ -11282,6 +11303,7 @@ function SummaryView({
   githubCreds,
 }: { 
   history: ExtractionResult[], 
+  visibleProjects: AppProject[],
   onSelectResult: (res: ExtractionResult) => void,
   onEdit?: (res: ExtractionResult) => void,
   onDelete?: (id: string) => void,
@@ -13415,7 +13437,7 @@ function SummaryView({
           { label: 'Tổng số cọc', value: totalPiles, unit: 'cọc', color: 'bg-blue-600', icon: <Layers className="w-5 h-5 text-white" /> },
           { label: 'Tổng chiều sâu', value: formatNumber(totalDepth, 1), unit: 'm', color: 'bg-orange-500', icon: <ArrowDownToLine className="text-white w-5 h-5" /> },
           { label: 'Tốc độ khoan TB', value: formatNumber(avgSpeed), unit: 'm/h', color: 'bg-emerald-500', icon: <TrendingUp className="w-5 h-5 text-white" /> },
-          { label: 'Số dự án', value: projects.length, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-5 h-5 text-white" /> },
+          { label: 'Số dự án', value: visibleProjects.length, unit: 'dự án', color: 'bg-violet-500', icon: <Building2 className="w-5 h-5 text-white" /> },
         ].map((kpi, i) => (
           <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
             <div className="flex items-center justify-between mb-3">
@@ -14948,7 +14970,7 @@ function EditSplitView({
     const elevStart = parseFloat(toNum(newLayer.elevationFrom).toString().replace(',', '.'));
     const elevEnd = parseFloat(toNum(newLayer.elevationTo).toString().replace(',', '.'));
     if (!isNaN(elevStart) && !isNaN(elevEnd)) {
-      newLayer.lengthMeters = Math.abs(elevEnd - elevStart);
+      newLayer.lengthMeters = Math.abs(Math.abs(elevEnd) - Math.abs(elevStart));
       if (newLayer.durationHours > 0) {
         newLayer.speedMph = newLayer.lengthMeters / newLayer.durationHours;
       }
@@ -15060,15 +15082,15 @@ function EditSplitView({
     }
 
     // Logic: Khi sửa cao độ (elevationFrom, elevationTo)
-    // lengthMeters chỉ được tính tự động từ |elevationTo - elevationFrom|, không cho phép sửa trực tiếp
+    // lengthMeters chỉ được tính tự động từ |abs(elevationTo) - abs(elevationFrom)|, không cho phép sửa trực tiếp
     if (['elevationFrom', 'elevationTo'].includes(field as string)) {
       const currentLayer = newLayers[idx];
       const elevFrom = parseFloat(toNum(currentLayer.elevationFrom).toString().replace(',', '.'));
       const elevTo = parseFloat(toNum(currentLayer.elevationTo).toString().replace(',', '.'));
 
-      // Tự động tính lengthMeters từ cao độ đến trừ cao độ từ
+      // Tự động tính lengthMeters từ |abs(cao độ đến) - abs(cao độ từ)|
       if (!isNaN(elevFrom) && !isNaN(elevTo)) {
-        newLayers[idx].lengthMeters = Math.abs(elevTo - elevFrom);
+        newLayers[idx].lengthMeters = Math.abs(Math.abs(elevTo) - Math.abs(elevFrom));
       }
 
       // Đảm bảo tính lại speed cho lớp hiện tại
@@ -15083,7 +15105,7 @@ function EditSplitView({
           // Tính lại lengthMeters cho lớp kế tiếp
           const nextElevTo = parseFloat(toNum(newLayers[idx + 1].elevationTo).toString().replace(',', '.'));
           if (!isNaN(nextElevTo)) {
-            newLayers[idx + 1].lengthMeters = Math.abs(nextElevTo - newElevTo);
+            newLayers[idx + 1].lengthMeters = Math.abs(Math.abs(nextElevTo) - Math.abs(newElevTo));
           }
           newLayers[idx + 1] = recalculateLayer(newLayers[idx + 1]);
         }
