@@ -185,16 +185,25 @@ function toNum(val: any, fallback = 0): number {
 // ── Chuẩn hóa toàn bộ fields số trong 1 layer — gọi khi load từ DB/localStorage ──
 function sanitizeLayer(layer: any): any {
   if (!layer) return layer;
+  const elevFrom = toNum(layer.elevationFrom, 0);
+  const elevTo   = toNum(layer.elevationTo,   0);
+  // Chiều dài = |Độ sâu đến - Độ sâu từ| — luôn tính lại từ cao độ, không dùng giá trị AI
+  const computedLength = Math.abs(elevTo - elevFrom);
+  const durationHours = toNum(layer.durationHours, 0);
+  // Tính lại vận tốc nếu có chiều dài và thời gian
+  const computedSpeed = (durationHours > 0 && computedLength > 0)
+    ? computedLength / durationHours
+    : toNum(layer.speedMph, 0);
   return {
     ...layer,
-    elevationFrom:  toNum(layer.elevationFrom,  0),
-    elevationTo:    toNum(layer.elevationTo,     0),
-    durationHours:  toNum(layer.durationHours,   0),
-    lengthMeters:   toNum(layer.lengthMeters,    0),
+    elevationFrom:   elevFrom,
+    elevationTo:     elevTo,
+    durationHours:   durationHours,
+    lengthMeters:    computedLength,
     cumulativeDepth: toNum(layer.cumulativeDepth, 0),
-    speedMph:       toNum(layer.speedMph,        0),
-    layerNumber:    toNum(layer.layerNumber,     0),
-    soilClass:      (['Chưa Phân định nhóm','Đất cấp I','Đất cấp II','Đất cấp III','Đá cấp I'].includes(layer.soilClass) ? layer.soilClass : 'Chưa Phân định nhóm'),
+    speedMph:        computedSpeed,
+    layerNumber:     toNum(layer.layerNumber, 0),
+    soilClass:       (['Chưa Phân định nhóm','Đất cấp I','Đất cấp II','Đất cấp III','Đá cấp I'].includes(layer.soilClass) ? layer.soilClass : 'Chưa Phân định nhóm'),
   };
 }
 
